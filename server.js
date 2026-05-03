@@ -193,25 +193,48 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
 
 // ── PAGE ROUTING ─────────────────────────────────────────────────
 
+// Middleware для сторінок — редірект на логін замість JSON помилки
+function pageAuth(req, res, next) {
+  const token = req.cookies?.token;
+  if (!token) return res.redirect("/login");
+  const { verifyToken } = require("./auth");
+  const user = verifyToken(token);
+  if (!user) return res.redirect("/login");
+  req.user = user;
+  next();
+}
+
+function pageRole(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) return res.redirect("/login");
+    next();
+  };
+}
+
 // Логін сторінка
 app.get("/login", (req, res) => res.sendFile(path.join(__dirname, "public", "login.html")));
 
-// Головна — перенаправляє по ролі
-app.get("/", authMiddleware, (req, res) => {
+// Головна — перенаправляє по ролі або на логін
+app.get("/", (req, res) => {
+  const token = req.cookies?.token;
+  if (!token) return res.redirect("/login");
+  const { verifyToken } = require("./auth");
+  const user = verifyToken(token);
+  if (!user) return res.redirect("/login");
   const pages = { admin: "/admin", dropshipper: "/drop", warehouse: "/warehouse" };
-  res.redirect(pages[req.user.role] || "/login");
+  res.redirect(pages[user.role] || "/login");
 });
 
 // Сторінки по ролях
-app.get("/admin", authMiddleware, requireRole("admin"), (req, res) =>
+app.get("/admin", pageAuth, pageRole("admin"), (req, res) =>
   res.sendFile(path.join(__dirname, "public", "admin.html")));
-app.get("/admin/*", authMiddleware, requireRole("admin"), (req, res) =>
+app.get("/admin/*", pageAuth, pageRole("admin"), (req, res) =>
   res.sendFile(path.join(__dirname, "public", "admin.html")));
 
-app.get("/drop", authMiddleware, requireRole("dropshipper"), (req, res) =>
+app.get("/drop", pageAuth, pageRole("dropshipper"), (req, res) =>
   res.sendFile(path.join(__dirname, "public", "drop.html")));
 
-app.get("/warehouse", authMiddleware, requireRole("warehouse"), (req, res) =>
+app.get("/warehouse", pageAuth, pageRole("warehouse"), (req, res) =>
   res.sendFile(path.join(__dirname, "public", "warehouse.html")));
 
 // Catch-all: не авторизований → на логін
