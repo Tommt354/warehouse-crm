@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CRM — Адмін</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+:root{--bg:#0a0e17;--card:#111827;--input:#0d1220;--brd:#1e2740;--brd2:#2a3a5c;--t:#c8cdd5;--td:#5a6378;--th:#f0f2f5;--acc:#00d4aa;--accbg:rgba(0,212,170,.06);--red:#ff6b6b;--redbg:rgba(255,107,107,.06);--warn:#ffa726;--warnbg:rgba(255,167,38,.06);--blue:#42a5f5;--r:12px}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min-height:100vh}
+.app{display:flex;min-height:100vh}
+/* Sidebar */
+.side{width:220px;background:var(--card);border-right:1px solid var(--brd);padding:20px 0;display:flex;flex-direction:column;position:fixed;height:100vh;z-index:10}
+.side-logo{padding:0 18px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:10px}
+.side-logo h2{font-size:15px;color:var(--th);font-weight:700}
+.side-logo small{display:block;font-size:10px;color:var(--td);font-weight:400;margin-top:1px}
+.side-nav{flex:1;padding:12px 0}
+.side-nav a{display:flex;align-items:center;gap:10px;padding:10px 18px;color:var(--td);text-decoration:none;font-size:13px;font-weight:500;transition:.15s;cursor:pointer}
+.side-nav a:hover{color:var(--t);background:rgba(255,255,255,.02)}
+.side-nav a.on{color:var(--acc);background:var(--accbg);border-right:2px solid var(--acc)}
+.side-nav a .icon{font-size:16px;width:22px;text-align:center}
+.side-bottom{padding:12px 18px;border-top:1px solid var(--brd)}
+.side-user{font-size:12px;color:var(--td);margin-bottom:8px}
+.side-user strong{color:var(--th);display:block}
+.btn-logout{background:none;border:1px solid var(--brd);border-radius:8px;color:var(--td);padding:7px 14px;font-size:12px;font-family:inherit;cursor:pointer;width:100%;transition:.15s}
+.btn-logout:hover{border-color:var(--red);color:var(--red)}
+/* Main */
+.main{margin-left:220px;flex:1;padding:24px 28px 40px;min-height:100vh}
+.page{display:none}.page.on{display:block}
+.page-title{font-size:20px;font-weight:700;color:var(--th);margin-bottom:20px}
+/* Cards grid */
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.sc{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:18px;text-align:center}
+.sc .sv{font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:700;line-height:1}
+.sc .sl{font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.8px;margin-top:6px}
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;color:var(--td);font-weight:600;padding:10px 12px;border-bottom:2px solid var(--brd);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.tbl td{padding:10px 12px;border-bottom:1px solid var(--brd);vertical-align:middle}
+.tbl tr:hover td{background:rgba(255,255,255,.015)}
+.tbl .mono{font-family:'JetBrains Mono',monospace;font-size:12px}
+/* Buttons */
+.btn{padding:8px 16px;font-size:13px;font-family:inherit;font-weight:500;border:1px solid var(--brd);border-radius:8px;cursor:pointer;transition:.15s;background:var(--card);color:var(--t)}
+.btn:hover{border-color:var(--brd2)}.btn:disabled{opacity:.4;cursor:default}
+.btn-a{border-color:rgba(0,212,170,.2);color:var(--acc);background:transparent}.btn-a:hover{background:var(--accbg)}
+.btn-d{border-color:rgba(255,107,107,.15);color:var(--red)}.btn-d:hover{background:var(--redbg)}
+.btn-primary{background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600}.btn-primary:hover{opacity:.9}
+.btn-sm{padding:5px 10px;font-size:11px}
+.acts{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
+.modal-bg.on{display:flex}
+.modal{background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:24px;width:90%;max-width:480px;max-height:85vh;overflow-y:auto}
+.modal h3{font-size:17px;font-weight:700;color:var(--th);margin-bottom:18px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11px;color:var(--td);margin-bottom:5px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{width:100%;padding:10px 12px;font-size:14px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:8px;color:#fff;outline:0;transition:.2s}
+.field input:focus,.field select:focus{border-color:var(--acc)}
+.field select{cursor:pointer}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field small{font-size:11px;color:var(--td);margin-top:3px;display:block}
+/* Tags */
+.tag{display:inline-block;font-size:10px;font-weight:600;padding:3px 8px;border-radius:6px}
+.tag-green{background:var(--accbg);color:var(--acc);border:1px solid rgba(0,212,170,.15)}
+.tag-red{background:var(--redbg);color:var(--red);border:1px solid rgba(255,107,107,.15)}
+.tag-blue{background:rgba(66,165,245,.06);color:var(--blue);border:1px solid rgba(66,165,245,.15)}
+.tag-yellow{background:var(--warnbg);color:var(--warn);border:1px solid rgba(255,167,38,.15)}
+.tag-gray{background:rgba(255,255,255,.03);color:var(--td);border:1px solid var(--brd)}
+.msg{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:14px}
+.msg-ok{background:var(--accbg);color:var(--acc);border:1px solid rgba(0,212,170,.15)}
+.msg-err{background:var(--redbg);color:var(--red);border:1px solid rgba(255,107,107,.15)}
+.empty{text-align:center;padding:40px;color:var(--td)}
+.empty .icon{font-size:40px;display:block;margin-bottom:8px}
+@media(max-width:768px){.side{display:none}.main{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="side">
+    <div class="side-logo">
+      <svg width="28" height="28" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1a1a2e"/><rect x="6" y="8" width="3" height="16" rx="1" fill="#00d4aa"/><rect x="11" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="15" y="8" width="4" height="16" rx="1" fill="#00d4aa"/><rect x="21" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="25" y="8" width="1" height="16" rx=".5" fill="#00d4aa"/></svg>
+      <h2>Warehouse CRM<small>Адмін-панель</small></h2>
+    </div>
+    <div class="side-nav">
+      <a class="on" data-page="dashboard"><span class="icon">📊</span>Дашборд</a>
+      <a data-page="dropshippers"><span class="icon">🛒</span>Дропшипери</a>
+      <a data-page="workers"><span class="icon">👷</span>Працівники</a>
+      <a data-page="settings"><span class="icon">⚙️</span>Налаштування</a>
+    </div>
+    <div class="side-bottom">
+      <div class="side-user"><strong id="user-name">Адмін</strong><span id="user-role">admin</span></div>
+      <button class="btn-logout" onclick="logout()">Вийти</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- DASHBOARD -->
+    <div class="page on" id="pg-dashboard">
+      <div class="page-title">📊 Дашборд</div>
+      <div class="sg" id="dash-stats"></div>
+      <div class="msg msg-ok" style="margin-top:20px">
+        ✅ Модуль 1 працює. Наступні модулі: каталог товарів, замовлення, склад.
+      </div>
+    </div>
+
+    <!-- DROPSHIPPERS -->
+    <div class="page" id="pg-dropshippers">
+      <div class="page-title">🛒 Дропшипери</div>
+      <div class="acts">
+        <button class="btn btn-primary" onclick="openUserModal('dropshipper')">+ Додати дропшипера</button>
+      </div>
+      <div id="drop-list"></div>
+    </div>
+
+    <!-- WORKERS -->
+    <div class="page" id="pg-workers">
+      <div class="page-title">👷 Працівники складу</div>
+      <div class="acts">
+        <button class="btn btn-primary" onclick="openUserModal('warehouse')">+ Додати працівника</button>
+      </div>
+      <div id="worker-list"></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="pg-settings">
+      <div class="page-title">⚙️ Налаштування</div>
+      <div style="max-width:500px">
+        <div class="field"><label>Назва компанії</label><input id="s-company_name"></div>
+        <div class="field"><label>Поріг залишку (сповіщення)</label><input id="s-stock_warning_threshold" type="number"><small>Кількість, при якій надсилається попередження</small></div>
+        <div class="field"><label>API ключ Нової Пошти</label><input id="s-np_api_key" type="password"></div>
+        <div class="field"><label>Відправник — місто</label><input id="s-sender_city"></div>
+        <div class="field"><label>Відправник — відділення</label><input id="s-sender_warehouse"></div>
+        <div class="field"><label>Відправник — телефон</label><input id="s-sender_phone"></div>
+        <div class="field"><label>Відправник — ПІБ</label><input id="s-sender_name"></div>
+        <button class="btn btn-primary" onclick="saveSettings()" style="margin-top:8px">💾 Зберегти</button>
+        <div id="settings-msg" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Create/Edit User -->
+<div class="modal-bg" id="user-modal">
+  <div class="modal">
+    <h3 id="modal-title">Додати користувача</h3>
+    <div class="field"><label>Логін</label><input id="m-username" placeholder="латиницею, без пробілів"></div>
+    <div class="field"><label>Пароль</label><input id="m-password" type="password" placeholder="мінімум 4 символи"></div>
+    <div class="field"><label>Ім'я / Назва</label><input id="m-name" placeholder="Повне ім'я"></div>
+    <div class="field-row">
+      <div class="field"><label>Телефон</label><input id="m-phone" placeholder="+380..."></div>
+      <div class="field"><label>Telegram</label><input id="m-telegram" placeholder="@username"></div>
+    </div>
+    <div class="field"><label>Email</label><input id="m-email" type="email"></div>
+
+    <!-- Drop fields -->
+    <div id="m-drop-fields" style="display:none">
+      <div class="field-row">
+        <div class="field"><label>Знижка %</label><input id="m-discount_percent" type="number" value="0"><small>Відсоток від дроп-ціни</small></div>
+        <div class="field"><label>Знижка фікс. ₴</label><input id="m-discount_fixed" type="number" value="0"><small>Фіксована сума</small></div>
+      </div>
+    </div>
+
+    <!-- Worker fields -->
+    <div id="m-worker-fields" style="display:none">
+      <div class="field">
+        <label>Роль на складі</label>
+        <select id="m-worker_role">
+          <option value="">— без ролі —</option>
+          <option value="packer">Пакувальник</option>
+          <option value="printer">Принтувальник</option>
+          <option value="sewer">Нашивальник</option>
+          <option value="distributor">Видавач</option>
+        </select>
+      </div>
+      <div class="field"><label>Ставка за одиницю ₴</label><input id="m-worker_rate" type="number" value="0"><small>Ставка за 1 принт / 1 нашивку / 1 видачу / 1 пакування</small></div>
+    </div>
+
+    <div id="modal-error" class="msg msg-err" style="display:none"></div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button class="btn btn-primary" id="modal-save" onclick="saveUser()">Зберегти</button>
+      <button class="btn" onclick="closeModal()">Скасувати</button>
+      <button class="btn btn-d" id="modal-del" onclick="deleteUser()" style="display:none;margin-left:auto">🗑 Видалити</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentUser=null;
+let editUserId=null;
+let editUserRole=null;
+
+// ── Auth check ───────────────────────────────────────────────────
+async function init(){
+  try{
+    const r=await fetch("/api/auth/me");
+    if(!r.ok)throw 0;
+    const d=await r.json();
+    currentUser=d.user;
+    document.getElementById("user-name").textContent=currentUser.name||currentUser.username;
+    document.getElementById("user-role").textContent=currentUser.role;
+    loadDashboard();
+  }catch(e){window.location.href="/login"}
+}
+
+async function logout(){
+  await fetch("/api/auth/logout",{method:"POST"});
+  window.location.href="/login";
+}
+
+// ── Navigation ───────────────────────────────────────────────────
+document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",()=>{
+  document.querySelectorAll(".side-nav a").forEach(x=>x.classList.remove("on"));
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
+  a.classList.add("on");
+  document.getElementById("pg-"+a.dataset.page).classList.add("on");
+  if(a.dataset.page==="dashboard")loadDashboard();
+  if(a.dataset.page==="dropshippers")loadDropshippers();
+  if(a.dataset.page==="workers")loadWorkers();
+  if(a.dataset.page==="settings")loadSettings();
+}));
+
+// ── API helper ───────────────────────────────────────────────────
+async function api(url,opts){
+  const r=await fetch(url,{headers:{"Content-Type":"application/json"},...opts});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.error||"Помилка");
+  return d;
+}
+
+// ── Dashboard ────────────────────────────────────────────────────
+async function loadDashboard(){
+  try{
+    const d=await api("/api/dashboard");
+    document.getElementById("dash-stats").innerHTML=`
+      <div class="sc"><div class="sv" style="color:var(--acc)">${d.users||0}</div><div class="sl">користувачів</div></div>
+      <div class="sc"><div class="sv" style="color:var(--blue)">${d.dropshippers||0}</div><div class="sl">дропшиперів</div></div>
+      <div class="sc"><div class="sv" style="color:var(--warn)">${d.warehouse_workers||0}</div><div class="sl">працівників</div></div>
+      <div class="sc"><div class="sv" style="color:var(--th)">${d.orders_today||0}</div><div class="sl">замовлень сьогодні</div></div>
+      <div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_new||0}</div><div class="sl">нових замовлень</div></div>
+      <div class="sc"><div class="sv" style="color:var(--td)">${d.orders_total||0}</div><div class="sl">всього замовлень</div></div>
+    `;
+  }catch(e){}
+}
+
+// ── Users list ───────────────────────────────────────────────────
+const ROLE_LABELS={admin:"Адмін",dropshipper:"Дропшипер",warehouse:"Склад"};
+const WORKER_LABELS={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};
+
+async function loadDropshippers(){
+  try{
+    const{users}=await api("/api/users?role=dropshipper");
+    const el=document.getElementById("drop-list");
+    if(!users.length){el.innerHTML='<div class="empty"><span class="icon">🛒</span>Немає дропшиперів</div>';return}
+    el.innerHTML=`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Телефон</th><th>Статус</th><th></th></tr>
+      ${users.map(u=>`<tr>
+        <td><strong style="color:var(--th)">${esc(u.name||"—")}</strong></td>
+        <td class="mono">${esc(u.username)}</td>
+        <td>${u.discount_percent?u.discount_percent+"%":""}${u.discount_fixed?" "+u.discount_fixed+"₴":""}</td>
+        <td>${esc(u.phone||"—")}</td>
+        <td>${u.active?'<span class="tag tag-green">Активний</span>':'<span class="tag tag-red">Вимкнений</span>'}</td>
+        <td><button class="btn btn-sm btn-a" onclick="editUser(${u.id})">✏️</button></td>
+      </tr>`).join("")}</table>`;
+  }catch(e){}
+}
+
+async function loadWorkers(){
+  try{
+    const{users}=await api("/api/users?role=warehouse");
+    const el=document.getElementById("worker-list");
+    if(!users.length){el.innerHTML='<div class="empty"><span class="icon">👷</span>Немає працівників</div>';return}
+    el.innerHTML=`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Роль</th><th>Ставка</th><th>Статус</th><th></th></tr>
+      ${users.map(u=>`<tr>
+        <td><strong style="color:var(--th)">${esc(u.name||"—")}</strong></td>
+        <td class="mono">${esc(u.username)}</td>
+        <td>${u.worker_role?'<span class="tag tag-blue">'+WORKER_LABELS[u.worker_role]+'</span>':'<span class="tag tag-gray">—</span>'}</td>
+        <td>${u.worker_rate?u.worker_rate+"₴":""}</td>
+        <td>${u.active?'<span class="tag tag-green">Активний</span>':'<span class="tag tag-red">Вимкнений</span>'}</td>
+        <td><button class="btn btn-sm btn-a" onclick="editUser(${u.id})">✏️</button></td>
+      </tr>`).join("")}</table>`;
+  }catch(e){}
+}
+
+// ── Modal ────────────────────────────────────────────────────────
+function openUserModal(role){
+  editUserId=null;editUserRole=role;
+  document.getElementById("modal-title").textContent=role==="dropshipper"?"Новий дропшипер":"Новий працівник";
+  document.getElementById("m-username").value="";
+  document.getElementById("m-password").value="";
+  document.getElementById("m-name").value="";
+  document.getElementById("m-phone").value="";
+  document.getElementById("m-email").value="";
+  document.getElementById("m-telegram").value="";
+  document.getElementById("m-username").disabled=false;
+  document.getElementById("m-drop-fields").style.display=role==="dropshipper"?"block":"none";
+  document.getElementById("m-worker-fields").style.display=role==="warehouse"?"block":"none";
+  if(role==="dropshipper"){document.getElementById("m-discount_percent").value=0;document.getElementById("m-discount_fixed").value=0}
+  if(role==="warehouse"){document.getElementById("m-worker_role").value="";document.getElementById("m-worker_rate").value=0}
+  document.getElementById("modal-del").style.display="none";
+  document.getElementById("modal-error").style.display="none";
+  document.getElementById("user-modal").classList.add("on");
+}
+
+async function editUser(id){
+  try{
+    const{user}=await api("/api/users/"+id);
+    editUserId=id;editUserRole=user.role;
+    document.getElementById("modal-title").textContent="Редагувати: "+user.name;
+    document.getElementById("m-username").value=user.username;
+    document.getElementById("m-username").disabled=true;
+    document.getElementById("m-password").value="";
+    document.getElementById("m-name").value=user.name;
+    document.getElementById("m-phone").value=user.phone;
+    document.getElementById("m-email").value=user.email;
+    document.getElementById("m-telegram").value=user.telegram;
+    document.getElementById("m-drop-fields").style.display=user.role==="dropshipper"?"block":"none";
+    document.getElementById("m-worker-fields").style.display=user.role==="warehouse"?"block":"none";
+    if(user.role==="dropshipper"){
+      document.getElementById("m-discount_percent").value=user.discount_percent||0;
+      document.getElementById("m-discount_fixed").value=user.discount_fixed||0;
+    }
+    if(user.role==="warehouse"){
+      document.getElementById("m-worker_role").value=user.worker_role||"";
+      document.getElementById("m-worker_rate").value=user.worker_rate||0;
+    }
+    document.getElementById("modal-del").style.display="block";
+    document.getElementById("modal-error").style.display="none";
+    document.getElementById("user-modal").classList.add("on");
+  }catch(e){}
+}
+
+function closeModal(){document.getElementById("user-modal").classList.remove("on")}
+
+async function saveUser(){
+  const err=document.getElementById("modal-error");
+  const data={
+    username:document.getElementById("m-username").value,
+    password:document.getElementById("m-password").value,
+    role:editUserRole,
+    name:document.getElementById("m-name").value,
+    phone:document.getElementById("m-phone").value,
+    email:document.getElementById("m-email").value,
+    telegram:document.getElementById("m-telegram").value,
+    discount_percent:parseFloat(document.getElementById("m-discount_percent")?.value)||0,
+    discount_fixed:parseFloat(document.getElementById("m-discount_fixed")?.value)||0,
+    worker_role:document.getElementById("m-worker_role")?.value||"",
+    worker_rate:parseFloat(document.getElementById("m-worker_rate")?.value)||0,
+    active:1,
+  };
+  try{
+    if(editUserId){
+      await api("/api/users/"+editUserId,{method:"PUT",body:JSON.stringify(data)});
+    }else{
+      if(!data.password)throw new Error("Пароль обов'язковий");
+      await api("/api/users",{method:"POST",body:JSON.stringify(data)});
+    }
+    closeModal();
+    if(editUserRole==="dropshipper")loadDropshippers();else loadWorkers();
+  }catch(e){err.textContent=e.message;err.style.display="block"}
+}
+
+async function deleteUser(){
+  if(!editUserId||!confirm("Видалити цього користувача?"))return;
+  try{
+    await api("/api/users/"+editUserId,{method:"DELETE"});
+    closeModal();
+    if(editUserRole==="dropshipper")loadDropshippers();else loadWorkers();
+  }catch(e){alert(e.message)}
+}
+
+// ── Settings ─────────────────────────────────────────────────────
+async function loadSettings(){
+  try{
+    const{settings}=await api("/api/settings");
+    Object.entries(settings).forEach(([k,v])=>{
+      const el=document.getElementById("s-"+k);
+      if(el)el.value=v;
+    });
+  }catch(e){}
+}
+
+async function saveSettings(){
+  const keys=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];
+  const data={};
+  keys.forEach(k=>{const el=document.getElementById("s-"+k);if(el)data[k]=el.value});
+  try{
+    await api("/api/settings",{method:"PUT",body:JSON.stringify(data)});
+    document.getElementById("settings-msg").innerHTML='<div class="msg msg-ok">✅ Збережено</div>';
+    setTimeout(()=>document.getElementById("settings-msg").innerHTML="",3000);
+  }catch(e){document.getElementById("settings-msg").innerHTML='<div class="msg msg-err">❌ '+e.message+'</div>'}
+}
+
+function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
+init();
+</script>
+</body>
+</html>

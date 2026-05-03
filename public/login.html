@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Warehouse CRM — Вхід</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+:root{--bg:#0a0e17;--card:#111827;--input:#0d1220;--brd:#1e2740;--brd2:#2a3a5c;--t:#c8cdd5;--td:#5a6378;--th:#f0f2f5;--acc:#00d4aa;--accbg:rgba(0,212,170,.06);--red:#ff6b6b;--r:12px}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-wrap{width:100%;max-width:380px;padding:20px}
+.logo{text-align:center;margin-bottom:32px}
+.logo svg{margin-bottom:12px}
+.logo h1{font-size:22px;font-weight:700;color:var(--th)}
+.logo p{font-size:13px;color:var(--td);margin-top:4px}
+.card{background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:28px 24px}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:12px;color:var(--td);margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.field input{width:100%;padding:12px 14px;font-size:15px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:10px;color:#fff;outline:0;transition:.2s}
+.field input:focus{border-color:var(--acc)}
+.btn{width:100%;padding:13px;font-size:15px;font-family:inherit;font-weight:600;background:var(--acc);border:none;border-radius:10px;color:#0a0e17;cursor:pointer;transition:.2s;margin-top:6px}
+.btn:hover{opacity:.9}.btn:disabled{opacity:.5;cursor:default}
+.error{color:var(--red);font-size:13px;text-align:center;margin-top:14px;min-height:20px}
+.sp{display:inline-block;width:16px;height:16px;border:2px solid rgba(10,14,23,.3);border-top-color:#0a0e17;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="logo">
+    <svg width="48" height="48" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1a1a2e"/><rect x="6" y="8" width="3" height="16" rx="1" fill="#00d4aa"/><rect x="11" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="15" y="8" width="4" height="16" rx="1" fill="#00d4aa"/><rect x="21" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="25" y="8" width="1" height="16" rx=".5" fill="#00d4aa"/></svg>
+    <h1>Warehouse CRM</h1>
+    <p>Система управління складом</p>
+  </div>
+  <div class="card">
+    <div class="field">
+      <label>Логін</label>
+      <input id="username" type="text" placeholder="Введіть логін" autocomplete="username" autofocus>
+    </div>
+    <div class="field">
+      <label>Пароль</label>
+      <input id="password" type="password" placeholder="Введіть пароль" autocomplete="current-password">
+    </div>
+    <button class="btn" id="login-btn" onclick="doLogin()">Увійти</button>
+    <div class="error" id="error"></div>
+  </div>
+</div>
+<script>
+// Якщо вже залогінений — редірект
+fetch("/api/auth/me").then(r=>{if(r.ok)return r.json();throw 0}).then(d=>{
+  const pages={admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse"};
+  window.location.href=pages[d.user.role]||"/";
+}).catch(()=>{});
+
+document.getElementById("password").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin()});
+document.getElementById("username").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("password").focus()});
+
+async function doLogin(){
+  const btn=document.getElementById("login-btn");
+  const err=document.getElementById("error");
+  const username=document.getElementById("username").value.trim();
+  const password=document.getElementById("password").value;
+  if(!username||!password){err.textContent="Введіть логін і пароль";return}
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span>Вхід...';err.textContent="";
+  try{
+    const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+    const d=await r.json();
+    if(!r.ok){err.textContent=d.error;btn.disabled=false;btn.textContent="Увійти";return}
+    const pages={admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse"};
+    window.location.href=pages[d.user.role]||"/";
+  }catch(e){err.textContent="Помилка з'єднання";btn.disabled=false;btn.textContent="Увійти"}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "warehouse-crm",
+  "version": "1.0.0",
+  "description": "CRM for dropshipping business with warehouse management",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^11.0.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cookie-parser": "^1.4.6"
+  }
+}
