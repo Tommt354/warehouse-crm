@@ -801,6 +801,52 @@ app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) =
   res.json({ ok: true });
 });
 
+// ── RETURNS (повернення) ──────────────────────────────────────────
+
+// Find order by TTN
+app.get("/api/orders/by-ttn/:ttn", authMiddleware, (req, res) => {
+  const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.ttn=? OR o.ttn_return=?").get(req.params.ttn, req.params.ttn);
+  if (!o) return res.status(404).json({ error: "Замовлення з такою ТТН не знайдено" });
+  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name
+    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id
+    WHERE oi.order_id=?`).all(o.id);
+  res.json({ order: o });
+});
+
+// Register return for specific item (checkbox in packer UI)
+app.post("/api/order-items/:id/return-to-stock", authMiddleware, (req, res) => {
+  const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
+  if (!item) return res.status(404).json({ error: "Не знайдено" });
+  if (item.returned_to_stock) return res.status(400).json({ error: "Вже повернуто" });
+
+  db.transaction(() => {
+    if (item.print_id) {
+      // Has print → goes to returns stock as variation+size
+      db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(item.quantity, item.variation_id, item.size_id);
+    } else {
+      // Ready product → goes back to base stock
+      db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, item.size_id);
+    }
+    db.prepare("UPDATE order_items SET returned_to_stock=1 WHERE id=?").run(item.id);
+  })();
+  res.json({ ok: true });
+});
+
+// Seed test order (for testing returns)
+app.post("/api/seed-test-order", authMiddleware, requireRole("admin"), (req, res) => {
+  const drop = db.prepare("SELECT id FROM users WHERE role='dropshipper' LIMIT 1").get();
+  if (!drop) return res.status(400).json({ error: "Немає дропшиперів" });
+  const v = db.prepare("SELECT v.id,v.base_product_id FROM variations v JOIN base_products bp ON v.base_product_id=bp.id LIMIT 1").get();
+  if (!v) return res.status(400).json({ error: "Немає варіацій" });
+  const sz = db.prepare("SELECT size_id FROM stock_base WHERE base_product_id=? AND quantity>0 LIMIT 1").get(v.base_product_id);
+  if (!sz) return res.status(400).json({ error: "Немає залишків" });
+
+  const ttn = "2050" + Math.floor(Math.random()*10000000000).toString().padStart(10,"0");
+  const o = db.prepare("INSERT INTO orders(dropshipper_id,status,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,ttn)VALUES(?,?,?,?,?,?,?,?,?,?)").run(drop.id,"refused","Тест Клієнт","+380991234567","Київ","Відділення №1",500,300,200,ttn);
+  db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price)VALUES(?,?,?,?,?)").run(o.lastInsertRowid,v.id,sz.size_id,1,300);
+  res.json({ ok: true, order_id: o.lastInsertRowid, ttn });
+});
+
 // ── DASHBOARD ────────────────────────────────────────────────────
 app.get("/api/dashboard", authMiddleware, (req, res) => {
   if (req.user.role === "admin") {
