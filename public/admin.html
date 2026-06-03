@@ -118,7 +118,6 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
     <a class="on" data-p="dash">📊 Дашборд</a>
     <div class="nav-g">Каталог</div>
     <a data-p="dirs">📖 Довідники</a>
-    <a data-p="cats">📂 Категорії</a>
     <a data-p="models">🏷 Моделі</a>
     <div class="nav-g">Склад</div>
     <a data-p="sbase">📦 Склад база</a>
@@ -146,24 +145,30 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div id="dir-list"></div>
 </div>
 
-<div class="page" id="pg-cats"><div class="pt">📂 Категорії</div>
-<div id="cat-bread"></div>
-<div class="acts"><button class="btn btn-p" onclick="addCat()">+ Додати категорію</button></div>
-<div class="cards" id="cat-list"></div>
-</div>
-
 <div class="page" id="pg-models"><div class="pt">🏷 Моделі</div>
 <div class="acts"><button class="btn btn-p" onclick="openNewModel()">+ Нова модель</button></div>
 <div id="model-list"></div>
 </div>
 
 <div class="page" id="pg-sbase"><div class="pt">📦 Склад база</div>
-<div class="acts"><button class="btn btn-a" onclick="openInc()">📥 Прихід товару</button></div>
-<div class="cards" id="sbase-list"></div>
+<div id="sbase-bread"></div>
+<div class="acts">
+  <button class="btn btn-p" onclick="addCatIn('base')">+ Категорія</button>
+  <button class="btn btn-a" onclick="openInc()">📥 Прихід товару</button>
+  <input class="search-bar" placeholder="Пошук товарів..." oninput="searchSBase(this.value)">
+</div>
+<div class="cards" id="sbase-cats"></div>
+<div class="cards" id="sbase-list" style="margin-top:10px"></div>
 </div>
 
-<div class="page" id="pg-sdrop"><div class="pt">🛒 Склад дроп (варіації)</div>
-<div class="cards" id="sdrop-list"></div>
+<div class="page" id="pg-sdrop"><div class="pt">🛒 Склад дроп (варіації для дропшиперів)</div>
+<div id="sdrop-bread"></div>
+<div class="acts">
+  <button class="btn btn-p" onclick="addCatIn('drop')">+ Категорія</button>
+  <input class="search-bar" placeholder="Пошук варіацій..." oninput="searchSDrop(this.value)">
+</div>
+<div class="cards" id="sdrop-cats"></div>
+<div class="cards" id="sdrop-list" style="margin-top:10px"></div>
 </div>
 
 <div class="page" id="pg-drops"><div class="pt">🛒 Дропшипери</div>
@@ -252,7 +257,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 
 <script>
 let ME,CC={colors:[],sizes:[],prints:[],patches:[],cats:[]};
-let curDir="colors",editDirId=null,editCatId=null,catParent=null,catPhoto="";
+let curDir="colors",editDirId=null,editCatId=null,catPhoto="";
 let editUID=null,editUR=null,editBpId=null,editVarId=null;
 let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let mmWorkers=[];
 
@@ -267,7 +272,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".side-nav a").forEach(x=>x.classList.remove("on"));
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
-  ({dash:loadDash,dirs:loadDir,cats:()=>{catParent=null;loadCats()},models:loadModels,sbase:loadSBase,sdrop:loadSDrop,drops:loadDrops,workers:loadWorkers,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},drops:loadDrops,workers:loadWorkers,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -292,26 +297,8 @@ function editDirFn(id){const items=curDir==="colors"?CC.colors:curDir==="sizes"?
 async function saveDI(){const data={name:document.getElementById("dm-name").value};if(curDir==="colors")data.hex_code=document.getElementById("dm-hex").value;try{if(editDirId)await api(`/api/${curDir}/${editDirId}`,{method:"PUT",body:JSON.stringify(data)});else await api(`/api/${curDir}`,{method:"POST",body:JSON.stringify(data)});closeM("dir-modal");loadDir()}catch(e){alert(e.message)}}
 async function delDI(id,name){if(!confirm(`Видалити "${name}"?`))return;await api(`/api/${curDir}/${id}`,{method:"DELETE"});loadDir()}
 
-// ── Categories (cards + breadcrumbs) ─────────────────────────────
-async function loadCats(){
-  const p=catParent||"";const d=await api(`/api/categories?parent_id=${p}`);
-  // Breadcrumb
-  let bc='<div class="bread"><a onclick="catParent=null;loadCats()">📂 Всі категорії</a>';
-  d.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="catParent=${b.id};loadCats()">${esc(b.name)}</a>`});
-  bc+="</div>";document.getElementById("cat-bread").innerHTML=bc;
-  const el=document.getElementById("cat-list");
-  if(!d.categories.length){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">📂</span>Порожньо</div>';return}
-  el.innerHTML=d.categories.map(c=>`<div class="crd" onclick="catParent=${c.id};loadCats()">
-    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:'📁'}</div>
-    <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>${c.hidden_from_drop?'<div class="crd-sub"><span class="tag tag-r">Прихована</span></div>':""}
-    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id})">✏️</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">🗑</button></div></div></div>`).join("");
-}
-function addCat(){editCatId=null;catPhoto="";document.getElementById("cm-t").textContent="Нова категорія";document.getElementById("cm-name").value="";document.getElementById("cm-hidden").value="0";document.getElementById("cm-photo-preview").innerHTML="—";document.getElementById("cm-del").style.display="none";openM("cat-modal")}
-async function editCatFn(id){const all=(await api("/api/categories?parent_id=")).flat;const c=all.find(x=>x.id===id);if(!c)return;editCatId=id;catPhoto=c.photo||"";document.getElementById("cm-t").textContent=c.name;document.getElementById("cm-name").value=c.name;document.getElementById("cm-hidden").value=c.hidden_from_drop?"1":"0";document.getElementById("cm-photo-preview").innerHTML=c.photo?`<img src="${c.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";document.getElementById("cm-del").style.display="block";openM("cat-modal")}
+// ── Category photo upload ────────────────────────────────────────
 async function uploadCatPhoto(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const{url}=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});catPhoto=url;document.getElementById("cm-photo-preview").innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover">`}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
-async function saveCat(){const data={name:document.getElementById("cm-name").value,parent_id:catParent||null,photo:catPhoto,hidden_from_drop:document.getElementById("cm-hidden").value==="1"};try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");loadCats()}catch(e){alert(e.message)}}
-async function delCatFn(id,name){if(!confirm(`Видалити "${name}" і всі підкатегорії?`))return;await api(`/api/categories/${id}`,{method:"DELETE"});closeM("cat-modal");loadCats()}
-function delCat(){if(editCatId)delCatFn(editCatId,"")}
 
 // ── Models ───────────────────────────────────────────────────────
 async function loadModels(){
@@ -393,39 +380,77 @@ async function saveModel(){
   try{const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});closeM("model-modal");loadModels();alert(`✅ ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
-// ── Stock base ───────────────────────────────────────────────────
-let sbProducts=[],sbSizes=[];
+// ── Stock base with categories ────────────────────────────────────
+let sbProducts=[],sbSizes=[],sbCatP=null;
 async function loadSBase(){
-  const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;
-  const el=document.getElementById("sbase-list");
-  if(!sbProducts.length){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">📦</span>Створіть модель</div>';return}
-  const thr=3;
-  el.innerHTML=sbProducts.map(p=>{
+  // Load categories
+  const cd=await api(`/api/categories?parent_id=${sbCatP||""}`);
+  let bc='<div class="bread"><a onclick="sbCatP=null;loadSBase()">📦 Всі товари</a>';
+  cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sbCatP=${b.id};loadSBase()">${esc(b.name)}</a>`});
+  bc+="</div>";document.getElementById("sbase-bread").innerHTML=bc;
+  // Category cards
+  document.getElementById("sbase-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sbCatP=${c.id};loadSBase()">
+    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:'📁'}</div>
+    <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
+    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">✏️</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">🗑</button></div></div></div>`).join("");
+  // Products
+  const url=sbCatP?`/api/base-products?category_id=${sbCatP}`:"/api/base-products";
+  const d=await api(url);sbProducts=d.products;sbSizes=d.sizes;
+  renderSBase(sbProducts);
+}
+function renderSBase(products){
+  const el=document.getElementById("sbase-list");const thr=3;
+  if(!products.length&&!document.getElementById("sbase-cats").innerHTML){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">📦</span>Порожньо</div>';return}
+  if(!products.length){el.innerHTML="";return}
+  el.innerHTML=products.map(p=>{
     const szs=sbSizes.filter(s=>p.stock[s.id]!==undefined);
     return`<div class="pcard"><div class="pcard-img" onclick="openEditBp(${p.id})">${p.photo?`<img src="${p.photo}">`:'📷'}</div><div class="pcard-body">
     <div class="pcard-name">${esc(p.name)}</div><div class="pcard-sub">${esc(p.category_name||"")}</div>
     <div class="pcard-prices"><span class="pp tag" style="background:var(--bg);color:var(--td)">${p.cost_price}₴</span><span class="pp tag tag-g">${p.drop_price}₴</span></div>
-    <div class="stock-row">${szs.map(s=>{const q=p.stock[s.id]||0;return`<div class="stock-sz ${q<=0?"zero":q<=thr?"low":""}" title="${s.name}: ${q}"><b>${s.name}</b><br>${q}</div>`}).join("")}</div>
+    <div class="stock-row">${szs.map(s=>{const q=p.stock[s.id]||0;return`<div class="stock-sz ${q<=0?"zero":q<=thr?"low":""}""><b>${s.name}</b><br>${q}</div>`}).join("")}</div>
     <div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditBp(${p.id})">✏️</button></div>
     </div></div>`}).join("");
 }
+function searchSBase(q){if(!q){renderSBase(sbProducts);return}renderSBase(sbProducts.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())))}
 
-// ── Stock drop ───────────────────────────────────────────────────
+// ── Stock drop with categories ───────────────────────────────────
+let sdVars=[],sdSizes=[],sdCatP=null;
 async function loadSDrop(){
-  const d=await api("/api/variations");
-  const el=document.getElementById("sdrop-list");
-  if(!d.variations.length){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">🛒</span>Створіть модель</div>';return}
-  const thr=3;
-  el.innerHTML=d.variations.map(v=>{
-    const szs=d.sizes.filter(s=>v.stock[s.id]!==undefined);
+  const cd=await api(`/api/categories?parent_id=${sdCatP||""}`);
+  let bc='<div class="bread"><a onclick="sdCatP=null;loadSDrop()">🛒 Всі варіації</a>';
+  cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sdCatP=${b.id};loadSDrop()">${esc(b.name)}</a>`});
+  bc+="</div>";document.getElementById("sdrop-bread").innerHTML=bc;
+  document.getElementById("sdrop-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sdCatP=${c.id};loadSDrop()">
+    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:'📁'}</div>
+    <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
+    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'drop')">✏️</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">🗑</button></div></div></div>`).join("");
+  const url=sdCatP?`/api/variations?category_id=${sdCatP}`:"/api/variations";
+  const d=await api(url);sdVars=d.variations;sdSizes=d.sizes;
+  renderSDrop(sdVars);
+}
+function renderSDrop(variations){
+  const el=document.getElementById("sdrop-list");const thr=3;
+  if(!variations.length&&!document.getElementById("sdrop-cats").innerHTML){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">🛒</span>Порожньо</div>';return}
+  if(!variations.length){el.innerHTML="";return}
+  el.innerHTML=variations.map(v=>{
+    const szs=sdSizes.filter(s=>v.stock[s.id]!==undefined);
     return`<div class="pcard"><div class="pcard-img" onclick="openEditVar(${v.id})">${v.photo||v.print_photo?`<img src="${v.photo||v.print_photo}">`:'📷'}</div><div class="pcard-body">
     <div class="pcard-name">${esc(v.name)}</div>
     <div class="pcard-sub">${v.print_name?`Принт: ${esc(v.print_name)}`:""} ${v.color_name?`· ${esc(v.color_name)}`:""}</div>
     <div class="pcard-prices"><span class="pp tag tag-g">${v.drop_price}₴</span></div>
-    <div class="stock-row">${szs.map(s=>{const q=v.stock[s.id]||0;return`<div class="stock-sz ${q<=0?"zero":q<=thr?"low":""}" title="${s.name}: ${q}"><b>${s.name}</b><br>${q}</div>`}).join("")}</div>
+    <div class="stock-row">${szs.map(s=>{const q=v.stock[s.id]||0;return`<div class="stock-sz ${q<=0?"zero":q<=thr?"low":""}""><b>${s.name}</b><br>${q}</div>`}).join("")}</div>
     <div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditVar(${v.id})">✏️</button></div>
     </div></div>`}).join("");
 }
+function searchSDrop(q){if(!q){renderSDrop(sdVars);return}renderSDrop(sdVars.filter(v=>v.name.toLowerCase().includes(q.toLowerCase())))}
+
+// Add category from within stock pages
+let catScope="base";
+function addCatIn(scope){catScope=scope;editCatId=null;catPhoto="";document.getElementById("cm-t").textContent="Нова категорія";document.getElementById("cm-name").value="";document.getElementById("cm-hidden").value="0";document.getElementById("cm-photo-preview").innerHTML="—";document.getElementById("cm-del").style.display="none";openM("cat-modal")}
+async function editCatFn(id,scope){catScope=scope||"base";const all=(await api("/api/categories?parent_id=")).flat;const c=all.find(x=>x.id===id);if(!c)return;editCatId=id;catPhoto=c.photo||"";document.getElementById("cm-t").textContent=c.name;document.getElementById("cm-name").value=c.name;document.getElementById("cm-hidden").value=c.hidden_from_drop?"1":"0";document.getElementById("cm-photo-preview").innerHTML=c.photo?`<img src="${c.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";document.getElementById("cm-del").style.display="block";openM("cat-modal")}
+async function saveCat(){const data={name:document.getElementById("cm-name").value,parent_id:(catScope==="base"?sbCatP:sdCatP)||null,photo:catPhoto,hidden_from_drop:document.getElementById("cm-hidden").value==="1"};try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");if(catScope==="base")loadSBase();else loadSDrop()}catch(e){alert(e.message)}}
+async function delCatFn(id,name){if(!confirm(`Видалити "${name}"?`))return;await api(`/api/categories/${id}`,{method:"DELETE"});if(catScope==="base")loadSBase();else loadSDrop()}
+function delCat(){if(editCatId)delCatFn(editCatId,"")}
 
 // ── Edit base product ────────────────────────────────────────────
 async function openEditBp(id){
