@@ -859,6 +859,13 @@ app.post("/api/order-items/:id/use-return", authMiddleware, (req, res) => {
 
 // Update order status
 app.put("/api/orders/:id/status", authMiddleware, (req, res) => {
+
+// Manually set TTN
+app.put("/api/orders/:id/ttn", authMiddleware, (req, res) => {
+  const { ttn } = req.body;
+  db.prepare("UPDATE orders SET ttn=?,updated_at=datetime('now','localtime') WHERE id=?").run(ttn||"", req.params.id);
+  res.json({ ok: true });
+});
   const { status } = req.body;
   const validStatuses = ['new','in_progress','packed','shipped','delivering','delivered','refused','return_transit','return_warehouse','return_received','cancelled'];
   if (!validStatuses.includes(status)) return res.status(400).json({ error: "Невірний статус" });

@@ -805,6 +805,8 @@ async function loadAdmOrders(status){
     html+='<div style="text-align:right;font-size:10px;color:var(--td)"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div>'+( o.created_at?.slice(0,16)||"");
     if(o.ttn)html+='<div style="color:var(--warn);font-family:JetBrains Mono,monospace;margin-top:2px">ТТН: '+esc(o.ttn)+'</div>';
     html+='</div></div>';
+    // TTN input
+    html+='<div style="padding:4px 14px;display:flex;gap:4px;align-items:center"><input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." style="flex:1;padding:5px 8px;font-size:11px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><button class="btn btn-sm" style="font-size:10px" onclick="saveTtn('+o.id+')">💾</button></div>';
     for(const i of order.items){
       html+='<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center">';
       html+=((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>');
@@ -822,7 +824,8 @@ async function loadAdmOrders(status){
   }
   el.innerHTML=html;
 }
-async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
+async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){}}
+async function saveTtn(id){var v=document.getElementById("ttn-"+id).value;try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});loadAdmOrders(admOrdFilter)}catch(e){}}
 
 // ── Returns (склад повернень) ────────────────────────────────────
 async function loadReturns(){
