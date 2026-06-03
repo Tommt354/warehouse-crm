@@ -25,7 +25,7 @@
 .ocard-meta{text-align:right;font-size:10px;color:var(--td)}.ocard-ttn{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--warn);margin-top:1px}
 .oitem{display:flex;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center}
 .oitem.item-missing{background:rgba(255,107,107,.08);border-left:4px solid var(--red)}
-.oitem-img{width:100px;height:100px;border-radius:10px;overflow:hidden;background:var(--bg);flex-shrink:0}
+.oitem-img{width:120px;height:120px;border-radius:10px;overflow:hidden;background:var(--bg);flex-shrink:0}
 .oitem-img img{width:100%;height:100%;object-fit:cover}
 .oitem-info{flex:1}
 .oitem-name{font-size:14px;font-weight:600;color:var(--th)}.oitem-print{font-size:11px;color:var(--warn);margin-top:2px}
@@ -181,16 +181,15 @@ async function loadOrders(){
     var hasOOS=isActive&&od.items.some(function(i){return i.current_stock<=0});
     html+='<div class="ocard'+(hasOOS?' out-of-stock':'')+'">';
     html+='<div class="ocard-header"><div>';
-    html+='<div class="ocard-id">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(hasOOS?' <span class="tag tag-bad">⚠️ Немає</span>':'')+'</div>';
+    html+='<div class="ocard-id"><span style="font-size:18px">#'+o.id+'</span> <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(o.drop_channel==="hot"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(0,212,170,.1);color:#00d4aa">ADS</span>':'')+(hasOOS?' <span class="tag tag-bad">⚠️ Немає</span>':'')+'</div>';
     html+='<div class="cl-name">'+esc(o.client_name)+'</div><div class="cl-phone">'+esc(o.client_phone)+'</div>';
     html+='<div class="cl-addr">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
-    html+='</div><div class="ocard-meta"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div><div>'+(o.created_at?o.created_at.slice(0,16):"")+'</div>';
-    if(o.ttn)html+='<div class="ocard-ttn">ТТН: '+esc(o.ttn)+'</div>';
-    html+='</div></div>';
+    html+='</div><div class="ocard-meta"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div><div>'+(o.created_at?o.created_at.slice(0,16):"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
+    if(o.ttn)html+='<div style="margin:0 14px 8px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 12px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span></div>';
     for(var ii=0;ii<od.items.length;ii++){
       var i=od.items[ii];var missing=isActive&&i.current_stock<=0;var hasRet=isActive&&i.return_available>0;var usedRet=isActive&&i.from_returns>0;
       html+='<div class="oitem'+(missing?' item-missing':'')+'">';
-      html+='<div class="oitem-img">'+((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div style="width:80px;height:80px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td)">📷</div>')+'</div>';
+      html+='<div class="oitem-img">'+((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div style="width:120px;height:120px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td)">📷</div>')+'</div>';
       html+='<div class="oitem-info"><div class="oitem-name">'+esc(i.var_name)+'</div>';
       if(i.print_name)html+='<div class="oitem-print">🖼 '+esc(i.print_name)+'</div>';
       html+='<div><span class="oitem-size">'+esc(i.size_name)+'</span>';

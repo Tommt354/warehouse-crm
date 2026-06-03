@@ -231,10 +231,15 @@ async function loadOrders(){
 
 function renderOC(o){
   var items=o._items||[];
-  var thumbs=items.slice(0,4).map(function(i){return (i.var_photo||i.print_photo||i.bp_photo)?'<img class="oc-thumb" src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div class="oc-thumb-empty"></div>'}).join("");
-  var info=items.slice(0,2).map(function(i){return esc(i.var_name)+" "+esc(i.size_name)}).join(", ");
-  if(items.length>2)info+=" +"+(items.length-2);
-  return '<div class="oc" onclick="viewOrder('+o.id+')"><div class="oc-top"><div><div class="oc-id">#'+o.id+' <span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div><div class="oc-client">'+esc(o.client_name)+' · '+esc(o.client_phone)+'</div>'+(o.ttn?'<div style="font-size:10px;color:var(--warn);font-family:JetBrains Mono,monospace;margin-top:2px">📦 '+esc(o.ttn)+'</div>':'')+'<div class="oc-date">'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div><div class="oc-right"><div class="oc-cod">'+o.cod_amount+'₴</div><div class="oc-pay">+'+o.payout_amount.toFixed(0)+'₴</div></div></div>'+(thumbs?'<div class="oc-items">'+thumbs+'<div style="font-size:10px;color:var(--td);align-self:center;margin-left:4px">'+info+'</div></div>':'')+'</div>';
+  var ph=items.map(function(i){var p=i.var_photo||i.print_photo||i.bp_photo;return p?'<img style="width:120px;height:120px;border-radius:10px;object-fit:cover;border:1px solid var(--brd)" src="'+p+'">':'<div style="width:120px;height:120px;border-radius:10px;background:var(--bg);border:1px solid var(--brd)"></div>'}).join("");
+  var nm=items.map(function(i){return esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')}).join('<br>');
+  var h='<div class="oc" onclick="viewOrder('+o.id+')"><div style="padding:12px 14px">';
+  h+='<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><span style="font-size:16px;font-weight:700;color:var(--th)">#'+o.id+'</span> <span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th)">'+o.cod_amount+'₴</div><div style="font-size:13px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(0)+'₴</div></div></div>';
+  if(o.ttn)h+='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 10px;margin-bottom:8px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span></div>';
+  h+='<div style="display:flex;gap:10px;margin-bottom:6px"><div style="display:flex;gap:4px;flex-shrink:0">'+ph+'</div><div style="font-size:11px;color:var(--t);line-height:1.6">'+nm+'</div></div>';
+  h+='<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
+  h+='<div style="font-size:10px;color:var(--td);margin-top:2px">'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div></div>';
+  return h;
 }
 
 async function viewOrder(id){
