@@ -221,7 +221,7 @@ async function loadOrders(){
 
 function renderOC(o){
   var items=o._items||[];
-  var thumbs=items.slice(0,4).map(function(i){return i.var_photo?'<img class="oc-thumb" src="'+i.var_photo+'">':'<div class="oc-thumb-empty"></div>'}).join("");
+  var thumbs=items.slice(0,4).map(function(i){return (i.var_photo||i.print_photo||i.bp_photo)?'<img class="oc-thumb" src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div class="oc-thumb-empty"></div>'}).join("");
   var info=items.slice(0,2).map(function(i){return esc(i.var_name)+" "+esc(i.size_name)}).join(", ");
   if(items.length>2)info+=" +"+(items.length-2);
   return '<div class="oc" onclick="viewOrder('+o.id+')"><div class="oc-top"><div><div class="oc-id">#'+o.id+' <span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div><div class="oc-client">'+esc(o.client_name)+' · '+esc(o.client_phone)+'</div>'+(o.ttn?'<div style="font-size:9px;color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+'<div class="oc-date">'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div><div class="oc-right"><div class="oc-cod">'+o.cod_amount+'₴</div><div class="oc-pay">+'+o.payout_amount.toFixed(0)+'₴</div></div></div>'+(thumbs?'<div class="oc-items">'+thumbs+'<div style="font-size:10px;color:var(--td);align-self:center;margin-left:4px">'+info+'</div></div>':'')+'</div>';
@@ -234,7 +234,7 @@ async function viewOrder(id){
   h+='<div style="font-size:13px;color:var(--th);margin-top:6px">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
   h+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
   if(o.ttn)h+='<div style="font-size:11px;color:var(--warn);font-family:JetBrains Mono,monospace;margin-top:3px">ТТН: '+esc(o.ttn)+'</div>';
-  for(var i=0;i<o.items.length;i++){var it=o.items[i];h+='<div class="od-item">'+(it.var_photo?'<img src="'+it.var_photo+'">':'<div style="width:50px;height:50px;background:var(--bg);border-radius:6px"></div>')+'<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(it.var_name)+'</div><span style="color:var(--acc);font-weight:700">'+esc(it.size_name)+'</span>'+(it.quantity>1?' ×'+it.quantity:'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+(it.drop_price*it.quantity).toFixed(0)+'₴</div></div>'}
+  for(var i=0;i<o.items.length;i++){var it=o.items[i];h+='<div class="od-item">'+((it.var_photo||it.print_photo||it.bp_photo)?'<img src="'+(it.var_photo||it.print_photo||it.bp_photo)+'">':'<div style="width:50px;height:50px;background:var(--bg);border-radius:6px"></div>')+'<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(it.var_name)+'</div><span style="color:var(--acc);font-weight:700">'+esc(it.size_name)+'</span>'+(it.quantity>1?' ×'+it.quantity:'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+(it.drop_price*it.quantity).toFixed(0)+'₴</div></div>'}
   h+='<div style="margin-top:10px;text-align:right"><div>Наложка: <strong>'+o.cod_amount+'₴</strong></div><div>Дроп: '+o.total_drop_price.toFixed(0)+'₴</div><div style="color:var(--acc);font-size:15px;font-weight:700">Заробіток: '+o.payout_amount.toFixed(0)+'₴</div></div>';
   if(o.note)h+='<div style="margin-top:6px;font-size:11px;color:var(--warn)">📝 '+esc(o.note)+'</div>';
   h+='</div>';document.getElementById("od-b").innerHTML=h;opM("od-modal");

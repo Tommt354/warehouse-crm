@@ -790,7 +790,7 @@ async function loadAdmOrders(status){
     html+='</div></div>';
     for(const i of order.items){
       html+='<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center">';
-      html+=(i.var_photo?'<img src="'+i.var_photo+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>');
+      html+=((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>');
       html+='<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>';
       if(i.print_name)html+='<div style="font-size:10px;color:var(--warn)">🖼 '+esc(i.print_name)+'</div>';
       html+='<span style="font-size:13px;font-weight:700;color:var(--acc);background:var(--accbg);padding:2px 10px;border-radius:5px">'+esc(i.size_name)+'</span>';
@@ -820,7 +820,7 @@ async function loadReturns(){
     const el=document.getElementById("ret-stock-list");
     if(!items.length){el.innerHTML='<div class="empty"><span class="ic">📦</span>Немає повернень на складі</div>';return}
     // Group by variation
-    const groups={};items.forEach(i=>{if(!groups[i.variation_id])groups[i.variation_id]={name:i.var_name,photo:i.var_photo||i.print_photo||"",print:i.print_name,color:i.color_name,sizes:[]};groups[i.variation_id].sizes.push({name:i.size_name,qty:i.quantity})});
+    const groups={};items.forEach(i=>{if(!groups[i.variation_id])groups[i.variation_id]={name:i.var_name,photo:(i.var_photo||i.print_photo||i.bp_photo)||i.print_photo||"",print:i.print_name,color:i.color_name,sizes:[]};groups[i.variation_id].sizes.push({name:i.size_name,qty:i.quantity})});
     el.innerHTML='<div class="cards">'+Object.values(groups).map(g=>'<div class="pcard">'+(g.photo?'<div class="pcard-img"><img src="'+g.photo+'"></div>':'')+'<div class="pcard-body"><div class="pcard-name">'+esc(g.name)+'</div>'+(g.print?'<div class="pcard-sub">🖼 '+esc(g.print)+'</div>':'')+(g.color?'<div class="pcard-sub">'+esc(g.color)+'</div>':'')+'<div class="stock-row" style="margin-top:4px">'+g.sizes.map(s=>'<div class="stock-sz"><b>'+s.name+'</b><br>'+s.qty+'</div>').join("")+'</div></div></div>').join("")+'</div>';
   }catch(e){}
 }
@@ -834,7 +834,7 @@ async function scanRetTTN(){
     for(const i of o.items){
       const done=i.returned_to_stock;
       html+='<div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--brd);align-items:center">';
-      html+=(i.var_photo?'<img src="'+i.var_photo+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>');
+      html+=((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>');
       html+='<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>';
       html+='<span style="font-size:13px;font-weight:700;color:var(--acc);background:var(--accbg);padding:2px 10px;border-radius:5px">'+esc(i.size_name)+'</span>';
       if(i.quantity>1)html+=' ×'+i.quantity;
