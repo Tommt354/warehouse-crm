@@ -1,8 +1,18 @@
 const Database = require("better-sqlite3");
 const path = require("path");
 const bcrypt = require("bcryptjs");
+const fs = require("fs");
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, "crm.db");
+
+// Reset database if RESET_DB=1 (видаляє стару базу і створює нову)
+if (process.env.RESET_DB === "1" && fs.existsSync(dbPath)) {
+  fs.unlinkSync(dbPath);
+  try { fs.unlinkSync(dbPath + "-wal"); } catch(e) {}
+  try { fs.unlinkSync(dbPath + "-shm"); } catch(e) {}
+  console.log("🗑 Old database deleted (RESET_DB=1). Creating fresh...");
+}
+
 const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
