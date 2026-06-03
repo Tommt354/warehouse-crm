@@ -238,27 +238,92 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
   res.json({ok:true,model_id:result.mid,base_products_created:result.bc,variations_created:result.vc});
 });
 
-// Update model
+// Update model + sync names/prices to all products
 app.put("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, category_id, cost_price, drop_price, active } = req.body;
-  const s=[],v=[];
-  if(name!==undefined){s.push("name=?");v.push(name.trim())}
-  if(category_id!==undefined){s.push("category_id=?");v.push(category_id||null)}
-  if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
-  if(drop_price!==undefined){s.push("drop_price=?");v.push(parseFloat(drop_price)||0)}
-  if(active!==undefined){s.push("active=?");v.push(active?1:0)}
-  if(s.length){v.push(req.params.id);db.prepare(`UPDATE models SET ${s.join(",")} WHERE id=?`).run(...v)}
-  // Update workers
-  if(req.body.workers){
-    db.prepare("DELETE FROM model_workers WHERE model_id=?").run(req.params.id);
-    const lw=db.prepare("INSERT INTO model_workers(model_id,user_id,amount)VALUES(?,?,?)");
-    req.body.workers.forEach(w=>lw.run(req.params.id,w.user_id,parseFloat(w.amount)||0));
-  }
+  const mid = parseInt(req.params.id);
+  const { name, category_id, cost_price, drop_price, active, sync_products } = req.body;
+  const model = db.prepare("SELECT * FROM models WHERE id=?").get(mid);
+  if (!model) return res.status(404).json({ error: "Не знайдено" });
+
+  db.transaction(() => {
+    const s=[],v=[];
+    if(name!==undefined){s.push("name=?");v.push(name.trim())}
+    if(category_id!==undefined){s.push("category_id=?");v.push(category_id||null)}
+    if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
+    if(drop_price!==undefined){s.push("drop_price=?");v.push(parseFloat(drop_price)||0)}
+    if(active!==undefined){s.push("active=?");v.push(active?1:0)}
+    if(s.length){v.push(mid);db.prepare(`UPDATE models SET ${s.join(",")} WHERE id=?`).run(...v)}
+
+    // Update workers
+    if(req.body.workers){
+      db.prepare("DELETE FROM model_workers WHERE model_id=?").run(mid);
+      const lw=db.prepare("INSERT INTO model_workers(model_id,user_id,amount)VALUES(?,?,?)");
+      req.body.workers.forEach(w=>lw.run(mid,w.user_id,parseFloat(w.amount)||0));
+    }
+
+    // Sync product names and prices if requested
+    if(sync_products && name){
+      const bps = db.prepare("SELECT bp.*,c.name as color_name FROM base_products bp LEFT JOIN colors c ON bp.color_id=c.id WHERE bp.model_id=?").all(mid);
+      for(const bp of bps){
+        const newBpName = `${name.trim()} ${bp.color_name||""}`.trim();
+        db.prepare("UPDATE base_products SET name=? WHERE id=?").run(newBpName, bp.id);
+        // Update variation names
+        const vars = db.prepare("SELECT v.*,p.name as print_name FROM variations v LEFT JOIN prints p ON v.print_id=p.id WHERE v.base_product_id=?").all(bp.id);
+        for(const v of vars){
+          const newVarName = v.print_name ? `${newBpName} — ${v.print_name}` : newBpName;
+          db.prepare("UPDATE variations SET name=? WHERE id=?").run(newVarName, v.id);
+        }
+      }
+    }
+  })();
   res.json({ok:true});
+});
+
+// Full regenerate — deletes all products and recreates
+app.post("/api/models/:id/regenerate", authMiddleware, requireRole("admin"), (req, res) => {
+  const mid = parseInt(req.params.id);
+  const model = db.prepare("SELECT * FROM models WHERE id=?").get(mid);
+  if (!model) return res.status(404).json({ error: "Не знайдено" });
+
+  const result = db.transaction(() => {
+    // Delete all existing products (cascade deletes variations, stock)
+    db.prepare("DELETE FROM base_products WHERE model_id=?").run(mid);
+
+    // Get current model attributes
+    const colors = db.prepare("SELECT c.* FROM model_colors mc JOIN colors c ON mc.color_id=c.id WHERE mc.model_id=?").all(mid);
+    const sizes = db.prepare("SELECT s.* FROM model_sizes ms JOIN sizes s ON ms.size_id=s.id WHERE ms.model_id=?").all(mid);
+    const prints = db.prepare("SELECT p.* FROM model_prints mp JOIN prints p ON mp.print_id=p.id WHERE mp.model_id=?").all(mid);
+
+    const cbp=db.prepare("INSERT INTO base_products(model_id,color_id,name)VALUES(?,?,?)");
+    const cv=db.prepare("INSERT INTO variations(base_product_id,print_id,name)VALUES(?,?,?)");
+    const csb=db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity)VALUES(?,?,0)");
+    const csr=db.prepare("INSERT INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,0)");
+    let bc=0,vc=0;
+
+    for(const col of colors){
+      const bpn=`${model.name} ${col.name}`;
+      const bp=cbp.run(mid,col.id,bpn);bc++;
+      for(const sz of sizes)csb.run(bp.lastInsertRowid,sz.id);
+      if(model.is_ready_product){cv.run(bp.lastInsertRowid,null,bpn);vc++}
+      else{for(const pr of prints){const v=cv.run(bp.lastInsertRowid,pr.id,`${bpn} — ${pr.name}`);vc++;for(const sz of sizes)csr.run(v.lastInsertRowid,sz.id)}}
+    }
+    return{bc,vc};
+  })();
+  res.json({ok:true,base_products_created:result.bc,variations_created:result.vc});
 });
 
 app.delete("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
   db.prepare("DELETE FROM models WHERE id=?").run(req.params.id);res.json({ok:true});
+});
+
+// Delete base product
+app.delete("/api/base-products/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("DELETE FROM base_products WHERE id=?").run(req.params.id);res.json({ok:true});
+});
+
+// Delete variation
+app.delete("/api/variations/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("DELETE FROM variations WHERE id=?").run(req.params.id);res.json({ok:true});
 });
 
 // Add print/color to existing model

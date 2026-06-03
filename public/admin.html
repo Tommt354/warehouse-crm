@@ -318,7 +318,13 @@ async function loadModels(){
 async function viewModel(id){
   const{model:m}=await api("/api/models/"+id);
   document.getElementById("mv-t").textContent=m.name;
-  let h=`<div style="font-size:12px"><div class="fld-row"><div><strong>Тип:</strong> ${m.is_ready_product?"Готовий":"База"}</div><div><strong>Категорія:</strong> ${esc(m.category_name||"—")}</div></div>
+  let h=`<div style="font-size:12px">
+  <div class="acts" style="margin-bottom:10px">
+    <button class="btn btn-a" onclick="editModelFields(${m.id})">✏️ Редагувати модель</button>
+    <button class="btn btn-d" onclick="deleteModel(${m.id})">🗑 Видалити модель</button>
+    <button class="btn" style="border-color:var(--warn);color:var(--warn)" onclick="regenerateModel(${m.id})">🔄 Перегенерувати товари</button>
+  </div>
+  <div class="fld-row"><div><strong>Тип:</strong> ${m.is_ready_product?"Готовий":"База"}</div><div><strong>Категорія:</strong> ${esc(m.category_name||"—")}</div></div>
   <div class="fld-row" style="margin-top:6px"><div><strong>Собівартість:</strong> ${m.cost_price}₴</div><div><strong>Дроп-ціна:</strong> ${m.drop_price}₴</div></div>
   <div style="margin-top:6px"><strong>Кольори:</strong> ${m.colors.map(c=>`<span class="cdot" style="background:${c.hex_code}"></span>${esc(c.name)}`).join(", ")}</div>
   <div style="margin-top:4px"><strong>Розміри:</strong> ${m.sizes.map(s=>esc(s.name)).join(", ")}</div>
@@ -327,13 +333,13 @@ async function viewModel(id){
   ${m.workers.length?`<div style="margin-top:4px"><strong>Працівники:</strong> ${m.workers.map(w=>`${esc(w.worker_name)} — ${w.amount}₴`).join(", ")}</div>`:""}
   <div style="margin-top:12px;font-weight:700;color:var(--th)">Базові товари (${m.base_products.length}):</div>`;
   m.base_products.forEach(bp=>{
-    h+=`<div style="margin:6px 0;padding:8px;background:var(--bg);border-radius:6px"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:var(--acc)">${esc(bp.name)}</strong><button class="btn btn-sm" onclick="closeM('mdl-view');openEditBp(${bp.id})">✏️</button></div>`;
+    h+=`<div style="margin:6px 0;padding:8px;background:var(--bg);border-radius:6px"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:var(--acc)">${esc(bp.name)}</strong><div><button class="btn btn-sm btn-a" onclick="closeM('mdl-view');openEditBp(${bp.id})">✏️</button> <button class="btn btn-sm btn-d" onclick="deleteBp(${bp.id},${id})">🗑</button></div></div>`;
     h+=`<div style="margin-top:4px;font-size:10px;color:var(--td)">Залишки: ${bp.stock.map(s=>`${s.size_name}:${s.quantity}`).join(" | ")}</div>`;
     if(bp.variations.length){
       h+=`<div style="margin-top:6px;font-size:10px"><strong>Варіації (${bp.variations.length}):</strong></div>`;
       bp.variations.forEach(v=>{
         const retInfo=v.stock_returns?.length?v.stock_returns.filter(r=>r.quantity>0).map(r=>`${r.size_name}:${r.quantity}`).join(" "):"";
-        h+=`<div style="margin:2px 0 2px 10px;font-size:10px;display:flex;justify-content:space-between;align-items:center"><span>${esc(v.name)} ${v.print_name?`<span class="tag tag-y">${esc(v.print_name)}</span>`:""} ${retInfo?`<span style="color:var(--warn)">повернення: ${retInfo}</span>`:""}</span><button class="btn btn-sm" onclick="closeM('mdl-view');openEditVar(${v.id})" style="font-size:8px">✏️</button></div>`;
+        h+=`<div style="margin:2px 0 2px 10px;font-size:10px;display:flex;justify-content:space-between;align-items:center"><span>${esc(v.name)} ${v.print_name?`<span class="tag tag-y">${esc(v.print_name)}</span>`:""} ${retInfo?`<span style="color:var(--warn)">поверн: ${retInfo}</span>`:""}</span><div><button class="btn btn-sm" onclick="closeM('mdl-view');openEditVar(${v.id})" style="font-size:8px">✏️</button> <button class="btn btn-sm btn-d" onclick="deleteVar(${v.id},${id})" style="font-size:8px">🗑</button></div></div>`;
       });
     }
     h+=`</div>`;
@@ -341,6 +347,52 @@ async function viewModel(id){
   h+=`</div>`;
   document.getElementById("mv-body").innerHTML=h;openM("mdl-view");
 }
+
+// Edit model fields
+let editModelId=null;
+async function editModelFields(id){
+  closeM("mdl-view");
+  const{model:m}=await api("/api/models/"+id);editModelId=id;
+  await refreshCC();
+  document.getElementById("mdl-t").textContent="✏️ Редагувати: "+m.name;
+  document.getElementById("mm-name").value=m.name;
+  document.getElementById("mm-cost").value=m.cost_price;
+  document.getElementById("mm-drop").value=m.drop_price;
+  document.getElementById("mm-ready").classList.toggle("on",!!m.is_ready_product);
+  document.getElementById("mm-pw").style.display=m.is_ready_product?"none":"block";
+  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';CC.cats.forEach(c=>cs.innerHTML+=`<option value="${c.id}"${c.id==m.category_id?" selected":""}>${esc(c.name)}</option>`);
+  // Pre-select attributes
+  mmSel={colors:new Set(m.colors.map(c=>c.id)),sizes:new Set(m.sizes.map(s=>s.id)),prints:new Set(m.prints.map(p=>p.id)),patches:new Set(m.patches.map(p=>p.id))};
+  fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
+  renderSelTags();
+  // Workers
+  mmWorkers=m.workers.map(w=>({user_id:w.user_id,name:w.worker_name,amount:w.amount}));renderWorkers();
+  const ws=document.getElementById("mm-wadd");ws.innerHTML='<option value="">+ працівник</option>';
+  (await api("/api/users?role=warehouse")).users.forEach(u=>ws.innerHTML+=`<option value="${u.id}">${esc(u.name)}</option>`);
+  ws.onchange=function(){if(this.value){mmWorkers.push({user_id:parseInt(this.value),name:this.options[this.selectedIndex].text,amount:0});this.value="";renderWorkers()}};
+  document.getElementById("mm-err").style.display="none";
+  // Change save button
+  document.querySelector("#model-modal .btn-p").textContent="💾 Зберегти зміни";
+  document.querySelector("#model-modal .btn-p").onclick=saveModelEdit;
+  openM("model-modal");
+}
+
+async function saveModelEdit(){
+  const err=document.getElementById("mm-err");err.style.display="none";
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount})),sync_products:true};
+  try{await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});closeM("model-modal");loadModels();
+  // Reset save button for create mode
+  document.querySelector("#model-modal .btn-p").textContent="🚀 Створити";document.querySelector("#model-modal .btn-p").onclick=saveModel;
+  alert("✅ Модель оновлена, назви і ціни товарів синхронізовані")}catch(e){err.textContent=e.message;err.style.display="block"}
+}
+
+async function deleteModel(id){if(!confirm("Видалити модель і ВСІ її товари?"))return;await api(`/api/models/${id}`,{method:"DELETE"});closeM("mdl-view");loadModels()}
+
+async function regenerateModel(id){if(!confirm("⚠️ Перегенерувати всі товари?\nВсі залишки і фото товарів будуть скинуті!"))return;const r=await api(`/api/models/${id}/regenerate`,{method:"POST"});closeM("mdl-view");loadModels();alert(`✅ Перегенеровано: ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}
+
+async function deleteBp(id,modelId){if(!confirm("Видалити товар і всі його варіації?"))return;await api(`/api/base-products/${id}`,{method:"DELETE"});viewModel(modelId)}
+
+async function deleteVar(id,modelId){if(!confirm("Видалити варіацію?"))return;await api(`/api/variations/${id}`,{method:"DELETE"});viewModel(modelId)}
 
 // ── Create model ─────────────────────────────────────────────────
 async function openNewModel(){
