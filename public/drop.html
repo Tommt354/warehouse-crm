@@ -234,7 +234,7 @@ function renderOC(o){
   var thumbs=items.slice(0,4).map(function(i){return (i.var_photo||i.print_photo||i.bp_photo)?'<img class="oc-thumb" src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div class="oc-thumb-empty"></div>'}).join("");
   var info=items.slice(0,2).map(function(i){return esc(i.var_name)+" "+esc(i.size_name)}).join(", ");
   if(items.length>2)info+=" +"+(items.length-2);
-  return '<div class="oc" onclick="viewOrder('+o.id+')"><div class="oc-top"><div><div class="oc-id">#'+o.id+' <span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div><div class="oc-client">'+esc(o.client_name)+' · '+esc(o.client_phone)+'</div>'+(o.ttn?'<div style="font-size:9px;color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+'<div class="oc-date">'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div><div class="oc-right"><div class="oc-cod">'+o.cod_amount+'₴</div><div class="oc-pay">+'+o.payout_amount.toFixed(0)+'₴</div></div></div>'+(thumbs?'<div class="oc-items">'+thumbs+'<div style="font-size:10px;color:var(--td);align-self:center;margin-left:4px">'+info+'</div></div>':'')+'</div>';
+  return '<div class="oc" onclick="viewOrder('+o.id+')"><div class="oc-top"><div><div class="oc-id">#'+o.id+' <span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div><div class="oc-client">'+esc(o.client_name)+' · '+esc(o.client_phone)+'</div>'+(o.ttn?'<div style="font-size:10px;color:var(--warn);font-family:JetBrains Mono,monospace;margin-top:2px">📦 '+esc(o.ttn)+'</div>':'')+'<div class="oc-date">'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div><div class="oc-right"><div class="oc-cod">'+o.cod_amount+'₴</div><div class="oc-pay">+'+o.payout_amount.toFixed(0)+'₴</div></div></div>'+(thumbs?'<div class="oc-items">'+thumbs+'<div style="font-size:10px;color:var(--td);align-self:center;margin-left:4px">'+info+'</div></div>':'')+'</div>';
 }
 
 async function viewOrder(id){
@@ -341,7 +341,8 @@ async function submitOrder(){
       receipt_photo:isPre?receiptPhoto:"",
       declared_value:isPre?(parseFloat(document.getElementById("no-dval").value)||0):0
     })});
-    clM("no-modal");receiptPhoto="";dropCityRef="";loadDash();loadOrders();
+    clM("no-modal");receiptPhoto="";dropCityRef="";dropSettleRef="";
+    setTimeout(function(){loadDash();loadOrders()},2500);
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
