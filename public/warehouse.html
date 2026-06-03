@@ -50,7 +50,16 @@
 .msg{padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:12px}.msg-ok{background:var(--accbg);color:var(--acc)}.msg-err{background:var(--redbg);color:var(--red)}
 .acts{display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap}
 .pcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
-.pcard{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.crd{background:var(--card);border:1px solid var(--brd);border-radius:12px;overflow:hidden;cursor:pointer;transition:.15s}
+.crd:hover{border-color:var(--brd2)}
+.crd-img{width:100%;height:90px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td);font-size:10px;overflow:hidden}
+.crd-img img{width:100%;height:100%;object-fit:cover}
+.crd-body{padding:6px 8px}.crd-name{font-size:11px;font-weight:600;color:var(--th)}
+.pcard{background:var(--card);border:1px solid var(--brd);border-radius:12px;overflow:hidden}
+.pcard-img{width:100%;height:110px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td);font-size:10px;overflow:hidden}
+.pcard-img img{width:100%;height:100%;object-fit:cover}
+.pcard-body{padding:8px 10px}
 .pcard-name{font-size:11px;font-weight:600;color:var(--th);margin-bottom:4px}
 .stock-row{display:flex;gap:2px;flex-wrap:wrap}.stock-sz{font-size:9px;padding:2px 5px;border-radius:3px;background:var(--bg);color:var(--t);border:1px solid var(--brd);font-family:'JetBrains Mono',monospace;text-align:center;min-width:32px}
 .stock-sz.zero{color:var(--red);border-color:rgba(255,107,107,.2)}.stock-sz.neg{color:var(--red);font-weight:700;border-color:rgba(255,107,107,.4)}
@@ -92,7 +101,7 @@
       <button class="btn btn-w" onclick="openWhSwap()">🔄 Заміна розміру</button>
     </div>
     <div id="wh-stock-bread" style="margin-bottom:8px"></div>
-    <div class="cards" id="wh-stock-cats" style="margin-bottom:8px"></div>
+    <div class="cards" id="wh-stock-cats" style="margin-bottom:10px"></div>
     <div class="pcards" id="wh-stock-list"></div>
     <div class="pagi" id="wh-stock-pagi"></div>
     <div style="margin-top:16px"><div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:8px">📦 Повернення на складі:</div><div id="wh-ret-stock"></div></div>
@@ -254,19 +263,20 @@ async function loadWhStock(){
 }
 function renderWhStockPage(){
   var el=document.getElementById("wh-stock-list");
-  if(!whProducts.length){el.innerHTML='<div class="empty"><span class="ic">📦</span>Порожньо</div>';return}
+  if(!whProducts.length&&!document.getElementById("wh-stock-cats").innerHTML){el.innerHTML='<div class="empty"><span class="ic">📦</span>Порожньо</div>';return}
+  if(!whProducts.length){el.innerHTML="";return}
   var perPage=20;var total=whProducts.length;var pages=Math.ceil(total/perPage);
+  whPage=Math.min(whPage,pages-1);
   var start=whPage*perPage;var slice=whProducts.slice(start,start+perPage);
-  var html='<div class="pcards">'+slice.map(function(p){
+  el.innerHTML='<div class="cards">'+slice.map(function(p){
     var szs=whSizes.filter(function(s){return p.stock[s.id]!==undefined});
-    return '<div class="pcard">'+(p.photo?'<div style="width:100%;height:100px;overflow:hidden;border-radius:8px 8px 0 0;margin:-10px -10px 8px -10px;width:calc(100% + 20px)"><img src="'+p.photo+'" style="width:100%;height:100%;object-fit:cover"></div>':'')+'<div class="pcard-name">'+esc(p.name)+'</div><div style="font-size:9px;color:var(--td);margin-bottom:4px">'+esc(p.category_name||"")+'</div><div style="margin-bottom:4px"><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span> <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--accbg);color:var(--acc)">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(function(s){var q=p.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+(q<0?" neg":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':'📷')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+'</div><div style="font-size:9px;color:var(--td);margin-bottom:3px">'+esc(p.category_name||"")+'</div><div style="margin-bottom:4px"><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span> <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--accbg);color:var(--acc)">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(function(s){var q=p.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+(q<0?" neg":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div></div></div>';
   }).join("")+'</div>';
   if(pages>1){
-    html+='<div style="display:flex;justify-content:center;gap:4px;margin-top:12px">';
-    for(var i=0;i<pages;i++)html+='<button style="padding:6px 12px;font-size:11px;border-radius:6px;border:1px solid '+(i===whPage?'var(--acc)':'var(--brd)')+';background:'+(i===whPage?'var(--accbg)':'var(--card)')+';color:'+(i===whPage?'var(--acc)':'var(--td)')+';cursor:pointer;font-family:inherit" onclick="whPage='+i+';renderWhStockPage()">'+(i+1)+'</button>';
-    html+='</div>';
+    var pg='<div style="display:flex;justify-content:center;gap:4px;margin-top:12px">';
+    for(var i=0;i<pages;i++)pg+='<button style="padding:6px 12px;font-size:11px;border-radius:6px;border:1px solid '+(i===whPage?'var(--acc)':'var(--brd)')+';background:'+(i===whPage?'var(--accbg)':'var(--card)')+';color:'+(i===whPage?'var(--acc)':'var(--td)')+';cursor:pointer;font-family:inherit" onclick="whPage='+i+';renderWhStockPage()">'+(i+1)+'</button>';
+    pg+='</div>';el.innerHTML+=pg;
   }
-  el.innerHTML=html;
 }
 
 // Shared: populate category dropdown and filter products
