@@ -203,7 +203,7 @@ async function loadOrders(){
     if(o.note)html+='<div style="padding:0 16px 10px"><div class="ocard-note">📝 '+esc(o.note)+'</div></div>';
     var osi=WHS.find(function(s){return s.key===o.status});
     html+='<div class="ocard-footer"><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
-    html+='<select onchange="chSt('+o.id+',this.value)" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;font-family:inherit">';
+    html+='<select onchange="chSt('+o.id+',this.value)" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
     if(osi&&osi.next)html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\')">'+osi.nl+'</button>';
