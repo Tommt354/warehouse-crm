@@ -277,7 +277,10 @@ let curDir="colors",editDirId=null,editCatId=null,catPhoto="";
 let editUID=null,editUR=null,editBpId=null,editVarId=null;
 let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let mmWorkers=[];
 
-async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-name").textContent=ME.name||ME.username;loadDash()}catch(e){location.href="/login"}}
+async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-name").textContent=ME.name||ME.username;
+  const h=location.hash.slice(1);const navBtn=h&&document.querySelector(`.side-nav a[data-p="${h}"]`);
+  if(navBtn)navBtn.click();else loadDash();
+}catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Помилка");return d}
@@ -288,6 +291,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".side-nav a").forEach(x=>x.classList.remove("on"));
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
+  location.hash=a.dataset.p;
   ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},drops:loadDrops,workers:loadWorkers,settings:loadSets})[a.dataset.p]?.();
 }));
 
