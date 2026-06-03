@@ -82,10 +82,13 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
     <button class="btn-out" onclick="logout()">Вийти</button>
   </div>
   <div class="tabs">
-    <div class="tab on" onclick="showTab('orders')">📋 Замовлення <span class="cnt" id="cnt-orders"></span></div>
+    <div class="tab on" onclick="showTab('orders')">📋 Замовлення</div>
     <div class="tab" onclick="showTab('returns')">📦 Повернення</div>
   </div>
-  <div id="v-orders"></div>
+  <div id="v-orders">
+    <div style="display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap" id="wh-status-tabs"></div>
+    <div id="wh-orders"></div>
+  </div>
   <div id="v-returns" style="display:none">
     <div class="scan-wrap">
       <input class="scan-input" id="scan-ttn" placeholder="Скануйте або введіть ТТН повернення..." autofocus>
@@ -118,31 +121,46 @@ function showTab(t){
   if(t==="returns"){document.getElementById("scan-ttn").value="";document.getElementById("scan-ttn").focus();document.getElementById("ret-result").innerHTML=""}
 }
 
-async function loadOrders(){
-  // Load new + in_progress orders in one list
-  const[r1,r2]=await Promise.all([api("/api/orders?status=new&limit=50"),api("/api/orders?status=in_progress&limit=50")]);
-  const orders=[...r1.orders,...r2.orders].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
-  document.getElementById("cnt-orders").textContent=orders.length||"";
-  const el=document.getElementById("v-orders");
-  if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">✅</span>Всі замовлення оброблені!</div>';return}
+let whStatus="new";
+const WH_STATUSES=[
+  {key:"new",label:"📥 Нові",next:"in_progress",nextLabel:"🔧 Взяти в роботу"},
+  {key:"in_progress",label:"🔧 В роботі",next:"packed",nextLabel:"✅ Готово"},
+  {key:"packed",label:"✅ Готові"},
+  {key:"shipped",label:"🚚 Відправлені"},
+  {key:"delivered",label:"📬 Отримані"},
+  {key:"refused",label:"❌ Відмови"},
+  {key:"cancelled",label:"🚫 Скасовані"},
+];
 
+function renderWhTabs(){
+  document.getElementById("wh-status-tabs").innerHTML=WH_STATUSES.map(s=>{
+    const on=s.key===whStatus;
+    return '<div style="padding:8px 14px;font-size:12px;font-weight:'+(on?'600':'500')+';background:'+(on?'var(--accbg)':'var(--card)')+';border:1px solid '+(on?'rgba(0,212,170,.2)':'var(--brd)')+';border-radius:8px;color:'+(on?'var(--acc)':'var(--td)')+';cursor:pointer" onclick="whStatus=\''+s.key+'\';renderWhTabs();loadOrders()">'+s.label+'</div>';
+  }).join("");
+}
+
+async function loadOrders(){
+  renderWhTabs();
+  const{orders}=await api("/api/orders?status="+whStatus+"&limit=50");
+  const el=document.getElementById("wh-orders");
+  if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📭</span>Немає замовлень</div>';return}
+
+  const statusInfo=WH_STATUSES.find(s=>s.key===whStatus);
   let html="";
   for(const o of orders){
     const{order}=await api("/api/orders/"+o.id);
-    const isNew=o.status==="new";
     html+='<div class="ocard">';
     html+='<div class="ocard-header"><div>';
-    html+='<div class="ocard-id">#'+o.id+' <span class="tag '+( SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div>';
+    html+='<div class="ocard-id">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div>';
     html+='<div class="ocard-client"><div class="cl-name">'+esc(o.client_name)+'</div>';
     html+='<div class="cl-phone">'+esc(o.client_phone)+'</div>';
     html+='<div class="cl-addr">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div></div>';
     html+='</div><div class="ocard-meta">';
     html+='<div class="drop-name">'+esc(o.drop_name)+'</div>';
-    html+='<div>'+( o.created_at?.slice(0,16)||"")+'</div>';
+    html+='<div>'+(o.created_at?.slice(0,16)||"")+'</div>';
     if(o.ttn)html+='<div class="ocard-ttn">ТТН: '+esc(o.ttn)+'</div>';
     html+='</div></div>';
 
-    // Items
     for(const i of order.items){
       const hasRet=i.return_available>0;
       const usedRet=i.from_returns>0;
@@ -158,21 +176,17 @@ async function loadOrders(){
       html+='</div></div>';
     }
 
-    // Note
     if(o.note)html+='<div style="padding:0 16px 10px"><div class="ocard-note">📝 '+esc(o.note)+'</div></div>';
 
-    // Footer
     html+='<div class="ocard-footer"><div><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div></div><div style="display:flex;gap:8px">';
-    if(isNew)html+='<button class="btn btn-p" onclick="takeOrder('+o.id+')">🔧 Взяти в роботу</button>';
-    if(isNew)html+='<button class="btn btn-d btn-sm" onclick="cancelOrder('+o.id+')">✕</button>';
-    if(!isNew)html+='<button class="btn-done" onclick="doneOrder('+o.id+')">✅ Готово</button>';
+    if(statusInfo?.next)html+='<button class="btn btn-p" onclick="changeStatus('+o.id+',\''+statusInfo.next+'\')">'+statusInfo.nextLabel+'</button>';
+    if(whStatus==="new")html+='<button class="btn btn-d btn-sm" onclick="cancelOrder('+o.id+')">✕</button>';
     html+='</div></div></div>';
   }
   el.innerHTML=html;
 }
 
-async function takeOrder(id){await api('/api/orders/'+id+'/status',{method:"PUT",body:JSON.stringify({status:"in_progress"})});loadOrders()}
-async function doneOrder(id){await api('/api/orders/'+id+'/status',{method:"PUT",body:JSON.stringify({status:"packed"})});loadOrders()}
+async function changeStatus(id,status){await api('/api/orders/'+id+'/status',{method:"PUT",body:JSON.stringify({status})});loadOrders()}
 async function cancelOrder(id){if(!confirm("Скасувати?"))return;await api('/api/orders/'+id+'/cancel',{method:"POST"});loadOrders()}
 async function useReturn(itemId){try{await api('/api/order-items/'+itemId+'/use-return',{method:"POST",body:JSON.stringify({})});loadOrders()}catch(e){alert(e.message)}}
 
