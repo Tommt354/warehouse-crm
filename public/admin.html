@@ -156,9 +156,11 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div id="sbase-bread"></div>
 <div class="acts">
   <button class="btn btn-p" onclick="addCatIn('base')">+ Категорія</button>
-  <button class="btn btn-a" onclick="openInc()">📥 Прихід товару</button>
-  <a class="btn" href="/api/export/stock" style="text-decoration:none">📊 Експорт CSV</a>
-  <input class="search-bar" placeholder="Пошук товарів..." oninput="searchSBase(this.value)">
+  <button class="btn btn-a" onclick="openInc()">📥 Прихід</button>
+  <button class="btn btn-d" onclick="openWriteOff()">📤 Списати</button>
+  <button class="btn btn-w" onclick="openSwapSize()">🔄 Заміна розміру</button>
+  <a class="btn" href="/api/export/stock" style="text-decoration:none">📊 CSV</a>
+  <input class="search-bar" placeholder="Пошук..." oninput="searchSBase(this.value)">
 </div>
 <div class="cards" id="sbase-cats"></div>
 <div class="cards" id="sbase-list" style="margin-top:10px"></div>
@@ -293,6 +295,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld"><label>Працівники (з моделі)</label><div id="ev-workers" style="font-size:11px"></div></div>
 <div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ev-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ev-fi').click()">📷</button><input type="file" id="ev-fi" accept="image/*" style="display:none" onchange="uploadVarPhoto(event)"></div></div>
 <div class="fld"><label>Статус</label><select id="ev-active"><option value="1">Активний</option><option value="0">Вимкнений</option></select></div>
+<div class="fld" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="ev-allow-neg" checked style="width:18px;height:18px;accent-color:var(--acc)"><label style="margin:0;font-size:12px;color:var(--t)">Дозволити замовлення при відсутності на складі</label></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditVar()">💾 Зберегти</button><button class="btn" onclick="closeM('edit-var-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditVar()">🗑</button></div>
 </div></div>
 
@@ -309,6 +312,20 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 </div>
 <div id="kit-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveKit()">🚀 Створити комплект</button><button class="btn" onclick="closeM('kit-modal')">Скасувати</button></div>
+</div></div>
+
+<div class="modal-bg" id="wo-modal"><div class="modal"><h3>📤 Списати товар</h3>
+<div class="fld"><label>Товар</label><select id="wo-bp" onchange="loadWoSizes()"></select></div>
+<div class="fld-row"><div class="fld"><label>Розмір</label><select id="wo-size"></select></div><div class="fld"><label>Кількість</label><input id="wo-qty" type="number" min="1" value="1"></div></div>
+<div class="fld"><label>Причина</label><input id="wo-note" placeholder="Необов'язково"></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-d" onclick="saveWriteOff()">📤 Списати</button><button class="btn" onclick="closeM('wo-modal')">Скасувати</button></div>
+</div></div>
+
+<div class="modal-bg" id="swap-modal"><div class="modal"><h3>🔄 Заміна розміру</h3>
+<div class="fld"><label>Товар</label><select id="sw-bp" onchange="loadSwSizes()"></select></div>
+<div class="fld-row"><div class="fld"><label>З розміру</label><select id="sw-from"></select></div><div class="fld"><label>На розмір</label><select id="sw-to"></select></div></div>
+<div class="fld"><label>Кількість</label><input id="sw-qty" type="number" min="1" value="1"></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveSwapSize()">🔄 Замінити</button><button class="btn" onclick="closeM('swap-modal')">Скасувати</button></div>
 </div></div>
 
 <script>
@@ -630,6 +647,7 @@ async function openEditVar(id){
   document.getElementById("ev-name").value=v.name;
   document.getElementById("ev-price").value=v.drop_price_override||"";
   document.getElementById("ev-active").value=v.active?"1":"0";
+  document.getElementById("ev-allow-neg").checked=v.allow_negative_order!==0;
   // Print select
   const ps=document.getElementById("ev-print-sel");
   ps.innerHTML='<option value="">— Без принту (готовий товар) —</option>';
@@ -660,7 +678,8 @@ async function saveEditVar(){
       name:document.getElementById("ev-name").value,
       drop_price_override:p?parseFloat(p):null,
       print_id:printId||null,
-      active:document.getElementById("ev-active").value==="1"
+      active:document.getElementById("ev-active").value==="1",
+      allow_negative_order:document.getElementById("ev-allow-neg").checked
     })});
     // Save return stock quantities
     const retInputs=[...document.querySelectorAll("#ev-stock input[data-sid]")];
@@ -676,6 +695,37 @@ async function deleteEditVar(){if(!confirm("Видалити варіацію?")
 async function openInc(){const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;const s=document.getElementById("inc-bp");s.innerHTML=sbProducts.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");loadIncSz();openM("inc-modal")}
 function loadIncSz(){const id=parseInt(document.getElementById("inc-bp").value);const p=sbProducts.find(x=>x.id===id);if(!p)return;document.getElementById("inc-sz").innerHTML=sbSizes.filter(s=>p.stock[s.id]!==undefined).map(s=>`<div class="fld-row" style="margin-bottom:4px"><div style="padding:6px 0;font-size:11px">${s.name} <span style="color:var(--td)">(${p.stock[s.id]||0})</span></div><div><input type="number" data-sid="${s.id}" value="0" min="0" style="padding:6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;width:70px"></div></div>`).join("")}
 async function saveInc(){const id=parseInt(document.getElementById("inc-bp").value);const items=[...document.querySelectorAll("#inc-sz input[data-sid]")].map(el=>({size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})).filter(i=>i.quantity>0);if(!items.length){alert("Кількість");return}await api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:id,items,note:document.getElementById("inc-note").value})});closeM("inc-modal");loadSBase()}
+
+// Write-off
+async function openWriteOff(){
+  const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;
+  document.getElementById("wo-bp").innerHTML=sbProducts.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("");
+  loadWoSizes();openM("wo-modal");
+}
+function loadWoSizes(){
+  const id=parseInt(document.getElementById("wo-bp").value);const p=sbProducts.find(x=>x.id===id);if(!p)return;
+  document.getElementById("wo-size").innerHTML=sbSizes.filter(s=>p.stock[s.id]!==undefined).map(s=>'<option value="'+s.id+'">'+s.name+' ('+( p.stock[s.id]||0)+')</option>').join("");
+}
+async function saveWriteOff(){
+  const data={base_product_id:parseInt(document.getElementById("wo-bp").value),size_id:parseInt(document.getElementById("wo-size").value),quantity:parseInt(document.getElementById("wo-qty").value),note:document.getElementById("wo-note").value};
+  try{await api("/api/stock/write-off",{method:"POST",body:JSON.stringify(data)});closeM("wo-modal");loadSBase()}catch(e){alert(e.message)}
+}
+
+// Swap size
+async function openSwapSize(){
+  const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;
+  document.getElementById("sw-bp").innerHTML=sbProducts.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("");
+  loadSwSizes();openM("swap-modal");
+}
+function loadSwSizes(){
+  const id=parseInt(document.getElementById("sw-bp").value);const p=sbProducts.find(x=>x.id===id);if(!p)return;
+  const opts=sbSizes.filter(s=>p.stock[s.id]!==undefined).map(s=>'<option value="'+s.id+'">'+s.name+' ('+(p.stock[s.id]||0)+')</option>').join("");
+  document.getElementById("sw-from").innerHTML=opts;document.getElementById("sw-to").innerHTML=opts;
+}
+async function saveSwapSize(){
+  const data={base_product_id:parseInt(document.getElementById("sw-bp").value),from_size_id:parseInt(document.getElementById("sw-from").value),to_size_id:parseInt(document.getElementById("sw-to").value),quantity:parseInt(document.getElementById("sw-qty").value)};
+  try{await api("/api/stock/swap-size",{method:"POST",body:JSON.stringify(data)});closeM("swap-modal");loadSBase();alert("✅ Розміри замінено")}catch(e){alert(e.message)}
+}
 
 // ── Kits ─────────────────────────────────────────────────────────
 let kitVarList=[],kitSelected=[];

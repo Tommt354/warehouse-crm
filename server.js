@@ -466,13 +466,14 @@ app.get("/api/variations/:id", authMiddleware, (req, res) => {
 });
 
 app.put("/api/variations/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, drop_price_override, active, print_id } = req.body;
+  const { name, photo, drop_price_override, active, print_id, allow_negative_order } = req.body;
   const s=[],v=[];
   if(name!==undefined){s.push("name=?");v.push(name)}
   if(photo!==undefined){s.push("photo=?");v.push(photo)}
   if(drop_price_override!==undefined){s.push("drop_price_override=?");v.push(drop_price_override===null?null:parseFloat(drop_price_override))}
   if(active!==undefined){s.push("active=?");v.push(active?1:0)}
   if(print_id!==undefined){s.push("print_id=?");v.push(print_id||null)}
+  if(allow_negative_order!==undefined){s.push("allow_negative_order=?");v.push(allow_negative_order?1:0)}
   if(s.length){v.push(req.params.id);db.prepare(`UPDATE variations SET ${s.join(",")} WHERE id=?`).run(...v)}
   res.json({ ok: true });
 });
@@ -535,7 +536,32 @@ app.post("/api/stock/incoming-bulk", authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
-// ── KITS (комплекти для дропшиперів) ─────────────────────────────
+// Write-off stock (списання)
+app.post("/api/stock/write-off", authMiddleware, (req, res) => {
+  const { base_product_id, size_id, quantity, note } = req.body;
+  if (!base_product_id || !size_id || !quantity) return res.status(400).json({ error: "Всі поля обов'язкові" });
+  const qty = parseInt(quantity);
+  if (qty <= 0) return res.status(400).json({ error: "Кількість має бути більше 0" });
+  db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, size_id);
+  db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, size_id, -qty, "Списання: "+(note||""), req.user.id);
+  res.json({ ok: true });
+});
+
+// Swap size (заміна розміру)
+app.post("/api/stock/swap-size", authMiddleware, (req, res) => {
+  const { base_product_id, from_size_id, to_size_id, quantity } = req.body;
+  if (!base_product_id || !from_size_id || !to_size_id || !quantity) return res.status(400).json({ error: "Всі поля обов'язкові" });
+  if (from_size_id === to_size_id) return res.status(400).json({ error: "Розміри однакові" });
+  const qty = parseInt(quantity);
+  if (qty <= 0) return res.status(400).json({ error: "Кількість має бути більше 0" });
+  db.transaction(() => {
+    db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, from_size_id);
+    db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, to_size_id);
+    db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, from_size_id, -qty, "Заміна розміру", req.user.id);
+    db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, to_size_id, qty, "Заміна розміру", req.user.id);
+  })();
+  res.json({ ok: true });
+});
 
 app.get("/api/kits", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
@@ -659,13 +685,19 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         const v = db.prepare("SELECT v.*,bp.drop_price as bp_drop,m.drop_price as m_drop FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(item.variation_id);
         if (!v) throw new Error("Варіація не знайдена");
 
+        // Check stock if negative orders not allowed
+        if (!v.allow_negative_order) {
+          const stock = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(v.base_product_id, item.size_id);
+          if (!stock || stock.quantity < qty) throw new Error(v.name + " — недостатньо на складі");
+        }
+
         let dropPrice = v.drop_price_override || v.bp_drop || v.m_drop || 0;
         if (drop?.discount_percent) dropPrice = dropPrice * (1 - drop.discount_percent / 100);
         if (drop?.discount_fixed) dropPrice = Math.max(0, dropPrice - drop.discount_fixed);
         dropPrice = Math.round(dropPrice * 100) / 100;
         totalDrop += dropPrice * qty;
 
-        db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=?").run(qty, v.base_product_id, item.size_id);
+        db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, v.base_product_id, item.size_id);
         orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: 0, kit_id: null });
       }
     }
