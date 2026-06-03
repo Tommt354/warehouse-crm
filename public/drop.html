@@ -172,7 +172,7 @@ async function loadDash(){
 
 // ── Catalog ──────────────────────────────────────────────────────
 async function loadCatalog(){
-  const cd=await api(`/api/categories?parent_id=${catP||""}`);
+  const cd=await api(`/api/categories?parent_id=${catP||""}&scope=drop`);
   let bc='<div class="bread"><a onclick="catP=null;loadCatalog()">📦 Каталог</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="catP=${b.id};loadCatalog()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("cat-bread").innerHTML=bc;

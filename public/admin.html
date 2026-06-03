@@ -232,7 +232,8 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 
 <div class="modal-bg" id="model-modal"><div class="modal" style="max-width:560px"><h3 id="mdl-t">Нова модель</h3>
 <div class="fld"><label>Назва</label><input id="mm-name" placeholder="Худі флісовий"></div>
-<div class="fld"><label>Категорія</label><select id="mm-cat"><option value="">—</option></select></div>
+<div class="fld"><label>Категорія (склад база)</label><select id="mm-cat"><option value="">—</option></select></div>
+<div class="fld"><label>Категорія (склад дроп)</label><select id="mm-cat-drop"><option value="">—</option></select></div>
 <div class="sw"><div class="swb" id="mm-ready" onclick="this.classList.toggle('on');document.getElementById('mm-pw').style.display=this.classList.contains('on')?'none':'block'"></div><label>Готовий товар</label></div>
 <div class="fld-row"><div class="fld"><label>Собівартість ₴</label><input id="mm-cost" type="number" value="0"></div><div class="fld"><label>Дроп-ціна ₴</label><input id="mm-drop" type="number" value="0"></div></div>
 <div class="fld"><label>Кольори</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук кольорів..." onfocus="openPS(this,'mm-colors-dd')" oninput="filterPS(this,'mm-colors-dd')"><div class="popup-dd" id="mm-colors-dd"></div></div><div class="sel-tags" id="mm-colors-tags"></div></div>
@@ -313,7 +314,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
 // Close dropdowns on outside click
 document.addEventListener("click",e=>{if(!e.target.closest(".popup-sel"))document.querySelectorAll(".popup-dd").forEach(d=>d.classList.remove("open"))});
 
-async function refreshCC(){const[a,b,c,d,e]=await Promise.all([api("/api/colors"),api("/api/sizes"),api("/api/prints"),api("/api/patches"),api("/api/categories")]);CC.colors=a.items;CC.sizes=b.items;CC.prints=c.items;CC.patches=d.items;CC.cats=e.flat}
+async function refreshCC(){const[a,b,c,d,e,f]=await Promise.all([api("/api/colors"),api("/api/sizes"),api("/api/prints"),api("/api/patches"),api("/api/categories?scope=base"),api("/api/categories?scope=drop")]);CC.colors=a.items;CC.sizes=b.items;CC.prints=c.items;CC.patches=d.items;CC.cats_base=e.flat;CC.cats_drop=f.flat;CC.cats=[...e.flat,...f.flat]}
 
 // ── Dashboard ────────────────────────────────────────────────────
 async function loadDash(){const d=await api("/api/dashboard");document.getElementById("dash-s").innerHTML=`<div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div><div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div><div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div><div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div>`}
@@ -409,7 +410,7 @@ async function editModelFields(id){
 
 async function saveModelEdit(){
   const err=document.getElementById("mm-err");err.style.display="none";
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount})),sync_products:true};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount})),sync_products:true};
   try{await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();
   alert("✅ Модель оновлена, назви і ціни товарів синхронізовані")}catch(e){err.textContent=e.message;err.style.display="block"}
 }
@@ -430,7 +431,8 @@ async function openNewModel(){
   document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
   document.getElementById("mm-err").style.display="none";
-  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';CC.cats.forEach(c=>cs.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
+  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';(CC.cats_base||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
+  const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();renderWorkers();
   const ws=document.getElementById("mm-wadd");ws.innerHTML='<option value="">+ працівник</option>';
@@ -458,7 +460,7 @@ async function saveModel(){
   if(editModelId) return saveModelEdit();
   const err=document.getElementById("mm-err");err.style.display="none";
   const isReady=document.getElementById("mm-ready").classList.contains("on");
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount}))};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount}))};
   try{const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();alert(`✅ ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
@@ -466,7 +468,7 @@ async function saveModel(){
 let sbProducts=[],sbSizes=[],sbCatP=null;
 async function loadSBase(){
   // Load categories
-  const cd=await api(`/api/categories?parent_id=${sbCatP||""}`);
+  const cd=await api(`/api/categories?parent_id=${sbCatP||""}&scope=base`);
   let bc='<div class="bread"><a onclick="sbCatP=null;loadSBase()">📦 Всі товари</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sbCatP=${b.id};loadSBase()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("sbase-bread").innerHTML=bc;
@@ -498,7 +500,7 @@ function searchSBase(q){if(!q){renderSBase(sbProducts);return}renderSBase(sbProd
 // ── Stock drop with categories ───────────────────────────────────
 let sdVars=[],sdSizes=[],sdCatP=null;
 async function loadSDrop(){
-  const cd=await api(`/api/categories?parent_id=${sdCatP||""}`);
+  const cd=await api(`/api/categories?parent_id=${sdCatP||""}&scope=drop`);
   let bc='<div class="bread"><a onclick="sdCatP=null;loadSDrop()">🛒 Всі варіації</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sdCatP=${b.id};loadSDrop()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("sdrop-bread").innerHTML=bc;
@@ -530,7 +532,7 @@ function searchSDrop(q){if(!q){renderSDrop(sdVars);return}renderSDrop(sdVars.fil
 let catScope="base";
 function addCatIn(scope){catScope=scope;editCatId=null;catPhoto="";document.getElementById("cm-t").textContent="Нова категорія";document.getElementById("cm-name").value="";document.getElementById("cm-hidden").value="0";document.getElementById("cm-photo-preview").innerHTML="—";document.getElementById("cm-del").style.display="none";openM("cat-modal")}
 async function editCatFn(id,scope){catScope=scope||"base";const all=(await api("/api/categories?parent_id=")).flat;const c=all.find(x=>x.id===id);if(!c)return;editCatId=id;catPhoto=c.photo||"";document.getElementById("cm-t").textContent=c.name;document.getElementById("cm-name").value=c.name;document.getElementById("cm-hidden").value=c.hidden_from_drop?"1":"0";document.getElementById("cm-photo-preview").innerHTML=c.photo?`<img src="${c.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";document.getElementById("cm-del").style.display="block";openM("cat-modal")}
-async function saveCat(){const data={name:document.getElementById("cm-name").value,parent_id:(catScope==="base"?sbCatP:sdCatP)||null,photo:catPhoto,hidden_from_drop:document.getElementById("cm-hidden").value==="1"};try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");if(catScope==="base")loadSBase();else loadSDrop()}catch(e){alert(e.message)}}
+async function saveCat(){const data={name:document.getElementById("cm-name").value,parent_id:(catScope==="base"?sbCatP:sdCatP)||null,photo:catPhoto,hidden_from_drop:document.getElementById("cm-hidden").value==="1",scope:catScope};try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");if(catScope==="base")loadSBase();else loadSDrop()}catch(e){alert(e.message)}}
 async function delCatFn(id,name){if(!confirm(`Видалити "${name}"?`))return;await api(`/api/categories/${id}`,{method:"DELETE"});if(catScope==="base")loadSBase();else loadSDrop()}
 function delCat(){if(editCatId)delCatFn(editCatId,"")}
 
