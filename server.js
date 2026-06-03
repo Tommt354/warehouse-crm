@@ -908,6 +908,179 @@ app.post("/api/seed-test-order", authMiddleware, requireRole("admin"), (req, res
   res.json({ ok: true, order_id: o.lastInsertRowid, ttn });
 });
 
+// ── NOVA POSHTA API ───────────────────────────────────────────────
+
+async function npApi(apiKey, model, method, props) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify({ apiKey, modelName: model, calledMethod: method, methodProperties: props });
+    const req = require("https").request("https://api.novaposhta.ua/v2.0/json/", { method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } }, res => {
+      let body = ""; res.on("data", c => body += c); res.on("end", () => { try { resolve(JSON.parse(body)) } catch (e) { reject(e) } });
+    });
+    req.on("error", reject); req.write(data); req.end();
+  });
+}
+
+// Create TTN for an order
+app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, res) => {
+  try {
+    const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.order_id);
+    if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
+    if (o.ttn) return res.status(400).json({ error: "ТТН вже створено: " + o.ttn });
+
+    const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    if (!apiKey) return res.status(400).json({ error: "Налаштуйте API ключ Нової Пошти в Налаштуваннях" });
+
+    const senderPhone = db.prepare("SELECT value FROM settings WHERE key='np_sender_phone'").get()?.value;
+    const senderRef = db.prepare("SELECT value FROM settings WHERE key='np_sender_ref'").get()?.value;
+    const senderAddressRef = db.prepare("SELECT value FROM settings WHERE key='np_sender_address'").get()?.value;
+    const senderContactRef = db.prepare("SELECT value FROM settings WHERE key='np_sender_contact'").get()?.value;
+
+    if (!senderRef || !senderAddressRef || !senderContactRef) return res.status(400).json({ error: "Заповніть дані відправника в Налаштуваннях" });
+
+    // Find recipient city
+    const cityRes = await npApi(apiKey, "Address", "searchSettlements", { CityName: o.client_city, Limit: 1 });
+    const cityData = cityRes.data?.[0]?.Addresses?.[0];
+    if (!cityData) return res.status(400).json({ error: "Місто не знайдено в НП: " + o.client_city });
+
+    // Find recipient warehouse
+    const whNum = o.client_warehouse.replace(/\D/g, "");
+    const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.Ref, FindByString: whNum ? "№" + whNum : o.client_warehouse });
+    const whData = whRes.data?.[0];
+    if (!whData) return res.status(400).json({ error: "Відділення не знайдено: " + o.client_warehouse });
+
+    // Get items count and weight
+    const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 1;
+    const weight = Math.max(0.5, itemsCount * 0.3);
+
+    // Create recipient contact
+    const nameParts = o.client_name.trim().split(/\s+/);
+    const recipientContactRes = await npApi(apiKey, "CounterpartyContactPerson", "save", {
+      CounterpartyRef: whData.Ref,
+      FirstName: nameParts[1] || nameParts[0],
+      LastName: nameParts[0],
+      Phone: o.client_phone.replace(/[^\d+]/g, "")
+    });
+
+    // Create internet document
+    const docData = {
+      PayerType: "Recipient",
+      PaymentMethod: "Cash",
+      DateTime: new Date().toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }),
+      CargoType: "Parcel",
+      Weight: String(weight),
+      ServiceType: "WarehouseWarehouse",
+      SeatsAmount: "1",
+      Description: "Одяг",
+      BackwardDeliveryData: o.cod_amount > 0 ? [{ PayerType: "Recipient", CargoType: "Money", RedeliveryString: String(o.cod_amount) }] : undefined,
+      Sender: senderRef,
+      SenderAddress: senderAddressRef,
+      ContactSender: senderContactRef,
+      SendersPhone: senderPhone,
+      RecipientCityName: o.client_city,
+      RecipientAddressName: whData.Number || whNum,
+      RecipientName: o.client_name,
+      RecipientType: "PrivatePerson",
+      RecipientsPhone: o.client_phone.replace(/[^\d+]/g, ""),
+      RecipientAddress: whData.Ref,
+      RecipientSettlementRef: cityData.Ref,
+    };
+
+    const result = await npApi(apiKey, "InternetDocument", "save", docData);
+    if (!result.success || !result.data?.[0]) {
+      return res.status(400).json({ error: "Помилка НП: " + (result.errors?.join(", ") || JSON.stringify(result.warnings || result)) });
+    }
+
+    const ttn = result.data[0].IntDocNumber;
+    const npRef = result.data[0].Ref;
+
+    db.prepare("UPDATE orders SET ttn=?,np_ref=?,status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(ttn, npRef, o.id);
+    res.json({ ok: true, ttn, np_ref: npRef });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Print TTN label
+app.get("/api/nova-poshta/print/:order_id", authMiddleware, (req, res) => {
+  const o = db.prepare("SELECT ttn,np_ref FROM orders WHERE id=?").get(req.params.order_id);
+  if (!o || !o.np_ref) return res.status(400).json({ error: "ТТН не створено" });
+  // NP print URL format
+  const printUrl = `https://my.novaposhta.ua/orders/printMarkings/orders[]/${o.np_ref}/type/pdf/apiKey/${db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value || ""}`;
+  res.json({ url: printUrl });
+});
+
+// Track all shipped orders and update statuses
+app.post("/api/nova-poshta/track-all", authMiddleware, async (req, res) => {
+  try {
+    const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    if (!apiKey) return res.status(400).json({ error: "Немає API ключа" });
+
+    const orders = db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status IN ('shipped','delivering')").all();
+    let updated = 0;
+
+    for (const o of orders) {
+      try {
+        const r = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: o.ttn }] });
+        const st = r.data?.[0];
+        if (!st) continue;
+
+        const code = parseInt(st.StatusCode);
+        let newStatus = null;
+        if (code >= 7 && code <= 8) newStatus = "delivering";
+        if (code === 9 || code === 10 || code === 11) newStatus = "delivered";
+        if (code === 17 || code === 102 || code === 103) newStatus = "refused";
+        if (code === 106) newStatus = "return_transit";
+
+        if (newStatus && newStatus !== o.status) {
+          db.prepare("UPDATE orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(newStatus, o.id);
+          updated++;
+        }
+      } catch (e) { /* skip individual errors */ }
+    }
+    res.json({ ok: true, checked: orders.length, updated });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Search NP cities
+app.post("/api/nova-poshta/search-city", authMiddleware, async (req, res) => {
+  try {
+    const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    if (!apiKey) return res.status(400).json({ error: "Немає API ключа" });
+    const r = await npApi(apiKey, "Address", "searchSettlements", { CityName: req.body.query, Limit: 10 });
+    res.json({ cities: r.data?.[0]?.Addresses || [] });
+  } catch (e) { res.status(500).json({ error: e.message }) }
+});
+
+// Search NP warehouses
+app.post("/api/nova-poshta/search-warehouse", authMiddleware, async (req, res) => {
+  try {
+    const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    if (!apiKey) return res.status(400).json({ error: "Немає API ключа" });
+    const r = await npApi(apiKey, "Address", "getWarehouses", { CityRef: req.body.city_ref, FindByString: req.body.query || "", Limit: 20 });
+    res.json({ warehouses: r.data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }) }
+});
+
+// Auto-detect sender refs
+app.post("/api/nova-poshta/detect-sender", authMiddleware, requireRole("admin"), async (req, res) => {
+  try {
+    const { api_key, phone } = req.body;
+    // Get counterparties
+    const cp = await npApi(api_key, "Counterparty", "getCounterparties", { CounterpartyProperty: "Sender", Page: "1" });
+    if (!cp.data?.length) return res.status(400).json({ error: "Контрагент не знайдено" });
+    const sender = cp.data[0];
+    // Get contact persons
+    const contacts = await npApi(api_key, "Counterparty", "getCounterpartyContactPersons", { Ref: sender.Ref, Page: "1" });
+    const contact = contacts.data?.[0];
+    // Get addresses
+    const addrs = await npApi(api_key, "Counterparty", "getCounterpartyAddresses", { Ref: sender.Ref, CounterpartyProperty: "Sender" });
+    const addr = addrs.data?.[0];
+    res.json({ sender_ref: sender.Ref, contact_ref: contact?.Ref || "", address_ref: addr?.Ref || "", sender_name: sender.Description, address_desc: addr?.Description || "" });
+  } catch (e) { res.status(500).json({ error: e.message }) }
+});
+
 // ── DASHBOARD ────────────────────────────────────────────────────
 app.get("/api/dashboard", authMiddleware, (req, res) => {
   if (req.user.role === "admin") {

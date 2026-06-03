@@ -208,11 +208,16 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 
 <div class="page" id="pg-settings"><div class="pt">⚙️ Налаштування</div>
 <div style="max-width:420px">
-  <div class="fld"><label>Назва</label><input id="s-company_name"></div>
+  <div class="fld"><label>Назва компанії</label><input id="s-company_name"></div>
   <div class="fld"><label>Поріг залишку</label><input id="s-stock_warning_threshold" type="number"></div>
-  <div class="fld"><label>API НП</label><input id="s-np_api_key" type="password"></div>
-  <div class="fld-row"><div class="fld"><label>Місто</label><input id="s-sender_city"></div><div class="fld"><label>Відділення</label><input id="s-sender_warehouse"></div></div>
-  <div class="fld-row"><div class="fld"><label>Телефон</label><input id="s-sender_phone"></div><div class="fld"><label>ПІБ</label><input id="s-sender_name"></div></div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)"><div class="pt" style="font-size:14px">📦 Нова Пошта</div></div>
+  <div class="fld"><label>API Ключ</label><input id="s-np_api_key" placeholder="Отримайте в кабінеті НП"></div>
+  <div class="fld"><label>Телефон відправника</label><input id="s-np_sender_phone" placeholder="+380..."></div>
+  <div class="fld"><label>Ref відправника (Counterparty)</label><input id="s-np_sender_ref" placeholder="UUID з кабінету НП"></div>
+  <div class="fld"><label>Ref адреси відправника (Warehouse)</label><input id="s-np_sender_address" placeholder="UUID відділення"></div>
+  <div class="fld"><label>Ref контакту відправника</label><input id="s-np_sender_contact" placeholder="UUID контактної особи"></div>
+  <button class="btn btn-sm" style="margin-bottom:10px;border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="autoDetectNP()">🔍 Автовизначення Ref (за API ключем і телефоном)</button>
+  <div id="np-detect-result" style="font-size:11px;margin-bottom:10px"></div>
   <button class="btn btn-p" onclick="saveSets()">💾 Зберегти</button><div id="set-msg" style="margin-top:6px"></div>
 </div></div>
 
@@ -864,6 +869,17 @@ async function delUser(){if(!editUID||!confirm("Видалити?"))return;await
 
 // ── Settings ─────────────────────────────────────────────────────
 async function loadSets(){try{const{settings:s}=await api("/api/settings");Object.entries(s).forEach(([k,v])=>{const el=document.getElementById("s-"+k);if(el)el.value=v})}catch(e){}}
+async function autoDetectNP(){
+  const key=document.getElementById("s-np_api_key").value;const phone=document.getElementById("s-np_sender_phone").value;
+  if(!key||!phone){document.getElementById("np-detect-result").innerHTML='<span style="color:var(--red)">Заповніть API ключ і телефон</span>';return}
+  try{
+    const r=await api("/api/nova-poshta/detect-sender",{method:"POST",body:JSON.stringify({api_key:key,phone:phone})});
+    if(r.sender_ref)document.getElementById("s-np_sender_ref").value=r.sender_ref;
+    if(r.contact_ref)document.getElementById("s-np_sender_contact").value=r.contact_ref;
+    if(r.address_ref)document.getElementById("s-np_sender_address").value=r.address_ref;
+    document.getElementById("np-detect-result").innerHTML='<span style="color:var(--acc)">✅ Знайдено! Натисніть "Зберегти"</span>';
+  }catch(e){document.getElementById("np-detect-result").innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
+}
 async function saveSets(){const ks=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];const d={};ks.forEach(k=>{const el=document.getElementById("s-"+k);if(el)d[k]=el.value});try{await api("/api/settings",{method:"PUT",body:JSON.stringify(d)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">✅</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2e3)}catch(e){}}
 
 init();

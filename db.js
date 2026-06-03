@@ -257,6 +257,8 @@ addCol("base_products","drop_price","REAL DEFAULT 0");
 addCol("models","category_drop_id","INTEGER DEFAULT NULL");
 addCol("order_items","kit_id","INTEGER DEFAULT NULL");
 addCol("variations","allow_negative_order","INTEGER DEFAULT 1");
+addCol("orders","np_ref","TEXT DEFAULT ''");
+addCol("orders","ttn_return","TEXT DEFAULT ''");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){
