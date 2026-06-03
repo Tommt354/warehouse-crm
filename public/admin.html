@@ -382,18 +382,13 @@ async function editModelFields(id){
   (await api("/api/users?role=warehouse")).users.forEach(u=>ws.innerHTML+=`<option value="${u.id}">${esc(u.name)}</option>`);
   ws.onchange=function(){if(this.value){mmWorkers.push({user_id:parseInt(this.value),name:this.options[this.selectedIndex].text,amount:0});this.value="";renderWorkers()}};
   document.getElementById("mm-err").style.display="none";
-  // Change save button
-  document.querySelector("#model-modal .btn-p").textContent="💾 Зберегти зміни";
-  document.querySelector("#model-modal .btn-p").onclick=saveModelEdit;
   openM("model-modal");
 }
 
 async function saveModelEdit(){
   const err=document.getElementById("mm-err");err.style.display="none";
   const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount})),sync_products:true};
-  try{await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});closeM("model-modal");loadModels();
-  // Reset save button for create mode
-  document.querySelector("#model-modal .btn-p").textContent="🚀 Створити";document.querySelector("#model-modal .btn-p").onclick=saveModel;
+  try{await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();
   alert("✅ Модель оновлена, назви і ціни товарів синхронізовані")}catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
@@ -407,6 +402,7 @@ async function deleteVar(id,modelId){if(!confirm("Видалити варіац�
 
 // ── Create model ─────────────────────────────────────────────────
 async function openNewModel(){
+  editModelId=null;
   await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};mmWorkers=[];
   document.getElementById("mdl-t").textContent="Нова модель";
   document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";
@@ -437,10 +433,11 @@ function renderSelTags(){
 function renderWorkers(){document.getElementById("mm-workers").innerHTML=mmWorkers.map((w,i)=>`<div class="wrow"><span class="wname">${esc(w.name)}</span><input type="number" value="${w.amount}" onchange="mmWorkers[${i}].amount=parseFloat(this.value)||0" placeholder="₴"><button class="wdel" onclick="mmWorkers.splice(${i},1);renderWorkers()">✕</button></div>`).join("")}
 
 async function saveModel(){
+  if(editModelId) return saveModelEdit();
   const err=document.getElementById("mm-err");err.style.display="none";
   const isReady=document.getElementById("mm-ready").classList.contains("on");
   const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount}))};
-  try{const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});closeM("model-modal");loadModels();alert(`✅ ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}catch(e){err.textContent=e.message;err.style.display="block"}
+  try{const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();alert(`✅ ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
 // ── Stock base with categories ────────────────────────────────────
