@@ -2,53 +2,131 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>CRM — Кабінет дропшипера</title>
+<title>CRM — Каталог</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 :root{--bg:#0a0e17;--card:#111827;--input:#0d1220;--brd:#1e2740;--brd2:#2a3a5c;--t:#c8cdd5;--td:#5a6378;--th:#f0f2f5;--acc:#00d4aa;--accbg:rgba(0,212,170,.06);--red:#ff6b6b;--warn:#ffa726;--blue:#42a5f5;--r:12px}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min-height:100vh}
-.wrap{max-width:800px;margin:0 auto;padding:24px 16px 40px}
-.hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:1px solid var(--brd);margin-bottom:24px}
-.hdr h1{font-size:18px;font-weight:700;color:var(--th)}
-.hdr small{display:block;font-size:12px;color:var(--td);margin-top:2px}
-.btn-logout{background:none;border:1px solid var(--brd);border-radius:8px;color:var(--td);padding:8px 14px;font-size:12px;font-family:inherit;cursor:pointer}
-.btn-logout:hover{border-color:var(--red);color:var(--red)}
-.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:24px}
-.sc{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:16px;text-align:center}
-.sc .sv{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;line-height:1}
-.sc .sl{font-size:9px;color:var(--td);text-transform:uppercase;letter-spacing:.8px;margin-top:5px}
-.msg{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:24px;text-align:center;color:var(--td)}
-.msg .icon{font-size:44px;display:block;margin-bottom:8px}
+.wrap{max-width:960px;margin:0 auto;padding:18px 16px 40px}
+.hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--brd);margin-bottom:18px}
+.hdr h1{font-size:17px;font-weight:700;color:var(--th)}.hdr small{display:block;font-size:11px;color:var(--td);margin-top:2px}
+.btn-out{background:none;border:1px solid var(--brd);border-radius:6px;color:var(--td);padding:6px 12px;font-size:11px;font-family:inherit;cursor:pointer}
+.btn-out:hover{border-color:var(--red);color:var(--red)}
+.tabs{display:flex;gap:4px;margin-bottom:14px}
+.tab{padding:7px 14px;font-size:12px;font-family:inherit;background:var(--card);border:1px solid var(--brd);border-radius:8px;color:var(--td);cursor:pointer;transition:.15s}
+.tab.on{color:var(--acc);border-color:rgba(0,212,170,.2);background:var(--accbg)}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:18px}
+.sc{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:12px;text-align:center}
+.sc .sv{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;line-height:1}
+.sc .sl{font-size:8px;color:var(--td);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+.bread{display:flex;align-items:center;gap:4px;font-size:11px;margin-bottom:12px;flex-wrap:wrap}
+.bread a{color:var(--acc);text-decoration:none;cursor:pointer}.bread a:hover{text-decoration:underline}
+.bread span{color:var(--td)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.crd{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:.15s}
+.crd:hover{border-color:var(--brd2)}
+.crd-img{width:100%;height:120px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td);font-size:10px;overflow:hidden}
+.crd-img img{width:100%;height:100%;object-fit:cover}
+.crd-body{padding:8px 10px}
+.crd-name{font-size:11px;font-weight:600;color:var(--th)}
+.pcard{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden}
+.pcard-img{width:100%;height:140px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td);font-size:10px;overflow:hidden}
+.pcard-img img{width:100%;height:100%;object-fit:cover}
+.pcard-body{padding:8px 10px}
+.pcard-name{font-size:11px;font-weight:600;color:var(--th);margin-bottom:3px}
+.pcard-sub{font-size:9px;color:var(--td);margin-bottom:5px}
+.pcard-prices{display:flex;gap:4px;margin-bottom:5px}
+.pp{font-size:9px;padding:1px 5px;border-radius:3px}
+.tag-g{background:var(--accbg);color:var(--acc)}
+.stock-row{display:flex;gap:2px;flex-wrap:wrap}
+.stock-sz{font-size:9px;padding:2px 5px;border-radius:3px;background:var(--bg);color:var(--t);border:1px solid var(--brd);font-family:'JetBrains Mono',monospace;text-align:center;min-width:32px}
+.stock-sz.zero{color:var(--red);border-color:rgba(255,107,107,.2)}
+.empty{text-align:center;padding:30px;color:var(--td);font-size:12px}.empty .ic{font-size:36px;display:block;margin-bottom:6px}
+.search-bar{width:100%;max-width:300px;padding:7px 10px;font-size:12px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff;outline:0;margin-bottom:12px}
+.search-bar:focus{border-color:var(--acc)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="hdr">
-    <div>
-      <h1>🛒 Кабінет дропшипера</h1>
-      <small id="user-info">Завантаження...</small>
-    </div>
-    <button class="btn-logout" onclick="logout()">Вийти</button>
+    <div><h1>🛒 Каталог</h1><small id="u-info">—</small></div>
+    <button class="btn-out" onclick="logout()">Вийти</button>
   </div>
-  <div class="sg" id="stats"></div>
-  <div class="msg"><span class="icon">🚧</span>Каталог товарів і створення замовлень — Модуль 2-3.<br>Скоро буде!</div>
+  <div class="tabs">
+    <div class="tab on" onclick="showTab('catalog')">📦 Каталог</div>
+    <div class="tab" onclick="showTab('dash')">📊 Зведення</div>
+  </div>
+  <div id="v-dash" style="display:none"><div class="sg" id="d-stats"></div></div>
+  <div id="v-catalog">
+    <input class="search-bar" id="cat-search" placeholder="Пошук товарів..." oninput="doSearch()">
+    <div id="cat-bread"></div>
+    <div id="cat-cats" class="cards" style="margin-bottom:14px"></div>
+    <div id="cat-products" class="cards"></div>
+  </div>
 </div>
 <script>
+let ME,catP=null;
 async function init(){
-  try{
-    const r=await fetch("/api/auth/me");if(!r.ok)throw 0;
-    const{user}=await r.json();
-    document.getElementById("user-info").textContent=user.name+" · "+user.username;
-    const d=await(await fetch("/api/dashboard")).json();
-    document.getElementById("stats").innerHTML=`
-      <div class="sc"><div class="sv" style="color:var(--acc)">${d.my_orders_total||0}</div><div class="sl">замовлень</div></div>
-      <div class="sc"><div class="sv" style="color:var(--warn)">${d.my_orders_new||0}</div><div class="sl">нових</div></div>
-      <div class="sc"><div class="sv" style="color:var(--acc)">${(d.my_payout||0).toFixed(0)}₴</div><div class="sl">до виплати</div></div>
-    `;
-  }catch(e){window.location.href="/login"}
+  try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;loadCatalog()}catch(e){location.href="/login"}
 }
-async function logout(){await fetch("/api/auth/logout",{method:"POST"});window.location.href="/login"}
+async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
+function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
+async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Err");return d}
+
+function showTab(t){
+  document.querySelectorAll(".tab").forEach((b,i)=>b.classList.toggle("on",i===(t==="catalog"?0:1)));
+  document.getElementById("v-catalog").style.display=t==="catalog"?"":"none";
+  document.getElementById("v-dash").style.display=t==="dash"?"":"none";
+  if(t==="dash")loadDash();
+}
+
+async function loadDash(){
+  const d=await api("/api/dashboard");
+  document.getElementById("d-stats").innerHTML=`
+    <div class="sc"><div class="sv" style="color:var(--acc)">${d.my_orders_total||0}</div><div class="sl">замовлень</div></div>
+    <div class="sc"><div class="sv" style="color:var(--warn)">${d.my_orders_new||0}</div><div class="sl">нових</div></div>
+    <div class="sc"><div class="sv" style="color:var(--acc)">${(d.my_payout||0).toFixed(0)}₴</div><div class="sl">до виплати</div></div>`;
+}
+
+async function loadCatalog(){
+  document.getElementById("cat-search").value="";
+  // Load categories
+  const cd=await api(`/api/categories?parent_id=${catP||""}`);
+  let bc='<div class="bread"><a onclick="catP=null;loadCatalog()">📂 Каталог</a>';
+  cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="catP=${b.id};loadCatalog()">${esc(b.name)}</a>`});
+  bc+="</div>";document.getElementById("cat-bread").innerHTML=bc;
+  // Filter out hidden
+  const cats=cd.categories.filter(c=>!c.hidden_from_drop);
+  document.getElementById("cat-cats").innerHTML=cats.map(c=>`<div class="crd" onclick="catP=${c.id};loadCatalog()"><div class="crd-img">${c.photo?`<img src="${c.photo}">`:'📁'}</div><div class="crd-body"><div class="crd-name">${esc(c.name)}</div></div></div>`).join("");
+  // Load variations for current category
+  const url=catP?`/api/variations?category_id=${catP}`:"/api/variations";
+  const vd=await api(url);
+  renderProducts(vd.variations,vd.sizes);
+}
+
+function renderProducts(variations,sizes){
+  const el=document.getElementById("cat-products");
+  if(!variations.length){el.innerHTML=document.getElementById("cat-cats").innerHTML?"":'<div class="empty" style="grid-column:1/-1"><span class="ic">📦</span>Немає товарів</div>';return}
+  el.innerHTML=variations.map(v=>{
+    const szs=sizes.filter(s=>v.stock[s.id]!==undefined);
+    return`<div class="pcard"><div class="pcard-img">${v.photo||v.print_photo?`<img src="${v.photo||v.print_photo}">`:'📷'}</div><div class="pcard-body">
+    <div class="pcard-name">${esc(v.name)}</div>
+    <div class="pcard-prices"><span class="pp tag-g">${v.drop_price}₴</span></div>
+    <div class="stock-row">${szs.map(s=>{const q=v.stock[s.id]||0;return`<div class="stock-sz ${q<=0?"zero":""}""><b>${s.name}</b><br>${q}</div>`}).join("")}</div>
+    </div></div>`}).join("");
+}
+
+let searchTimer;
+function doSearch(){clearTimeout(searchTimer);searchTimer=setTimeout(async()=>{
+  const q=document.getElementById("cat-search").value.trim();
+  if(!q){loadCatalog();return}
+  const vd=await api("/api/variations");
+  const filtered=vd.variations.filter(v=>v.name.toLowerCase().includes(q.toLowerCase()));
+  document.getElementById("cat-cats").innerHTML="";document.getElementById("cat-bread").innerHTML="";
+  renderProducts(filtered,vd.sizes);
+},300)}
+
 init();
 </script>
 </body>
