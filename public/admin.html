@@ -123,6 +123,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
     <a data-p="sbase">📦 Склад база</a>
     <a data-p="sdrop">🛒 Склад дроп</a>
     <a data-p="orders">📋 Замовлення</a>
+    <a data-p="returns">📦 Повернення</a>
     <div class="nav-g">Користувачі</div>
     <a data-p="drops">🛒 Дропшипери</a>
     <a data-p="workers">👷 Працівники</a>
@@ -175,17 +176,24 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 </div>
 
 <div class="page" id="pg-orders"><div class="pt">📋 Замовлення</div>
-<div class="acts">
+<div class="acts" style="flex-wrap:wrap;gap:4px">
   <button class="btn" onclick="loadAdmOrders('')" id="ao-all">Всі</button>
   <button class="btn" onclick="loadAdmOrders('new')" id="ao-new">Нові</button>
   <button class="btn" onclick="loadAdmOrders('in_progress')" id="ao-in_progress">В роботі</button>
-  <button class="btn" onclick="loadAdmOrders('packed')" id="ao-packed">Запаковані</button>
+  <button class="btn" onclick="loadAdmOrders('packed')" id="ao-packed">Готові</button>
   <button class="btn" onclick="loadAdmOrders('shipped')" id="ao-shipped">Відправлені</button>
   <button class="btn" onclick="loadAdmOrders('delivered')" id="ao-delivered">Отримані</button>
   <button class="btn" onclick="loadAdmOrders('refused')" id="ao-refused">Відмови</button>
   <button class="btn" onclick="loadAdmOrders('cancelled')" id="ao-cancelled">Скасовані</button>
 </div>
 <div id="adm-orders"></div>
+</div>
+
+<div class="page" id="pg-returns"><div class="pt">📦 Склад повернень</div>
+<div style="margin-bottom:14px"><input class="search-bar" id="ret-scan" placeholder="Скануйте ТТН для реєстрації повернення..." style="max-width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace"></div>
+<div id="ret-scan-result" style="margin-bottom:14px"></div>
+<div class="pt" style="font-size:14px;margin-top:10px">Наявні повернення:</div>
+<div id="ret-stock-list"></div>
 </div>
 
 <div class="page" id="pg-drops"><div class="pt">🛒 Дропшипери</div>
@@ -324,7 +332,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},orders:()=>loadAdmOrders(''),drops:loadDrops,workers:loadWorkers,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},orders:()=>loadAdmOrders(''),returns:loadReturns,drops:loadDrops,workers:loadWorkers,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -704,33 +712,88 @@ async function saveKit(){
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
-// ── Admin Orders ─────────────────────────────────────────────────
-const OSL={new:"Нове",in_progress:"В роботі",packed:"Запаковано",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
-const OSC={new:"tag-g",in_progress:"tag-b",packed:"tag-b",shipped:"tag-y",delivering:"tag-y",delivered:"tag-g",refused:"tag-r",cancelled:"tag-r"};
+// ── Admin Orders (big cards like warehouse) ──────────────────────
+const OSL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
+const OSC={new:"tag-g",in_progress:"tag-b",packed:"tag-g",shipped:"tag-y",delivering:"tag-y",delivered:"tag-g",refused:"tag-r",cancelled:"tag-r"};
 let admOrdFilter="";
 async function loadAdmOrders(status){
   admOrdFilter=status;
   document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");
   const btn=document.getElementById("ao-"+(status||"all"));if(btn)btn.className="btn btn-a";
-  const url=status?`/api/orders?status=${status}`:"/api/orders";
+  const url=status?"/api/orders?status="+status+"&limit=50":"/api/orders?limit=50";
   const{orders}=await api(url);
   const el=document.getElementById("adm-orders");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📋</span>Немає замовлень</div>';return}
-  el.innerHTML=`<table class="tbl"><tr><th>#</th><th>Дропшипер</th><th>Клієнт</th><th>Товарів</th><th>Наложка</th><th>Дроп</th><th>Виплата</th><th>Статус</th><th>Дата</th><th></th></tr>
-  ${orders.map(o=>`<tr>
-    <td style="color:var(--th);font-weight:600">${o.id}</td>
-    <td style="font-size:10px">${esc(o.drop_name)}</td>
-    <td>${esc(o.client_name)}<br><span style="font-size:9px;color:var(--td)">${esc(o.client_phone)}</span></td>
-    <td class="mono">${o.items_count}</td>
-    <td class="mono">${o.cod_amount}₴</td>
-    <td class="mono">${o.total_drop_price.toFixed(0)}₴</td>
-    <td class="mono" style="color:${o.payout_amount>=0?"var(--acc)":"var(--red)"}">${o.payout_amount.toFixed(0)}₴</td>
-    <td><span class="tag ${OSC[o.status]||""}">${OSL[o.status]||o.status}</span></td>
-    <td style="font-size:9px;color:var(--td)">${o.created_at?.slice(0,16)}</td>
-    <td><button class="btn btn-sm btn-d" onclick="cancelAdmOrder(${o.id})" title="Скасувати">✕</button></td>
-  </tr>`).join("")}</table>`;
+  let html="";
+  for(const o of orders){
+    const{order}=await api("/api/orders/"+o.id);
+    html+='<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;margin-bottom:12px;overflow:hidden">';
+    html+='<div style="padding:12px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--brd)">';
+    html+='<div><div style="font-size:16px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+( OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span></div>';
+    html+='<div style="font-size:13px;color:var(--th);margin-top:3px">'+esc(o.client_name)+' · <span style="color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(o.client_phone)+'</span></div>';
+    html+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div></div>';
+    html+='<div style="text-align:right;font-size:10px;color:var(--td)"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div>'+( o.created_at?.slice(0,16)||"");
+    if(o.ttn)html+='<div style="color:var(--warn);font-family:JetBrains Mono,monospace;margin-top:2px">ТТН: '+esc(o.ttn)+'</div>';
+    html+='</div></div>';
+    for(const i of order.items){
+      html+='<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center">';
+      html+=(i.var_photo?'<img src="'+i.var_photo+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>');
+      html+='<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>';
+      if(i.print_name)html+='<div style="font-size:10px;color:var(--warn)">🖼 '+esc(i.print_name)+'</div>';
+      html+='<span style="font-size:13px;font-weight:700;color:var(--acc);background:var(--accbg);padding:2px 10px;border-radius:5px">'+esc(i.size_name)+'</span>';
+      if(i.quantity>1)html+=' <span style="color:var(--td)">×'+i.quantity+'</span>';
+      html+='</div></div>';
+    }
+    if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:11px;color:var(--warn);padding:5px 8px;background:rgba(255,167,38,.06);border-radius:5px;border:1px solid rgba(255,167,38,.1)">📝 '+esc(o.note)+'</div></div>';
+    html+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.1)">';
+    html+='<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
+    html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">✕ Скасувати</button>';
+    html+='</div></div>';
+  }
+  el.innerHTML=html;
 }
-async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api(`/api/orders/${id}/cancel`,{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
+async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
+
+// ── Returns (склад повернень) ────────────────────────────────────
+async function loadReturns(){
+  // Scanner
+  const scanEl=document.getElementById("ret-scan");
+  scanEl.value="";
+  scanEl.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();scanRetTTN()}};
+  document.getElementById("ret-scan-result").innerHTML="";
+  // Load existing returns
+  try{
+    const{items}=await api("/api/stock-returns");
+    const el=document.getElementById("ret-stock-list");
+    if(!items.length){el.innerHTML='<div class="empty"><span class="ic">📦</span>Немає повернень на складі</div>';return}
+    el.innerHTML='<table class="tbl"><tr><th>Товар</th><th>Принт</th><th>Колір</th><th>Розмір</th><th>Кількість</th></tr>'+items.map(i=>'<tr><td style="color:var(--th)">'+esc(i.var_name)+'</td><td>'+esc(i.print_name||"—")+'</td><td>'+esc(i.color_name||"—")+'</td><td style="color:var(--acc);font-weight:600">'+esc(i.size_name)+'</td><td class="mono" style="font-size:14px;font-weight:700">'+i.quantity+'</td></tr>').join("")+'</table>';
+  }catch(e){}
+}
+async function scanRetTTN(){
+  const ttn=document.getElementById("ret-scan").value.trim();if(!ttn)return;
+  const el=document.getElementById("ret-scan-result");
+  try{
+    const{order:o}=await api("/api/orders/by-ttn/"+encodeURIComponent(ttn));
+    let html='<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:14px;margin-bottom:10px">';
+    html+='<div style="font-size:16px;font-weight:700;color:var(--th);margin-bottom:8px">#'+o.id+' · '+esc(o.client_name)+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span></div>';
+    for(const i of o.items){
+      const done=i.returned_to_stock;
+      html+='<div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--brd);align-items:center">';
+      html+=(i.var_photo?'<img src="'+i.var_photo+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>');
+      html+='<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>';
+      html+='<span style="font-size:13px;font-weight:700;color:var(--acc);background:var(--accbg);padding:2px 10px;border-radius:5px">'+esc(i.size_name)+'</span>';
+      if(i.quantity>1)html+=' ×'+i.quantity;
+      html+='</div>';
+      if(done)html+='<div style="width:30px;height:30px;border-radius:8px;background:var(--acc);display:flex;align-items:center;justify-content:center;color:#0a0e17;font-size:16px;font-weight:700">✓</div>';
+      else html+='<div style="width:30px;height:30px;border-radius:8px;border:2px solid var(--brd2);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="retItem('+i.id+',this)"></div>';
+      html+='</div>';
+    }
+    html+='</div>';
+    el.innerHTML=html;
+    document.getElementById("ret-scan").value="";document.getElementById("ret-scan").focus();
+  }catch(e){el.innerHTML='<div class="msg msg-err">❌ '+e.message+'</div>'}
+}
+async function retItem(id,el){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});el.style.background="var(--acc)";el.style.borderColor="var(--acc)";el.style.color="#0a0e17";el.innerHTML="✓";el.onclick=null;loadReturns()}catch(e){alert(e.message)}}
 
 // ── Users ────────────────────────────────────────────────────────
 const WL={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};

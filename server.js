@@ -803,6 +803,21 @@ app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) =
 
 // ── RETURNS (повернення) ──────────────────────────────────────────
 
+// List stock returns (for admin view)
+app.get("/api/stock-returns", authMiddleware, (req, res) => {
+  const items = db.prepare(`SELECT sr.*, v.name as var_name, v.photo as var_photo, s.name as size_name, 
+    p.name as print_name, bp.name as base_name, c.name as color_name
+    FROM stock_returns sr 
+    JOIN variations v ON sr.variation_id=v.id 
+    JOIN sizes s ON sr.size_id=s.id 
+    JOIN base_products bp ON v.base_product_id=bp.id
+    LEFT JOIN prints p ON v.print_id=p.id 
+    LEFT JOIN colors c ON bp.color_id=c.id
+    WHERE sr.quantity > 0
+    ORDER BY v.name, s.sort_order`).all();
+  res.json({ items });
+});
+
 // Find order by TTN
 app.get("/api/orders/by-ttn/:ttn", authMiddleware, (req, res) => {
   const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.ttn=? OR o.ttn_return=?").get(req.params.ttn, req.params.ttn);
