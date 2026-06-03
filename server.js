@@ -920,6 +920,59 @@ async function npApi(apiKey, model, method, props) {
   });
 }
 
+// NP Senders CRUD
+app.get("/api/np-senders", authMiddleware, (req, res) => {
+  res.json({ senders: db.prepare("SELECT * FROM np_senders ORDER BY is_active DESC, name").all() });
+});
+
+app.post("/api/np-senders", authMiddleware, requireRole("admin"), async (req, res) => {
+  const { name, phone } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
+
+  const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+  if (!apiKey) return res.status(400).json({ error: "Спочатку збережіть API ключ НП в налаштуваннях" });
+
+  try {
+    // Auto-detect refs from NP API
+    const cp = await npApi(apiKey, "Counterparty", "getCounterparties", { CounterpartyProperty: "Sender", Page: "1" });
+    let sender = null;
+    if (phone) {
+      // Try to find by phone
+      for (const s of (cp.data || [])) {
+        const contacts = await npApi(apiKey, "Counterparty", "getCounterpartyContactPersons", { Ref: s.Ref });
+        const match = (contacts.data || []).find(c => c.Phones?.includes(phone.replace(/[^\d]/g, "")));
+        if (match) { sender = { ref: s.Ref, contact: match.Ref, desc: s.Description }; break; }
+      }
+    }
+    if (!sender && cp.data?.length) {
+      const s = cp.data[0];
+      const contacts = await npApi(apiKey, "Counterparty", "getCounterpartyContactPersons", { Ref: s.Ref });
+      sender = { ref: s.Ref, contact: contacts.data?.[0]?.Ref || "", desc: s.Description };
+    }
+    if (!sender) return res.status(400).json({ error: "Контрагент не знайдено в НП" });
+
+    const addrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: sender.ref, CounterpartyProperty: "Sender" });
+    const addr = addrs.data?.[0];
+
+    const isFirst = !db.prepare("SELECT id FROM np_senders LIMIT 1").get();
+    const r = db.prepare("INSERT INTO np_senders(name,phone,sender_ref,address_ref,contact_ref,address_description,is_active)VALUES(?,?,?,?,?,?,?)").run(
+      name.trim(), phone || "", sender.ref, addr?.Ref || "", sender.contact, addr?.Description || "", isFirst ? 1 : 0
+    );
+    res.json({ ok: true, id: r.lastInsertRowid });
+  } catch (e) { res.status(500).json({ error: e.message }) }
+});
+
+app.put("/api/np-senders/:id/activate", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("UPDATE np_senders SET is_active=0").run();
+  db.prepare("UPDATE np_senders SET is_active=1 WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete("/api/np-senders/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("DELETE FROM np_senders WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
 // Create TTN for an order
 app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, res) => {
   try {
@@ -928,14 +981,11 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
     if (o.ttn) return res.status(400).json({ error: "ТТН вже створено: " + o.ttn });
 
     const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
-    if (!apiKey) return res.status(400).json({ error: "Налаштуйте API ключ Нової Пошти в Налаштуваннях" });
+    if (!apiKey) return res.status(400).json({ error: "Налаштуйте API ключ НП" });
 
-    const senderPhone = db.prepare("SELECT value FROM settings WHERE key='np_sender_phone'").get()?.value;
-    const senderRef = db.prepare("SELECT value FROM settings WHERE key='np_sender_ref'").get()?.value;
-    const senderAddressRef = db.prepare("SELECT value FROM settings WHERE key='np_sender_address'").get()?.value;
-    const senderContactRef = db.prepare("SELECT value FROM settings WHERE key='np_sender_contact'").get()?.value;
-
-    if (!senderRef || !senderAddressRef || !senderContactRef) return res.status(400).json({ error: "Заповніть дані відправника в Налаштуваннях" });
+    // Get active sender
+    const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
+    if (!sender) return res.status(400).json({ error: "Додайте контрагента НП і позначте його активним" });
 
     // Find recipient city
     const cityRes = await npApi(apiKey, "Address", "searchSettlements", { CityName: o.client_city, Limit: 1 });
@@ -972,10 +1022,10 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
       SeatsAmount: "1",
       Description: "Одяг",
       BackwardDeliveryData: o.cod_amount > 0 ? [{ PayerType: "Recipient", CargoType: "Money", RedeliveryString: String(o.cod_amount) }] : undefined,
-      Sender: senderRef,
-      SenderAddress: senderAddressRef,
-      ContactSender: senderContactRef,
-      SendersPhone: senderPhone,
+      Sender: sender.sender_ref,
+      SenderAddress: sender.address_ref,
+      ContactSender: sender.contact_ref,
+      SendersPhone: sender.phone,
       RecipientCityName: o.client_city,
       RecipientAddressName: whData.Number || whNum,
       RecipientName: o.client_name,

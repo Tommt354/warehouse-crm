@@ -219,6 +219,18 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT DEFAULT '');
 
+  CREATE TABLE IF NOT EXISTS np_senders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT DEFAULT '',
+    sender_ref TEXT DEFAULT '',
+    address_ref TEXT DEFAULT '',
+    contact_ref TEXT DEFAULT '',
+    address_description TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
   -- Комплекти (віртуальні товари для дропшиперів)
   CREATE TABLE IF NOT EXISTS kits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
