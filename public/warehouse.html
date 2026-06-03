@@ -73,6 +73,11 @@
     <div class="main-tab" onclick="showMain('stock')">🏪 Склад</div>
   </div>
   <div id="v-orders">
+    <div style="display:flex;gap:4px;margin-bottom:10px">
+      <button class="main-tab on" id="rf-all" onclick="whReady='';loadOrders()">📋 Всі</button>
+      <button class="main-tab" id="rf-0" onclick="whReady='0';loadOrders()">🖨 Не готові</button>
+      <button class="main-tab" id="rf-1" onclick="whReady='1';loadOrders()">✅ Готові товари</button>
+    </div>
     <div class="stabs" id="wh-stabs"></div>
     <div id="wh-orders"></div>
   </div>
@@ -114,7 +119,7 @@
 </div></div>
 
 <script>
-let ME,whStatus="new",whProducts=[],whSizes=[];
+let ME,whStatus="new",whReady="",whProducts=[],whSizes=[];
 const SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 const WHS=[{key:"new",label:"📥 Нові",next:"in_progress",nl:"🔧 Взяти"},{key:"in_progress",label:"🔧 В роботі",next:"packed",nl:"✅ Готово"},{key:"packed",label:"✅ Готові"},{key:"shipped",label:"🚚 Відправлені"},{key:"delivered",label:"📬 Отримані"},{key:"refused",label:"❌ Відмови"},{key:"cancelled",label:"🚫 Скасовані"}];
@@ -144,7 +149,8 @@ function renderStabs(){
 }
 async function loadOrders(){
   renderStabs();
-  var r;try{r=await api("/api/orders?status="+whStatus+"&limit=50")}catch(e){return}
+  document.querySelectorAll("[id^=rf-]").forEach(function(b){b.classList.toggle("on",b.id===("rf-"+(whReady||"all")))});
+  var r;try{r=await api("/api/orders?status="+whStatus+"&limit=50"+(whReady?"&ready="+whReady:""))}catch(e){return}
   var orders=r.orders;
   var el=document.getElementById("wh-orders");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📭</span>Немає замовлень</div>';return}
@@ -215,7 +221,7 @@ async function scanTTN(){
 async function retIt(id,el){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});el.classList.add("done");el.innerHTML="✓";el.onclick=null}catch(e){alert(e.message)}}
 
 // ── STOCK ────────────────────────────────────────────────────────
-var whPage=0;
+var whPage=0,whStockReady="";
 async function loadWhStock(){
   var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
   renderWhStockPage();

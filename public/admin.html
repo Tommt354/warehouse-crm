@@ -155,6 +155,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="page" id="pg-sbase"><div class="pt">📦 Склад база</div>
 <div id="sbase-bread"></div>
 <div class="acts">
+  <div class="acts" style="margin-bottom:4px"><button class="btn on" id="sr-all" onclick="sbReady='';sbCatP=null;loadSBase()">Всі</button><button class="btn" id="sr-0" onclick="sbReady='0';sbCatP=null;loadSBase()">🖨 Не готові</button><button class="btn" id="sr-1" onclick="sbReady='1';sbCatP=null;loadSBase()">✅ Готові</button></div>
   <button class="btn btn-p" onclick="addCatIn('base')">+ Категорія</button>
   <button class="btn btn-a" onclick="openInc()">📥 Прихід</button>
   <button class="btn btn-d" onclick="openWriteOff()">📤 Списати</button>
@@ -178,6 +179,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 </div>
 
 <div class="page" id="pg-orders"><div class="pt">📋 Замовлення</div>
+<div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';loadAdmOrders(admOrdFilter)">🖨 Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';loadAdmOrders(admOrdFilter)">✅ Готові товари</button></div>
 <div class="acts" style="flex-wrap:wrap;gap:4px">
   <button class="btn" onclick="loadAdmOrders('')" id="ao-all">Всі</button>
   <button class="btn" onclick="loadAdmOrders('new')" id="ao-new">Нові</button>
@@ -506,7 +508,7 @@ async function saveModel(){
 }
 
 // ── Stock base with categories ────────────────────────────────────
-let sbProducts=[],sbSizes=[],sbCatP=null,sbPage=0;
+let sbProducts=[],sbSizes=[],sbCatP=null,sbPage=0,sbReady="";
 async function loadSBase(){
   // Load categories
   const cd=await api(`/api/categories?parent_id=${sbCatP||""}&scope=base`);
@@ -519,7 +521,9 @@ async function loadSBase(){
     <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
     <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">✏️</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">🗑</button></div></div></div>`).join("");
   // Products
-  const url=sbCatP?`/api/base-products?category_id=${sbCatP}`:"/api/base-products";
+  document.querySelectorAll("[id^=sr-]").forEach(function(b){b.className="btn";if(b.id===("sr-"+(sbReady||"all")))b.className="btn btn-a"});
+  var url=sbCatP?"/api/base-products?category_id="+sbCatP:"/api/base-products";
+  if(sbReady)url+=(url.includes("?")?"\&":"\?")+"is_ready="+sbReady;
   const d=await api(url);sbProducts=d.products;sbSizes=d.sizes;
   renderSBase(sbProducts);
 }
@@ -764,7 +768,7 @@ async function saveKit(){
 // ── Admin Orders (big cards like warehouse) ──────────────────────
 const OSL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
 const OSC={new:"tag-g",in_progress:"tag-b",packed:"tag-g",shipped:"tag-y",delivering:"tag-y",delivered:"tag-g",refused:"tag-r",cancelled:"tag-r"};
-let admOrdFilter="";
+let admOrdFilter="",admReady="";
 async function loadAdmOrders(status){
   admOrdFilter=status;
   document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");

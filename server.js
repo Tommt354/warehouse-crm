@@ -366,9 +366,12 @@ app.post("/api/models/:id/add-color", authMiddleware, requireRole("admin"), (req
 // ── BASE PRODUCTS ────────────────────────────────────────────────
 app.get("/api/base-products", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
+  const isReady = req.query.is_ready;
   let q = `SELECT bp.*,m.name as model_name,m.is_ready_product,m.category_id,c.name as color_name,c.hex_code,cat.name as category_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN categories cat ON m.category_id=cat.id WHERE bp.active=1`;
   const params = [];
   if (cat) { q += " AND m.category_id=?"; params.push(parseInt(cat)); }
+  if (isReady === "1") { q += " AND m.is_ready_product=1"; }
+  if (isReady === "0") { q += " AND m.is_ready_product=0"; }
   q += " ORDER BY m.name,c.sort_order";
   const products = db.prepare(q).all(...params);
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
@@ -719,7 +722,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 
 // List orders
 app.get("/api/orders", authMiddleware, (req, res) => {
-  const { status, limit } = req.query;
+  const { status, limit, ready } = req.query;
   let q = "SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id";
   const params = [];
   const where = [];
@@ -732,11 +735,20 @@ app.get("/api/orders", authMiddleware, (req, res) => {
   if (limit) { q += " LIMIT ?"; params.push(parseInt(limit)); }
 
   const orders = db.prepare(q).all(...params);
-  // Attach items count
   orders.forEach(o => {
     o.items_count = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 0;
+    // Check if order has ready product items
+    const readyCount = db.prepare("SELECT COUNT(*) as c FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE oi.order_id=? AND m.is_ready_product=1").get(o.id).c;
+    o.has_ready_items = readyCount > 0;
+    o.all_ready = readyCount === (db.prepare("SELECT COUNT(*) as c FROM order_items WHERE order_id=?").get(o.id).c || 0);
   });
-  res.json({ orders });
+
+  // Filter by ready if requested
+  let filtered = orders;
+  if (ready === "1") filtered = orders.filter(o => o.has_ready_items);
+  else if (ready === "0") filtered = orders.filter(o => !o.has_ready_items);
+
+  res.json({ orders: filtered });
 });
 
 // Single order with items + return availability
@@ -745,8 +757,8 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (req.user.role === "dropshipper" && o.dropshipper_id !== req.user.id) return res.status(403).json({ error: "Немає доступу" });
 
-  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name
-    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id
+  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product
+    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id
     WHERE oi.order_id=?`).all(o.id);
 
   // Check return availability and current stock for each item
@@ -856,8 +868,8 @@ app.get("/api/stock-returns", authMiddleware, (req, res) => {
 app.get("/api/orders/by-ttn/:ttn", authMiddleware, (req, res) => {
   const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.ttn=? OR o.ttn_return=?").get(req.params.ttn, req.params.ttn);
   if (!o) return res.status(404).json({ error: "Замовлення з такою ТТН не знайдено" });
-  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name
-    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id
+  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product
+    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id
     WHERE oi.order_id=?`).all(o.id);
   res.json({ order: o });
 });
