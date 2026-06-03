@@ -565,23 +565,17 @@ app.post("/api/orders", authMiddleware, (req, res) => {
       const qty = parseInt(item.quantity) || 1;
       totalDrop += dropPrice * qty;
 
-      // Check stock & deduct
-      let fromReturns = 0;
+      // Always deduct from base stock only
+      db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=?").run(qty, v.base_product_id, item.size_id);
+
+      // Check if returns exist (for packer hint, not auto-deduct)
+      let hasReturns = 0;
       if (v.print_id) {
-        // Try returns first
         const ret = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(v.id, item.size_id);
-        if (ret && ret.quantity > 0) {
-          const take = Math.min(ret.quantity, qty);
-          db.prepare("UPDATE stock_returns SET quantity=quantity-? WHERE variation_id=? AND size_id=?").run(take, v.id, item.size_id);
-          fromReturns = take;
-        }
-      }
-      const fromBase = qty - fromReturns;
-      if (fromBase > 0) {
-        db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=?").run(fromBase, v.base_product_id, item.size_id);
+        if (ret && ret.quantity > 0) hasReturns = Math.min(ret.quantity, qty);
       }
 
-      orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: fromReturns });
+      orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: 0 });
     }
 
     const cod = parseFloat(cod_amount) || 0;
@@ -621,16 +615,50 @@ app.get("/api/orders", authMiddleware, (req, res) => {
   res.json({ orders });
 });
 
-// Single order with items
+// Single order with items + return availability
 app.get("/api/orders/:id", authMiddleware, (req, res) => {
   const o = db.prepare("SELECT o.*,u.name as drop_name,u.phone as drop_phone FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (req.user.role === "dropshipper" && o.dropshipper_id !== req.user.id) return res.status(403).json({ error: "Немає доступу" });
 
-  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,s.name as size_name,p.name as print_name
+  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name
     FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id
     WHERE oi.order_id=?`).all(o.id);
+
+  // Check return availability for each item
+  o.items.forEach(i => {
+    i.return_available = 0;
+    if (i.print_id && !i.from_returns) {
+      const ret = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(i.variation_id, i.size_id);
+      if (ret && ret.quantity > 0) i.return_available = Math.min(ret.quantity, i.quantity);
+    }
+  });
   res.json({ order: o });
+});
+
+// Use return instead of base for an order item
+app.post("/api/order-items/:id/use-return", authMiddleware, (req, res) => {
+  const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
+  if (!item) return res.status(404).json({ error: "Не знайдено" });
+  if (!item.print_id) return res.status(400).json({ error: "Готовий товар не має повернень" });
+  if (item.from_returns >= item.quantity) return res.status(400).json({ error: "Вже списано з повернень" });
+
+  const qty = Math.min(item.quantity - item.from_returns, parseInt(req.body.quantity) || item.quantity);
+
+  // Check returns available
+  const ret = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(item.variation_id, item.size_id);
+  if (!ret || ret.quantity < qty) return res.status(400).json({ error: "Недостатньо повернень" });
+
+  db.transaction(() => {
+    // Deduct from returns
+    db.prepare("UPDATE stock_returns SET quantity=quantity-? WHERE variation_id=? AND size_id=?").run(qty, item.variation_id, item.size_id);
+    // Return to base (since we took from base at order creation)
+    db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty, item.base_product_id, item.size_id);
+    // Mark item
+    db.prepare("UPDATE order_items SET from_returns=from_returns+? WHERE id=?").run(qty, item.id);
+  })();
+
+  res.json({ ok: true });
 });
 
 // Update order status

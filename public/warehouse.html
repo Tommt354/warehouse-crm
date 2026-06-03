@@ -112,12 +112,20 @@ async function loadOrders(){
         </div>
         <div style="text-align:right;font-size:10px;color:var(--td)">${esc(o.drop_name)}<br>${o.created_at?.slice(0,16)}</div>
       </div>
-      ${order.items.map(i=>`<div class="ocard-item">
-        ${i.var_photo?`<img src="${i.var_photo}">`:'<div style="width:36px;height:36px;background:var(--bg);border-radius:5px"></div>'}
-        <div class="oi-name">${esc(i.var_name)}${i.print_name?` <span style="color:var(--warn);font-size:9px">${esc(i.print_name)}</span>`:""}</div>
-        <div class="oi-size">${esc(i.size_name)}</div>
-        <div class="oi-qty">×${i.quantity}</div>
-      </div>`).join("")}
+      ${order.items.map(i=>{
+        const hasRet=i.return_available>0;
+        const usedRet=i.from_returns>0;
+        return '<div class="ocard-item" style="'+(hasRet?'background:rgba(255,167,38,.08);border-left:3px solid var(--warn);padding-left:8px':'')+'">'
+          +(i.var_photo?'<img src="'+i.var_photo+'">':'<div style="width:36px;height:36px;background:var(--bg);border-radius:5px"></div>')
+          +'<div class="oi-name">'+esc(i.var_name)+(i.print_name?' <span style="color:var(--warn);font-size:9px">'+esc(i.print_name)+'</span>':'')
+          +(hasRet?'<div style="font-size:9px;color:var(--warn);margin-top:2px">⚠️ Є повернення ('+i.return_available+' шт) — можна взяти з повернень!</div>':'')
+          +(usedRet?'<div style="font-size:9px;color:var(--acc);margin-top:2px">✅ Взято з повернень: '+i.from_returns+' шт</div>':'')
+          +'</div>'
+          +'<div class="oi-size">'+esc(i.size_name)+'</div>'
+          +'<div class="oi-qty">×'+i.quantity+'</div>'
+          +(hasRet?'<button class="btn btn-w" style="font-size:9px;padding:4px 8px" onclick="useReturn('+i.id+')">📦 З повернень</button>':'')
+          +'</div>';
+      }).join("")}
       <div class="ocard-footer">
         <div class="of-amount">Наложка: ${o.cod_amount}₴</div>
         <div style="display:flex;gap:4px">
@@ -140,6 +148,13 @@ async function cancelOrder(id){
   if(!confirm("Скасувати замовлення? Товари повернуться на склад."))return;
   await api(`/api/orders/${id}/cancel`,{method:"POST"});
   loadOrders();loadStats();renderTabs();
+}
+
+async function useReturn(itemId){
+  try{
+    await api(`/api/order-items/${itemId}/use-return`,{method:"POST",body:JSON.stringify({})});
+    loadOrders();
+  }catch(e){alert(e.message)}
 }
 
 init();
