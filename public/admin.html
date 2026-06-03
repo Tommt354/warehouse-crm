@@ -819,11 +819,15 @@ async function loadAdmOrders(status){
     if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:11px;color:var(--warn);padding:5px 8px;background:rgba(255,167,38,.06);border-radius:5px;border:1px solid rgba(255,167,38,.1)">📝 '+esc(o.note)+'</div></div>';
     html+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.1)">';
     html+='<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
+    html+='<select onchange="chAdmSt('+o.id+',this.value)" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;font-family:inherit">';
+    ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
+    html+='</select>';
     html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">✕ Скасувати</button>';
     html+='</div></div>';
   }
   el.innerHTML=html;
 }
+async function chAdmSt(id,st){try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function saveTtn(id){var v=document.getElementById("ttn-"+id).value;try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});loadAdmOrders(admOrdFilter)}catch(e){}}
 
