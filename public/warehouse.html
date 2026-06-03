@@ -158,17 +158,18 @@ async function loadOrders(){
   for(var oi=0;oi<orders.length;oi++){
     var o=orders[oi];
     var od;try{od=(await api("/api/orders/"+o.id)).order}catch(e){continue}
-    var hasOOS=od.items.some(function(i){return i.current_stock<=0});
+    var isActive=o.status==="new"||o.status==="in_progress";
+    var hasOOS=isActive&&od.items.some(function(i){return i.current_stock<=0});
     html+='<div class="ocard'+(hasOOS?' out-of-stock':'')+'">';
     html+='<div class="ocard-header"><div>';
-    html+='<div class="ocard-id">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(hasOOS?' <span class="tag tag-bad">⚠️ Немає на складі</span>':'')+'</div>';
+    html+='<div class="ocard-id">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(hasOOS?' <span class="tag tag-bad">⚠️ Немає</span>':'')+'</div>';
     html+='<div class="cl-name">'+esc(o.client_name)+'</div><div class="cl-phone">'+esc(o.client_phone)+'</div>';
     html+='<div class="cl-addr">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
     html+='</div><div class="ocard-meta"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div><div>'+(o.created_at?o.created_at.slice(0,16):"")+'</div>';
     if(o.ttn)html+='<div class="ocard-ttn">ТТН: '+esc(o.ttn)+'</div>';
     html+='</div></div>';
     for(var ii=0;ii<od.items.length;ii++){
-      var i=od.items[ii];var missing=i.current_stock<=0;var hasRet=i.return_available>0;var usedRet=i.from_returns>0;
+      var i=od.items[ii];var missing=isActive&&i.current_stock<=0;var hasRet=isActive&&i.return_available>0;var usedRet=isActive&&i.from_returns>0;
       html+='<div class="oitem'+(missing?' item-missing':'')+'">';
       html+='<div class="oitem-img">'+((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div style="width:80px;height:80px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td)">📷</div>')+'</div>';
       html+='<div class="oitem-info"><div class="oitem-name">'+esc(i.var_name)+'</div>';
