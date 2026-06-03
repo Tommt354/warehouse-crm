@@ -230,6 +230,8 @@ db.exec(`
 const addCol=(t,c,d)=>{try{db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${d}`)}catch(e){}};
 addCol("categories","photo","TEXT DEFAULT ''");
 addCol("categories","hidden_from_drop","INTEGER DEFAULT 0");
+addCol("base_products","cost_price","REAL DEFAULT 0");
+addCol("base_products","drop_price","REAL DEFAULT 0");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){

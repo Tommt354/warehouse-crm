@@ -221,14 +221,15 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
     const colors=db.prepare("SELECT * FROM colors WHERE id IN("+color_ids.join(",")+")").all();
     const sizes=db.prepare("SELECT * FROM sizes WHERE id IN("+size_ids.join(",")+")").all();
     const prints=print_ids?.length?db.prepare("SELECT * FROM prints WHERE id IN("+print_ids.join(",")+")").all():[];
-    const cbp=db.prepare("INSERT INTO base_products(model_id,color_id,name)VALUES(?,?,?)");
+    const cbp=db.prepare("INSERT INTO base_products(model_id,color_id,name,cost_price,drop_price)VALUES(?,?,?,?,?)");
     const cv=db.prepare("INSERT INTO variations(base_product_id,print_id,name)VALUES(?,?,?)");
     const csb=db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity)VALUES(?,?,0)");
     const csr=db.prepare("INSERT INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,0)");
     let bc=0,vc=0;
+    const cp=parseFloat(cost_price)||0,dp=parseFloat(drop_price)||0;
     for(const col of colors){
       const bpn=`${name.trim()} ${col.name}`;
-      const bp=cbp.run(mid,col.id,bpn);bc++;
+      const bp=cbp.run(mid,col.id,bpn,cp,dp);bc++;
       for(const sz of sizes)csb.run(bp.lastInsertRowid,sz.id);
       if(is_ready_product){cv.run(bp.lastInsertRowid,null,bpn);vc++}
       else{for(const pr of prints){const v=cv.run(bp.lastInsertRowid,pr.id,`${bpn} — ${pr.name}`);vc++;for(const sz of sizes)csr.run(v.lastInsertRowid,sz.id)}}
@@ -370,7 +371,7 @@ app.post("/api/models/:id/add-color", authMiddleware, requireRole("admin"), (req
 // ── BASE PRODUCTS ────────────────────────────────────────────────
 app.get("/api/base-products", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
-  let q = `SELECT bp.*,m.name as model_name,m.cost_price,m.drop_price,m.is_ready_product,m.category_id,c.name as color_name,c.hex_code,cat.name as category_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN categories cat ON m.category_id=cat.id WHERE bp.active=1`;
+  let q = `SELECT bp.*,m.name as model_name,m.is_ready_product,m.category_id,c.name as color_name,c.hex_code,cat.name as category_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN categories cat ON m.category_id=cat.id WHERE bp.active=1`;
   const params = [];
   if (cat) { q += " AND m.category_id=?"; params.push(parseInt(cat)); }
   q += " ORDER BY m.name,c.sort_order";
@@ -385,20 +386,47 @@ app.get("/api/base-products", authMiddleware, (req, res) => {
 });
 
 app.get("/api/base-products/:id", authMiddleware, (req, res) => {
-  const p = db.prepare("SELECT bp.*,m.name as model_name,m.cost_price,m.drop_price,m.is_ready_product,c.name as color_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id WHERE bp.id=?").get(req.params.id);
+  const p = db.prepare("SELECT bp.*,m.name as model_name,m.cost_price,m.drop_price,m.is_ready_product,m.id as mid,c.name as color_name,c.hex_code FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id WHERE bp.id=?").get(req.params.id);
   if (!p) return res.status(404).json({ error: "Не знайдено" });
   p.stock = db.prepare("SELECT sb.*,s.name as size_name FROM stock_base sb JOIN sizes s ON sb.size_id=s.id WHERE sb.base_product_id=? ORDER BY s.sort_order").all(p.id);
   p.variations = db.prepare("SELECT v.*,pr.name as print_name FROM variations v LEFT JOIN prints pr ON v.print_id=pr.id WHERE v.base_product_id=?").all(p.id);
+  p.workers = db.prepare("SELECT mw.*,u.name as worker_name FROM model_workers mw JOIN users u ON mw.user_id=u.id WHERE mw.model_id=?").all(p.mid);
+  p.all_colors = db.prepare("SELECT * FROM colors ORDER BY sort_order").all();
   res.json({ product: p });
 });
 
 app.put("/api/base-products/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, active } = req.body;
+  const { name, photo, active, color_id, cost_price, drop_price } = req.body;
   const s=[],v=[];
   if(name!==undefined){s.push("name=?");v.push(name)}
   if(photo!==undefined){s.push("photo=?");v.push(photo)}
   if(active!==undefined){s.push("active=?");v.push(active?1:0)}
+  if(color_id!==undefined){s.push("color_id=?");v.push(color_id)}
+  if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
+  if(drop_price!==undefined){s.push("drop_price=?");v.push(parseFloat(drop_price)||0)}
   if(s.length){v.push(req.params.id);db.prepare(`UPDATE base_products SET ${s.join(",")} WHERE id=?`).run(...v)}
+  res.json({ ok: true });
+});
+
+// Directly set stock quantity for a product+size
+app.post("/api/stock/set", authMiddleware, (req, res) => {
+  const { base_product_id, size_id, quantity } = req.body;
+  if(!base_product_id || !size_id) return res.status(400).json({ error: "Missing fields" });
+  const qty = parseInt(quantity) || 0;
+  db.prepare("UPDATE stock_base SET quantity=? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, size_id);
+  res.json({ ok: true });
+});
+
+// Update model workers from product context
+app.put("/api/model-workers/:model_id", authMiddleware, requireRole("admin"), (req, res) => {
+  const mid = parseInt(req.params.model_id);
+  const { workers } = req.body;
+  if(!workers) return res.status(400).json({ error: "No workers" });
+  db.transaction(() => {
+    db.prepare("DELETE FROM model_workers WHERE model_id=?").run(mid);
+    const lw = db.prepare("INSERT INTO model_workers(model_id,user_id,amount)VALUES(?,?,?)");
+    workers.forEach(w => lw.run(mid, w.user_id, parseFloat(w.amount)||0));
+  })();
   res.json({ ok: true });
 });
 

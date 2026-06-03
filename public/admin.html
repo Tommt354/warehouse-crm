@@ -241,19 +241,21 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveInc()">💾 Оприбуткувати</button><button class="btn" onclick="closeM('inc-modal')">Скасувати</button></div>
 </div></div>
 
-<div class="modal-bg" id="edit-bp-modal"><div class="modal"><h3 id="ebp-t">Редагувати товар</h3>
+<div class="modal-bg" id="edit-bp-modal"><div class="modal" style="max-width:560px"><h3 id="ebp-t">Редагувати товар</h3>
 <div class="fld"><label>Назва</label><input id="ebp-name"></div>
 <div class="fld-row">
   <div class="fld"><label>Собівартість ₴</label><input id="ebp-cost" type="number"></div>
   <div class="fld"><label>Дроп-ціна ₴</label><input id="ebp-drop" type="number"></div>
 </div>
-<div class="fld"><label>Колір</label><div id="ebp-color" style="font-size:12px;color:var(--th)"></div></div>
-<div class="fld"><label>Модель</label><div id="ebp-model" style="font-size:12px;color:var(--td)"></div></div>
-<div class="fld"><label>Варіації</label><div id="ebp-vars" style="font-size:11px;color:var(--td)"></div></div>
-<div class="fld"><label>Залишки</label><div id="ebp-stock" style="font-size:11px"></div></div>
-<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ebp-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ebp-fi').click()">📷 Змінити</button><input type="file" id="ebp-fi" accept="image/*" style="display:none" onchange="uploadBpPhoto(event)"></div></div>
+<div class="fld"><label>Колір</label><select id="ebp-color"></select></div>
+<div class="fld"><label>Залишки (можна змінювати)</label><div id="ebp-stock"></div></div>
+<div class="fld"><label>Працівники</label><div id="ebp-workers"></div>
+<div style="margin-top:4px"><select id="ebp-wadd" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати працівника</option></select></div></div>
+<div class="fld"><label>Варіації</label><div id="ebp-vars" style="font-size:11px;color:var(--td);max-height:100px;overflow-y:auto"></div></div>
+<div class="fld"><label>Модель</label><div id="ebp-model" style="font-size:11px;color:var(--td)"></div></div>
+<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ebp-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ebp-fi').click()">📷</button><input type="file" id="ebp-fi" accept="image/*" style="display:none" onchange="uploadBpPhoto(event)"></div></div>
 <div class="fld"><label>Статус</label><select id="ebp-active"><option value="1">Активний</option><option value="0">Вимкнений</option></select></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditBp()">💾 Зберегти</button><button class="btn" onclick="closeM('edit-bp-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditBp()">🗑 Видалити</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditBp()">💾 Зберегти</button><button class="btn" onclick="closeM('edit-bp-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditBp()">🗑</button></div>
 </div></div>
 
 <div class="modal-bg" id="edit-var-modal"><div class="modal"><h3 id="ev-t">Редагувати варіацію</h3>
@@ -331,9 +333,7 @@ async function viewModel(id){
   document.getElementById("mv-t").textContent=m.name;
   let h=`<div style="font-size:12px">
   <div class="acts" style="margin-bottom:10px">
-    <button class="btn btn-a" onclick="editModelFields(${m.id})">✏️ Редагувати модель</button>
     <button class="btn btn-d" onclick="deleteModel(${m.id})">🗑 Видалити модель</button>
-    <button class="btn" style="border-color:var(--warn);color:var(--warn)" onclick="regenerateModel(${m.id})">🔄 Перегенерувати товари</button>
   </div>
   <div class="fld-row"><div><strong>Тип:</strong> ${m.is_ready_product?"Готовий":"База"}</div><div><strong>Категорія:</strong> ${esc(m.category_name||"—")}</div></div>
   <div class="fld-row" style="margin-top:6px"><div><strong>Собівартість:</strong> ${m.cost_price}₴</div><div><strong>Дроп-ціна:</strong> ${m.drop_price}₴</div></div>
@@ -513,22 +513,56 @@ async function delCatFn(id,name){if(!confirm(`Видалити "${name}"?`))retu
 function delCat(){if(editCatId)delCatFn(editCatId,"")}
 
 // ── Edit base product ────────────────────────────────────────────
+let bpWorkers=[];
 async function openEditBp(id){
   const{product:p}=await api("/api/base-products/"+id);editBpId=id;
   document.getElementById("ebp-t").textContent="✏️ "+p.name;
   document.getElementById("ebp-name").value=p.name;
   document.getElementById("ebp-cost").value=p.cost_price||0;
   document.getElementById("ebp-drop").value=p.drop_price||0;
-  document.getElementById("ebp-color").innerHTML=p.color_name?`<span class="cdot" style="background:${p.hex_code||'#888'}"></span> ${esc(p.color_name)}`:"—";
-  document.getElementById("ebp-model").textContent=p.model_name||"—";
   document.getElementById("ebp-active").value=p.active?"1":"0";
-  document.getElementById("ebp-stock").innerHTML=p.stock.map(s=>`<span style="margin-right:6px">${s.size_name}: <b>${s.quantity}</b></span>`).join("");
-  document.getElementById("ebp-vars").innerHTML=p.variations.map(v=>`${esc(v.name)}${v.print_name?" ("+esc(v.print_name)+")":""}`).join("<br>")||"—";
+  document.getElementById("ebp-model").textContent=`${p.model_name||"—"} (ID: ${p.model_id})`;
+  // Color select
+  const cs=document.getElementById("ebp-color");
+  cs.innerHTML=`<option value="">— без кольору —</option>`;
+  (p.all_colors||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}"${c.id==p.color_id?" selected":""}>${esc(c.name)}</option>`);
+  // Stock - editable inputs
+  document.getElementById("ebp-stock").innerHTML=p.stock.map(s=>`<div class="fld-row" style="margin-bottom:3px"><div style="padding:5px 0;font-size:11px;color:var(--th)">${s.size_name}</div><div><input type="number" data-sid="${s.size_id}" value="${s.quantity}" min="0" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff;width:70px;text-align:center"></div></div>`).join("");
+  // Workers
+  bpWorkers=(p.workers||[]).map(w=>({user_id:w.user_id,name:w.worker_name,amount:w.amount}));
+  renderBpWorkers();
+  const ws=document.getElementById("ebp-wadd");ws.innerHTML='<option value="">+ працівник</option>';
+  try{(await api("/api/users?role=warehouse")).users.forEach(u=>ws.innerHTML+=`<option value="${u.id}">${esc(u.name)}</option>`)}catch(e){}
+  ws.onchange=function(){if(this.value){bpWorkers.push({user_id:parseInt(this.value),name:this.options[this.selectedIndex].text,amount:0});this.value="";renderBpWorkers()}};
+  // Variations
+  document.getElementById("ebp-vars").innerHTML=p.variations.map(v=>`${esc(v.name)}${v.print_name?" <span class='tag tag-y'>"+esc(v.print_name)+"</span>":""}`).join("<br>")||"—";
+  // Photo
   document.getElementById("ebp-photo").innerHTML=p.photo?`<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";
   openM("edit-bp-modal");
 }
+function renderBpWorkers(){document.getElementById("ebp-workers").innerHTML=bpWorkers.map((w,i)=>`<div class="wrow"><span class="wname">${esc(w.name)}</span><input type="number" value="${w.amount}" onchange="bpWorkers[${i}].amount=parseFloat(this.value)||0" placeholder="₴"><button class="wdel" onclick="bpWorkers.splice(${i},1);renderBpWorkers()">✕</button></div>`).join("")||'<div style="font-size:10px;color:var(--td)">Немає працівників</div>'}
 async function uploadBpPhoto(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const{url}=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});await api(`/api/base-products/${editBpId}`,{method:"PUT",body:JSON.stringify({photo:url})});document.getElementById("ebp-photo").innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover">`}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
-async function saveEditBp(){try{await api(`/api/base-products/${editBpId}`,{method:"PUT",body:JSON.stringify({name:document.getElementById("ebp-name").value,active:document.getElementById("ebp-active").value==="1"})});closeM("edit-bp-modal");loadSBase()}catch(e){alert(e.message)}}
+async function saveEditBp(){
+  try{
+    // Save product fields
+    await api(`/api/base-products/${editBpId}`,{method:"PUT",body:JSON.stringify({
+      name:document.getElementById("ebp-name").value,
+      cost_price:parseFloat(document.getElementById("ebp-cost").value)||0,
+      drop_price:parseFloat(document.getElementById("ebp-drop").value)||0,
+      color_id:document.getElementById("ebp-color").value||null,
+      active:document.getElementById("ebp-active").value==="1"
+    })});
+    // Save stock quantities
+    const stocks=[...document.querySelectorAll("#ebp-stock input[data-sid]")];
+    for(const el of stocks){
+      await api("/api/stock/set",{method:"POST",body:JSON.stringify({base_product_id:editBpId,size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})});
+    }
+    // Save workers (updates model workers)
+    const p=await api("/api/base-products/"+editBpId);
+    await api(`/api/model-workers/${p.product.model_id||p.product.mid}`,{method:"PUT",body:JSON.stringify({workers:bpWorkers.map(w=>({user_id:w.user_id,amount:w.amount}))})});
+    closeM("edit-bp-modal");loadSBase();
+  }catch(e){alert(e.message)}
+}
 async function deleteEditBp(){if(!confirm("Видалити товар і всі його варіації?"))return;await api(`/api/base-products/${editBpId}`,{method:"DELETE"});closeM("edit-bp-modal");loadSBase()}
 
 // ── Edit variation ───────────────────────────────────────────────
