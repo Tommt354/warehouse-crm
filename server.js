@@ -717,14 +717,54 @@ app.post("/api/orders", authMiddleware, (req, res) => {
       orderChannel = firstVar?.drop_channel || "";
     }
 
-    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel)VALUES(?,?,?,?,?,?,?,?,?,?)")
-      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel);
+    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel,is_prepaid,receipt_photo,declared_value)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel, req.body.is_prepaid?1:0, req.body.receipt_photo||"", parseFloat(req.body.declared_value)||0);
 
     const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id)VALUES(?,?,?,?,?,?,?)");
     orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id));
 
-    return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout };
+    return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout, is_prepaid: req.body.is_prepaid?1:0 };
   })();
+
+  // Auto-generate TTN for COD orders (not prepaid)
+  if (!result.is_prepaid && result.order_id) {
+    try {
+      const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+      const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
+      if (apiKey && sender) {
+        // Trigger TTN creation asynchronously
+        const ttnReq = { params: { order_id: result.order_id }, user: req.user };
+        setTimeout(async () => {
+          try {
+            const o2 = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(result.order_id);
+            if (!o2 || o2.ttn) return;
+            const cityRes = await npApi(apiKey, "Address", "searchSettlements", { CityName: o2.client_city, Limit: 1 });
+            const cityData = cityRes.data?.[0]?.Addresses?.[0];
+            if (!cityData) return;
+            const whNum = o2.client_warehouse.replace(/\D/g, "");
+            const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.Ref, FindByString: whNum ? "№" + whNum : o2.client_warehouse });
+            const whData = whRes.data?.[0];
+            if (!whData) return;
+            const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o2.id).c || 1;
+            const docData = {
+              PayerType: "Recipient", PaymentMethod: "Cash",
+              DateTime: new Date().toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }),
+              CargoType: "Parcel", Weight: String(Math.max(0.5, itemsCount * 0.3)), ServiceType: "WarehouseWarehouse", SeatsAmount: "1", Description: "Одяг",
+              BackwardDeliveryData: o2.cod_amount > 0 ? [{ PayerType: "Recipient", CargoType: "Money", RedeliveryString: String(o2.cod_amount) }] : undefined,
+              Sender: sender.sender_ref, SenderAddress: sender.address_ref, ContactSender: sender.contact_ref, SendersPhone: sender.phone,
+              RecipientCityName: o2.client_city, RecipientAddressName: whData.Number || whNum,
+              RecipientName: o2.client_name, RecipientType: "PrivatePerson",
+              RecipientsPhone: o2.client_phone.replace(/[^\d+]/g, ""), RecipientAddress: whData.Ref, RecipientSettlementRef: cityData.Ref,
+            };
+            const r2 = await npApi(apiKey, "InternetDocument", "save", docData);
+            if (r2.success && r2.data?.[0]) {
+              db.prepare("UPDATE orders SET ttn=?,np_ref=?,status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(r2.data[0].IntDocNumber, r2.data[0].Ref, o2.id);
+            }
+          } catch(e) { console.log("Auto-TTN error:", e.message); }
+        }, 1000);
+      }
+    } catch(e) {}
+  }
 
   res.json({ ok: true, ...result });
 });

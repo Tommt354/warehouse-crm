@@ -275,6 +275,9 @@ addCol("models","drop_channel","TEXT DEFAULT 'hot'");
 addCol("order_items","drop_channel","TEXT DEFAULT ''");
 addCol("kits","drop_channel","TEXT DEFAULT 'hot'");
 addCol("orders","drop_channel","TEXT DEFAULT ''");
+addCol("orders","is_prepaid","INTEGER DEFAULT 0");
+addCol("orders","receipt_photo","TEXT DEFAULT ''");
+addCol("orders","declared_value","REAL DEFAULT 0");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){
