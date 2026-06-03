@@ -710,8 +710,15 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     const cod = parseFloat(cod_amount) || 0;
     const payout = Math.round((cod - totalDrop) * 100) / 100;
 
-    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note)VALUES(?,?,?,?,?,?,?,?,?)")
-      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"");
+    // Detect channel from first variation
+    let orderChannel = "";
+    if (orderItems.length) {
+      const firstVar = db.prepare("SELECT m.drop_channel FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(orderItems[0].variation_id);
+      orderChannel = firstVar?.drop_channel || "";
+    }
+
+    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel)VALUES(?,?,?,?,?,?,?,?,?,?)")
+      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel);
 
     const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id)VALUES(?,?,?,?,?,?,?)");
     orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id));
@@ -724,13 +731,16 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 
 // List orders
 app.get("/api/orders", authMiddleware, (req, res) => {
-  const { status, limit, ready } = req.query;
+  const { status, limit, ready, channel, date_from, date_to } = req.query;
   let q = "SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id";
   const params = [];
   const where = [];
 
   if (req.user.role === "dropshipper") { where.push("o.dropshipper_id=?"); params.push(req.user.id); }
   if (status) { where.push("o.status=?"); params.push(status); }
+  if (channel) { where.push("o.drop_channel=?"); params.push(channel); }
+  if (date_from) { where.push("o.created_at>=?"); params.push(date_from); }
+  if (date_to) { where.push("o.created_at<=?"); params.push(date_to + " 23:59:59"); }
 
   if (where.length) q += " WHERE " + where.join(" AND ");
   q += " ORDER BY o.created_at DESC";
@@ -739,10 +749,8 @@ app.get("/api/orders", authMiddleware, (req, res) => {
   const orders = db.prepare(q).all(...params);
   orders.forEach(o => {
     o.items_count = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 0;
-    // Check if order has ready product items
     const readyCount = db.prepare("SELECT COUNT(*) as c FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE oi.order_id=? AND m.is_ready_product=1").get(o.id).c;
     o.has_ready_items = readyCount > 0;
-    o.all_ready = readyCount === (db.prepare("SELECT COUNT(*) as c FROM order_items WHERE order_id=?").get(o.id).c || 0);
   });
 
   // Filter by ready if requested

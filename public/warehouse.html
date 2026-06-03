@@ -87,7 +87,9 @@
       <button class="main-tab" id="rf-0" onclick="whReady='0';loadOrders()">🖨 Не готові</button>
       <button class="main-tab" id="rf-1" onclick="whReady='1';loadOrders()">✅ Готові товари</button>
     </div>
+    <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center"><button class="stab" id="wc-" onclick="whCh='';loadOrders()">Всі</button><button class="stab" id="wc-hot" onclick="whCh='hot';loadOrders()">🔥 HOT</button><button class="stab" id="wc-ads" onclick="whCh='ads';loadOrders()">📢 ADS</button><input type="date" id="wh-df" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit" onchange="loadOrders()"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="wh-dt" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit" onchange="loadOrders()"></div>
     <div class="stabs" id="wh-stabs"></div>
+    <div style="margin-bottom:10px"><button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="trackAll()">🔄 Оновити статуси НП</button></div>
     <div id="wh-orders"></div>
   </div>
   <div id="v-returns" style="display:none">
@@ -134,7 +136,7 @@
 </div></div>
 
 <script>
-let ME,whStatus="",whReady="",whProducts=[],whSizes=[];
+let ME,whStatus="",whReady="",whCh="",whProducts=[],whSizes=[];
 const SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 const WHS=[{key:"",label:"📋 Всі"},{key:"new",label:"📥 Нові",next:"in_progress",nl:"🔧 Взяти"},{key:"in_progress",label:"🔧 В роботі",next:"packed",nl:"✅ Готово"},{key:"packed",label:"✅ Готові"},{key:"shipped",label:"🚚 Відправлені"},{key:"delivered",label:"📬 Отримані"},{key:"refused",label:"❌ Відмови"},{key:"cancelled",label:"🚫 Скасовані"}];
@@ -165,7 +167,9 @@ function renderStabs(){
 async function loadOrders(){
   renderStabs();
   document.querySelectorAll("[id^=rf-]").forEach(function(b){b.classList.toggle("on",b.id===("rf-"+(whReady||"all")))});
-  var r;try{r=await api("/api/orders?limit=50"+(whStatus?"&status="+whStatus:"")+(whReady?"&ready="+whReady:""))}catch(e){return}
+  document.querySelectorAll("[id^=wc-]").forEach(function(b){b.classList.toggle("on",b.id==="wc-"+whCh)});
+  var df=document.getElementById("wh-df").value,dt=document.getElementById("wh-dt").value;
+  var r;try{r=await api("/api/orders?limit=50"+(whStatus?"&status="+whStatus:"")+(whReady?"&ready="+whReady:"")+(whCh?"&channel="+whCh:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:""))}catch(e){return}
   var orders=r.orders;
   var el=document.getElementById("wh-orders");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📭</span>Немає замовлень</div>';return}
@@ -199,8 +203,10 @@ async function loadOrders(){
     }
     if(o.note)html+='<div style="padding:0 16px 10px"><div class="ocard-note">📝 '+esc(o.note)+'</div></div>';
     var osi=WHS.find(function(s){return s.key===o.status});
-    html+='<div class="ocard-footer"><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div><div style="display:flex;gap:8px">';
+    html+='<div class="ocard-footer"><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
     if(osi&&osi.next)html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\')">'+osi.nl+'</button>';
+    if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="createTTN('+o.id+')">📦 Створити ТТН</button>';
+    if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="printTTN('+o.id+')">🖨 Друк ТТН</button>';
     if(o.status==="new")html+='<button class="btn btn-d btn-sm" onclick="canOrd('+o.id+')">✕</button>';
     html+='</div></div></div>';
   }
@@ -209,6 +215,19 @@ async function loadOrders(){
 async function chSt(id,st){await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadOrders()}
 async function canOrd(id){if(!confirm("Скасувати?"))return;await api("/api/orders/"+id+"/cancel",{method:"POST"});loadOrders()}
 async function useRet(id){try{await api("/api/order-items/"+id+"/use-return",{method:"POST",body:JSON.stringify({})});loadOrders()}catch(e){}}
+
+async function createTTN(id){
+  try{var r=await api("/api/nova-poshta/create-ttn/"+id,{method:"POST"});loadOrders()}catch(e){
+    var msg=e.message||"Помилка";
+    document.getElementById("wh-orders").insertAdjacentHTML("afterbegin",'<div class="msg msg-err" style="margin-bottom:10px">❌ '+esc(msg)+'</div>');
+  }
+}
+async function printTTN(id){
+  try{var r=await api("/api/nova-poshta/print/"+id);if(r.url)window.open(r.url,"_blank")}catch(e){}
+}
+async function trackAll(){
+  try{var r=await api("/api/nova-poshta/track-all",{method:"POST"});loadOrders()}catch(e){}
+}
 
 // ── RETURNS ──────────────────────────────────────────────────────
 async function scanTTN(){

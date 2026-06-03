@@ -274,6 +274,7 @@ addCol("orders","ttn_return","TEXT DEFAULT ''");
 addCol("models","drop_channel","TEXT DEFAULT 'hot'");
 addCol("order_items","drop_channel","TEXT DEFAULT ''");
 addCol("kits","drop_channel","TEXT DEFAULT 'hot'");
+addCol("orders","drop_channel","TEXT DEFAULT ''");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){

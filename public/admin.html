@@ -181,6 +181,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 
 <div class="page" id="pg-orders"><div class="pt">📋 Замовлення</div>
 <div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';loadAdmOrders(admOrdFilter)">🖨 Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';loadAdmOrders(admOrdFilter)">✅ Готові товари</button></div>
+<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';loadAdmOrders(admOrdFilter)">🔥 HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';loadAdmOrders(admOrdFilter)">📢 ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;font-family:inherit" onchange="loadAdmOrders(admOrdFilter)"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;font-family:inherit" onchange="loadAdmOrders(admOrdFilter)"></div>
 <div class="acts" style="flex-wrap:wrap;gap:4px">
   <button class="btn" onclick="loadAdmOrders('')" id="ao-all">Всі</button>
   <button class="btn" onclick="loadAdmOrders('new')" id="ao-new">Нові</button>
@@ -784,7 +785,7 @@ async function saveKit(){
 // ── Admin Orders (big cards like warehouse) ──────────────────────
 const OSL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
 const OSC={new:"tag-g",in_progress:"tag-b",packed:"tag-g",shipped:"tag-y",delivering:"tag-y",delivered:"tag-g",refused:"tag-r",cancelled:"tag-r"};
-let admOrdFilter="",admReady="";
+let admOrdFilter="",admReady="",admCh="";
 async function loadAdmOrders(status){
   admOrdFilter=status;
   document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");
