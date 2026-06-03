@@ -119,10 +119,10 @@
 </div></div>
 
 <script>
-let ME,whStatus="new",whReady="",whProducts=[],whSizes=[];
+let ME,whStatus="",whReady="",whProducts=[],whSizes=[];
 const SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
-const WHS=[{key:"new",label:"📥 Нові",next:"in_progress",nl:"🔧 Взяти"},{key:"in_progress",label:"🔧 В роботі",next:"packed",nl:"✅ Готово"},{key:"packed",label:"✅ Готові"},{key:"shipped",label:"🚚 Відправлені"},{key:"delivered",label:"📬 Отримані"},{key:"refused",label:"❌ Відмови"},{key:"cancelled",label:"🚫 Скасовані"}];
+const WHS=[{key:"",label:"📋 Всі"},{key:"new",label:"📥 Нові",next:"in_progress",nl:"🔧 Взяти"},{key:"in_progress",label:"🔧 В роботі",next:"packed",nl:"✅ Готово"},{key:"packed",label:"✅ Готові"},{key:"shipped",label:"🚚 Відправлені"},{key:"delivered",label:"📬 Отримані"},{key:"refused",label:"❌ Відмови"},{key:"cancelled",label:"🚫 Скасовані"}];
 
 async function init(){
   try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;loadOrders();
@@ -150,11 +150,10 @@ function renderStabs(){
 async function loadOrders(){
   renderStabs();
   document.querySelectorAll("[id^=rf-]").forEach(function(b){b.classList.toggle("on",b.id===("rf-"+(whReady||"all")))});
-  var r;try{r=await api("/api/orders?status="+whStatus+"&limit=50"+(whReady?"&ready="+whReady:""))}catch(e){return}
+  var r;try{r=await api("/api/orders?limit=50"+(whStatus?"&status="+whStatus:"")+(whReady?"&ready="+whReady:""))}catch(e){return}
   var orders=r.orders;
   var el=document.getElementById("wh-orders");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📭</span>Немає замовлень</div>';return}
-  var si=WHS.find(function(s){return s.key===whStatus});
   var html="";
   for(var oi=0;oi<orders.length;oi++){
     var o=orders[oi];
@@ -183,9 +182,10 @@ async function loadOrders(){
       html+='</div></div>';
     }
     if(o.note)html+='<div style="padding:0 16px 10px"><div class="ocard-note">📝 '+esc(o.note)+'</div></div>';
+    var osi=WHS.find(function(s){return s.key===o.status});
     html+='<div class="ocard-footer"><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div><div style="display:flex;gap:8px">';
-    if(si&&si.next)html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+si.next+'\')">'+si.nl+'</button>';
-    if(whStatus==="new")html+='<button class="btn btn-d btn-sm" onclick="canOrd('+o.id+')">✕</button>';
+    if(osi&&osi.next)html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\')">'+osi.nl+'</button>';
+    if(o.status==="new")html+='<button class="btn btn-d btn-sm" onclick="canOrd('+o.id+')">✕</button>';
     html+='</div></div></div>';
   }
   el.innerHTML=html;
