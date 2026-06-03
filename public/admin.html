@@ -9,387 +9,601 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min-height:100vh}
 .app{display:flex;min-height:100vh}
-/* Sidebar */
-.side{width:220px;background:var(--card);border-right:1px solid var(--brd);padding:20px 0;display:flex;flex-direction:column;position:fixed;height:100vh;z-index:10}
-.side-logo{padding:0 18px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:10px}
-.side-logo h2{font-size:15px;color:var(--th);font-weight:700}
-.side-logo small{display:block;font-size:10px;color:var(--td);font-weight:400;margin-top:1px}
-.side-nav{flex:1;padding:12px 0}
-.side-nav a{display:flex;align-items:center;gap:10px;padding:10px 18px;color:var(--td);text-decoration:none;font-size:13px;font-weight:500;transition:.15s;cursor:pointer}
+.side{width:200px;background:var(--card);border-right:1px solid var(--brd);padding:16px 0;display:flex;flex-direction:column;position:fixed;height:100vh;z-index:10;overflow-y:auto}
+.side-logo{padding:0 14px 16px;border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:8px}
+.side-logo h2{font-size:14px;color:var(--th);font-weight:700}
+.side-nav{flex:1;padding:8px 0}
+.side-nav .nav-group{font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.8px;padding:12px 14px 4px;font-weight:600}
+.side-nav a{display:flex;align-items:center;gap:8px;padding:8px 14px;color:var(--td);text-decoration:none;font-size:12px;font-weight:500;transition:.15s;cursor:pointer}
 .side-nav a:hover{color:var(--t);background:rgba(255,255,255,.02)}
 .side-nav a.on{color:var(--acc);background:var(--accbg);border-right:2px solid var(--acc)}
-.side-nav a .icon{font-size:16px;width:22px;text-align:center}
-.side-bottom{padding:12px 18px;border-top:1px solid var(--brd)}
-.side-user{font-size:12px;color:var(--td);margin-bottom:8px}
+.side-bottom{padding:10px 14px;border-top:1px solid var(--brd)}
+.side-user{font-size:11px;color:var(--td);margin-bottom:6px}
 .side-user strong{color:var(--th);display:block}
-.btn-logout{background:none;border:1px solid var(--brd);border-radius:8px;color:var(--td);padding:7px 14px;font-size:12px;font-family:inherit;cursor:pointer;width:100%;transition:.15s}
-.btn-logout:hover{border-color:var(--red);color:var(--red)}
-/* Main */
-.main{margin-left:220px;flex:1;padding:24px 28px 40px;min-height:100vh}
+.btn-out{background:none;border:1px solid var(--brd);border-radius:6px;color:var(--td);padding:6px 12px;font-size:11px;font-family:inherit;cursor:pointer;width:100%}
+.btn-out:hover{border-color:var(--red);color:var(--red)}
+.main{margin-left:200px;flex:1;padding:20px 24px 40px}
 .page{display:none}.page.on{display:block}
-.page-title{font-size:20px;font-weight:700;color:var(--th);margin-bottom:20px}
-/* Cards grid */
-.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
-.sc{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:18px;text-align:center}
-.sc .sv{font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:700;line-height:1}
-.sc .sl{font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:.8px;margin-top:6px}
-/* Table */
-.tbl{width:100%;border-collapse:collapse;font-size:13px}
-.tbl th{text-align:left;color:var(--td);font-weight:600;padding:10px 12px;border-bottom:2px solid var(--brd);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-.tbl td{padding:10px 12px;border-bottom:1px solid var(--brd);vertical-align:middle}
+.pt{font-size:18px;font-weight:700;color:var(--th);margin-bottom:16px}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px}
+.sc{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:14px;text-align:center}
+.sc .sv{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;line-height:1}
+.sc .sl{font-size:9px;color:var(--td);text-transform:uppercase;letter-spacing:.6px;margin-top:4px}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;color:var(--td);font-weight:600;padding:8px 10px;border-bottom:2px solid var(--brd);font-size:10px;text-transform:uppercase;letter-spacing:.4px}
+.tbl td{padding:8px 10px;border-bottom:1px solid var(--brd);vertical-align:middle}
 .tbl tr:hover td{background:rgba(255,255,255,.015)}
-.tbl .mono{font-family:'JetBrains Mono',monospace;font-size:12px}
-/* Buttons */
-.btn{padding:8px 16px;font-size:13px;font-family:inherit;font-weight:500;border:1px solid var(--brd);border-radius:8px;cursor:pointer;transition:.15s;background:var(--card);color:var(--t)}
-.btn:hover{border-color:var(--brd2)}.btn:disabled{opacity:.4;cursor:default}
-.btn-a{border-color:rgba(0,212,170,.2);color:var(--acc);background:transparent}.btn-a:hover{background:var(--accbg)}
-.btn-d{border-color:rgba(255,107,107,.15);color:var(--red)}.btn-d:hover{background:var(--redbg)}
-.btn-primary{background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600}.btn-primary:hover{opacity:.9}
-.btn-sm{padding:5px 10px;font-size:11px}
-.acts{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-/* Modal */
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px}
+.btn{padding:7px 14px;font-size:12px;font-family:inherit;font-weight:500;border:1px solid var(--brd);border-radius:8px;cursor:pointer;transition:.15s;background:var(--card);color:var(--t)}
+.btn:hover{border-color:var(--brd2)}.btn:disabled{opacity:.4}
+.btn-a{border-color:rgba(0,212,170,.2);color:var(--acc)}.btn-a:hover{background:var(--accbg)}
+.btn-d{border-color:rgba(255,107,107,.15);color:var(--red)}
+.btn-p{background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600}.btn-p:hover{opacity:.9}
+.btn-sm{padding:4px 8px;font-size:10px}
+.acts{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
 .modal-bg.on{display:flex}
-.modal{background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:24px;width:90%;max-width:480px;max-height:85vh;overflow-y:auto}
-.modal h3{font-size:17px;font-weight:700;color:var(--th);margin-bottom:18px}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:11px;color:var(--td);margin-bottom:5px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
-.field input,.field select{width:100%;padding:10px 12px;font-size:14px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:8px;color:#fff;outline:0;transition:.2s}
+.modal{background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:22px;width:92%;max-width:520px;max-height:85vh;overflow-y:auto}
+.modal h3{font-size:16px;font-weight:700;color:var(--th);margin-bottom:16px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:10px;color:var(--td);margin-bottom:4px;font-weight:500;text-transform:uppercase;letter-spacing:.4px}
+.field input,.field select,.field textarea{width:100%;padding:9px 11px;font-size:13px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:8px;color:#fff;outline:0;transition:.2s}
 .field input:focus,.field select:focus{border-color:var(--acc)}
-.field select{cursor:pointer}
-.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.field small{font-size:11px;color:var(--td);margin-top:3px;display:block}
-/* Tags */
-.tag{display:inline-block;font-size:10px;font-weight:600;padding:3px 8px;border-radius:6px}
-.tag-green{background:var(--accbg);color:var(--acc);border:1px solid rgba(0,212,170,.15)}
-.tag-red{background:var(--redbg);color:var(--red);border:1px solid rgba(255,107,107,.15)}
-.tag-blue{background:rgba(66,165,245,.06);color:var(--blue);border:1px solid rgba(66,165,245,.15)}
-.tag-yellow{background:var(--warnbg);color:var(--warn);border:1px solid rgba(255,167,38,.15)}
+.field textarea{resize:vertical;min-height:60px}
+.field small{font-size:10px;color:var(--td);margin-top:2px;display:block}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tag{display:inline-block;font-size:9px;font-weight:600;padding:2px 7px;border-radius:5px}
+.tag-g{background:var(--accbg);color:var(--acc);border:1px solid rgba(0,212,170,.15)}
+.tag-r{background:var(--redbg);color:var(--red);border:1px solid rgba(255,107,107,.15)}
+.tag-b{background:rgba(66,165,245,.06);color:var(--blue);border:1px solid rgba(66,165,245,.15)}
+.tag-y{background:var(--warnbg);color:var(--warn);border:1px solid rgba(255,167,38,.15)}
 .tag-gray{background:rgba(255,255,255,.03);color:var(--td);border:1px solid var(--brd)}
-.msg{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:14px}
+.msg{padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:12px}
 .msg-ok{background:var(--accbg);color:var(--acc);border:1px solid rgba(0,212,170,.15)}
 .msg-err{background:var(--redbg);color:var(--red);border:1px solid rgba(255,107,107,.15)}
-.empty{text-align:center;padding:40px;color:var(--td)}
-.empty .icon{font-size:40px;display:block;margin-bottom:8px}
+.empty{text-align:center;padding:30px;color:var(--td);font-size:13px}
+.empty .ic{font-size:36px;display:block;margin-bottom:6px}
+/* Chips for multi-select */
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.chip{padding:4px 10px;font-size:11px;border-radius:16px;cursor:pointer;border:1px solid var(--brd);color:var(--td);transition:.15s;user-select:none}
+.chip.on{background:var(--accbg);color:var(--acc);border-color:rgba(0,212,170,.3)}
+.chip:hover{border-color:var(--brd2)}
+/* Color dot */
+.cdot{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:middle;margin-right:5px;border:1px solid var(--brd)}
+/* Product card */
+.pcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.pcard{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;transition:.15s}
+.pcard:hover{border-color:var(--brd2)}
+.pcard-img{width:100%;height:140px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td);font-size:11px;overflow:hidden;position:relative;cursor:pointer}
+.pcard-img img{width:100%;height:100%;object-fit:cover}
+.pcard-body{padding:10px 12px}
+.pcard-name{font-size:12px;font-weight:600;color:var(--th);margin-bottom:4px}
+.pcard-cat{font-size:10px;color:var(--td);margin-bottom:6px}
+.pcard-prices{display:flex;gap:6px;margin-bottom:6px}
+.pcard-prices .pp{font-size:10px;padding:2px 6px;border-radius:4px}
+.stock-row{display:flex;gap:3px;flex-wrap:wrap}
+.stock-sz{font-size:10px;padding:2px 6px;border-radius:4px;background:var(--bg);color:var(--t);border:1px solid var(--brd);font-family:'JetBrains Mono',monospace;text-align:center;min-width:36px}
+.stock-sz.zero{color:var(--red);border-color:rgba(255,107,107,.2)}
+.stock-sz.low{color:var(--warn);border-color:rgba(255,167,38,.2)}
+/* Switch */
+.switch{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.switch label{font-size:12px;color:var(--t)}
+.sw-box{width:40px;height:22px;background:var(--brd);border-radius:11px;position:relative;cursor:pointer;transition:.2s}
+.sw-box.on{background:var(--acc)}
+.sw-box::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.2s}
+.sw-box.on::after{left:20px}
+/* Category tree */
+.tree-item{padding:6px 10px;border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:6px;font-size:12px}
+.tree-item .indent{display:inline-block}
+.tree-item .tname{flex:1;color:var(--th)}
 @media(max-width:768px){.side{display:none}.main{margin-left:0}}
 </style>
 </head>
 <body>
 <div class="app">
-  <div class="side">
-    <div class="side-logo">
-      <svg width="28" height="28" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1a1a2e"/><rect x="6" y="8" width="3" height="16" rx="1" fill="#00d4aa"/><rect x="11" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="15" y="8" width="4" height="16" rx="1" fill="#00d4aa"/><rect x="21" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="25" y="8" width="1" height="16" rx=".5" fill="#00d4aa"/></svg>
-      <h2>Warehouse CRM<small>Адмін-панель</small></h2>
-    </div>
-    <div class="side-nav">
-      <a class="on" data-page="dashboard"><span class="icon">📊</span>Дашборд</a>
-      <a data-page="dropshippers"><span class="icon">🛒</span>Дропшипери</a>
-      <a data-page="workers"><span class="icon">👷</span>Працівники</a>
-      <a data-page="settings"><span class="icon">⚙️</span>Налаштування</a>
-    </div>
-    <div class="side-bottom">
-      <div class="side-user"><strong id="user-name">Адмін</strong><span id="user-role">admin</span></div>
-      <button class="btn-logout" onclick="logout()">Вийти</button>
-    </div>
+<div class="side">
+  <div class="side-logo">
+    <svg width="24" height="24" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1a1a2e"/><rect x="6" y="8" width="3" height="16" rx="1" fill="#00d4aa"/><rect x="11" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="15" y="8" width="4" height="16" rx="1" fill="#00d4aa"/><rect x="21" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="25" y="8" width="1" height="16" rx=".5" fill="#00d4aa"/></svg>
+    <h2>CRM</h2>
   </div>
-
-  <div class="main">
-    <!-- DASHBOARD -->
-    <div class="page on" id="pg-dashboard">
-      <div class="page-title">📊 Дашборд</div>
-      <div class="sg" id="dash-stats"></div>
-      <div class="msg msg-ok" style="margin-top:20px">
-        ✅ Модуль 1 працює. Наступні модулі: каталог товарів, замовлення, склад.
-      </div>
-    </div>
-
-    <!-- DROPSHIPPERS -->
-    <div class="page" id="pg-dropshippers">
-      <div class="page-title">🛒 Дропшипери</div>
-      <div class="acts">
-        <button class="btn btn-primary" onclick="openUserModal('dropshipper')">+ Додати дропшипера</button>
-      </div>
-      <div id="drop-list"></div>
-    </div>
-
-    <!-- WORKERS -->
-    <div class="page" id="pg-workers">
-      <div class="page-title">👷 Працівники складу</div>
-      <div class="acts">
-        <button class="btn btn-primary" onclick="openUserModal('warehouse')">+ Додати працівника</button>
-      </div>
-      <div id="worker-list"></div>
-    </div>
-
-    <!-- SETTINGS -->
-    <div class="page" id="pg-settings">
-      <div class="page-title">⚙️ Налаштування</div>
-      <div style="max-width:500px">
-        <div class="field"><label>Назва компанії</label><input id="s-company_name"></div>
-        <div class="field"><label>Поріг залишку (сповіщення)</label><input id="s-stock_warning_threshold" type="number"><small>Кількість, при якій надсилається попередження</small></div>
-        <div class="field"><label>API ключ Нової Пошти</label><input id="s-np_api_key" type="password"></div>
-        <div class="field"><label>Відправник — місто</label><input id="s-sender_city"></div>
-        <div class="field"><label>Відправник — відділення</label><input id="s-sender_warehouse"></div>
-        <div class="field"><label>Відправник — телефон</label><input id="s-sender_phone"></div>
-        <div class="field"><label>Відправник — ПІБ</label><input id="s-sender_name"></div>
-        <button class="btn btn-primary" onclick="saveSettings()" style="margin-top:8px">💾 Зберегти</button>
-        <div id="settings-msg" style="margin-top:10px"></div>
-      </div>
-    </div>
+  <div class="side-nav">
+    <a class="on" data-p="dash"><span>📊</span>Дашборд</a>
+    <div class="nav-group">Каталог</div>
+    <a data-p="dirs"><span>📖</span>Довідники</a>
+    <a data-p="cats"><span>📂</span>Категорії</a>
+    <a data-p="models"><span>🏷</span>Моделі</a>
+    <a data-p="stock"><span>📦</span>Склад</a>
+    <div class="nav-group">Користувачі</div>
+    <a data-p="drops"><span>🛒</span>Дропшипери</a>
+    <a data-p="workers"><span>👷</span>Працівники</a>
+    <div class="nav-group">Система</div>
+    <a data-p="settings"><span>⚙️</span>Налаштування</a>
+  </div>
+  <div class="side-bottom">
+    <div class="side-user"><strong id="u-name">—</strong></div>
+    <button class="btn-out" onclick="logout()">Вийти</button>
   </div>
 </div>
+<div class="main">
 
-<!-- MODAL: Create/Edit User -->
-<div class="modal-bg" id="user-modal">
-  <div class="modal">
-    <h3 id="modal-title">Додати користувача</h3>
-    <div class="field"><label>Логін</label><input id="m-username" placeholder="латиницею, без пробілів"></div>
-    <div class="field"><label>Пароль</label><input id="m-password" type="password" placeholder="мінімум 4 символи"></div>
-    <div class="field"><label>Ім'я / Назва</label><input id="m-name" placeholder="Повне ім'я"></div>
-    <div class="field-row">
-      <div class="field"><label>Телефон</label><input id="m-phone" placeholder="+380..."></div>
-      <div class="field"><label>Telegram</label><input id="m-telegram" placeholder="@username"></div>
-    </div>
-    <div class="field"><label>Email</label><input id="m-email" type="email"></div>
-
-    <!-- Drop fields -->
-    <div id="m-drop-fields" style="display:none">
-      <div class="field-row">
-        <div class="field"><label>Знижка %</label><input id="m-discount_percent" type="number" value="0"><small>Відсоток від дроп-ціни</small></div>
-        <div class="field"><label>Знижка фікс. ₴</label><input id="m-discount_fixed" type="number" value="0"><small>Фіксована сума</small></div>
-      </div>
-    </div>
-
-    <!-- Worker fields -->
-    <div id="m-worker-fields" style="display:none">
-      <div class="field">
-        <label>Роль на складі</label>
-        <select id="m-worker_role">
-          <option value="">— без ролі —</option>
-          <option value="packer">Пакувальник</option>
-          <option value="printer">Принтувальник</option>
-          <option value="sewer">Нашивальник</option>
-          <option value="distributor">Видавач</option>
-        </select>
-      </div>
-      <div class="field"><label>Ставка за одиницю ₴</label><input id="m-worker_rate" type="number" value="0"><small>Ставка за 1 принт / 1 нашивку / 1 видачу / 1 пакування</small></div>
-    </div>
-
-    <div id="modal-error" class="msg msg-err" style="display:none"></div>
-    <div style="display:flex;gap:8px;margin-top:18px">
-      <button class="btn btn-primary" id="modal-save" onclick="saveUser()">Зберегти</button>
-      <button class="btn" onclick="closeModal()">Скасувати</button>
-      <button class="btn btn-d" id="modal-del" onclick="deleteUser()" style="display:none;margin-left:auto">🗑 Видалити</button>
-    </div>
-  </div>
+<!-- DASHBOARD -->
+<div class="page on" id="pg-dash">
+<div class="pt">📊 Дашборд</div>
+<div class="sg" id="dash-s"></div>
 </div>
+
+<!-- ДОВІДНИКИ -->
+<div class="page" id="pg-dirs">
+<div class="pt">📖 Довідники</div>
+<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+  <button class="btn" onclick="showDir('colors')" id="dt-colors">🎨 Кольори</button>
+  <button class="btn" onclick="showDir('sizes')" id="dt-sizes">📏 Розміри</button>
+  <button class="btn" onclick="showDir('prints')" id="dt-prints">🖼 Принти</button>
+  <button class="btn" onclick="showDir('patches')" id="dt-patches">🏷 Нашивки</button>
+</div>
+<div class="acts"><button class="btn btn-p" id="dir-add-btn" onclick="addDirItem()">+ Додати</button></div>
+<div id="dir-list"></div>
+</div>
+
+<!-- КАТЕГОРІЇ -->
+<div class="page" id="pg-cats">
+<div class="pt">📂 Категорії</div>
+<div class="acts"><button class="btn btn-p" onclick="addCat()">+ Нова категорія</button></div>
+<div id="cat-list"></div>
+</div>
+
+<!-- МОДЕЛІ -->
+<div class="page" id="pg-models">
+<div class="pt">🏷 Моделі</div>
+<div class="acts"><button class="btn btn-p" onclick="openModelModal()">+ Нова модель</button></div>
+<div id="model-list"></div>
+</div>
+
+<!-- СКЛАД -->
+<div class="page" id="pg-stock">
+<div class="pt">📦 Склад — Базові товари</div>
+<div class="acts">
+  <button class="btn btn-a" onclick="openIncomingModal()">📥 Прихід товару</button>
+</div>
+<div class="pcards" id="stock-list"></div>
+</div>
+
+<!-- ДРОПШИПЕРИ -->
+<div class="page" id="pg-drops">
+<div class="pt">🛒 Дропшипери</div>
+<div class="acts"><button class="btn btn-p" onclick="openUserModal('dropshipper')">+ Додати</button></div>
+<div id="drop-list"></div>
+</div>
+
+<!-- ПРАЦІВНИКИ -->
+<div class="page" id="pg-workers">
+<div class="pt">👷 Працівники</div>
+<div class="acts"><button class="btn btn-p" onclick="openUserModal('warehouse')">+ Додати</button></div>
+<div id="worker-list"></div>
+</div>
+
+<!-- НАЛАШТУВАННЯ -->
+<div class="page" id="pg-settings">
+<div class="pt">⚙️ Налаштування</div>
+<div style="max-width:460px">
+  <div class="field"><label>Назва</label><input id="s-company_name"></div>
+  <div class="field"><label>Поріг залишку</label><input id="s-stock_warning_threshold" type="number"></div>
+  <div class="field"><label>API ключ НП</label><input id="s-np_api_key" type="password"></div>
+  <div class="field-row">
+    <div class="field"><label>Місто відправника</label><input id="s-sender_city"></div>
+    <div class="field"><label>Відділення</label><input id="s-sender_warehouse"></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Телефон</label><input id="s-sender_phone"></div>
+    <div class="field"><label>ПІБ</label><input id="s-sender_name"></div>
+  </div>
+  <button class="btn btn-p" onclick="saveSets()">💾 Зберегти</button>
+  <div id="set-msg" style="margin-top:8px"></div>
+</div>
+</div>
+
+</div></div>
+
+<!-- MODAL: Directory item -->
+<div class="modal-bg" id="dir-modal"><div class="modal">
+<h3 id="dm-title">Додати</h3>
+<div class="field"><label>Назва</label><input id="dm-name"></div>
+<div class="field" id="dm-hex-wrap" style="display:none"><label>Колір (hex)</label><input id="dm-hex" type="color" value="#808080"></div>
+<div style="display:flex;gap:6px;margin-top:14px">
+  <button class="btn btn-p" onclick="saveDirItem()">Зберегти</button>
+  <button class="btn" onclick="closeM('dir-modal')">Скасувати</button>
+  <button class="btn btn-d btn-sm" id="dm-del" onclick="delDirItem()" style="display:none;margin-left:auto">🗑</button>
+</div>
+</div></div>
+
+<!-- MODAL: Category -->
+<div class="modal-bg" id="cat-modal"><div class="modal">
+<h3 id="cm-title">Нова категорія</h3>
+<div class="field"><label>Назва</label><input id="cm-name"></div>
+<div class="field"><label>Батьківська категорія</label><select id="cm-parent"><option value="">— Кореневий рівень —</option></select></div>
+<div style="display:flex;gap:6px;margin-top:14px">
+  <button class="btn btn-p" onclick="saveCat()">Зберегти</button>
+  <button class="btn" onclick="closeM('cat-modal')">Скасувати</button>
+  <button class="btn btn-d btn-sm" id="cm-del" onclick="delCat()" style="display:none;margin-left:auto">🗑</button>
+</div>
+</div></div>
+
+<!-- MODAL: User -->
+<div class="modal-bg" id="user-modal"><div class="modal">
+<h3 id="um-title">Користувач</h3>
+<div class="field"><label>Логін</label><input id="um-user"></div>
+<div class="field"><label>Пароль</label><input id="um-pass" type="password"></div>
+<div class="field"><label>Ім'я</label><input id="um-name"></div>
+<div class="field-row"><div class="field"><label>Телефон</label><input id="um-phone"></div><div class="field"><label>Telegram</label><input id="um-tg"></div></div>
+<div id="um-drop" style="display:none">
+  <div class="field-row"><div class="field"><label>Знижка %</label><input id="um-dp" type="number" value="0"></div><div class="field"><label>Знижка ₴</label><input id="um-df" type="number" value="0"></div></div>
+</div>
+<div id="um-wrk" style="display:none">
+  <div class="field"><label>Роль</label><select id="um-wr"><option value="">—</option><option value="packer">Пакувальник</option><option value="printer">Принтувальник</option><option value="sewer">Нашивальник</option><option value="distributor">Видавач</option></select></div>
+  <div class="field"><label>Ставка ₴</label><input id="um-wrt" type="number" value="0"></div>
+</div>
+<div id="um-err" class="msg msg-err" style="display:none"></div>
+<div style="display:flex;gap:6px;margin-top:14px">
+  <button class="btn btn-p" onclick="saveUser()">Зберегти</button>
+  <button class="btn" onclick="closeM('user-modal')">Скасувати</button>
+  <button class="btn btn-d btn-sm" id="um-del" onclick="delUser()" style="display:none;margin-left:auto">🗑</button>
+</div>
+</div></div>
+
+<!-- MODAL: Model -->
+<div class="modal-bg" id="model-modal"><div class="modal" style="max-width:580px">
+<h3>Нова модель</h3>
+<div class="field"><label>Назва</label><input id="mm-name" placeholder="Наприклад: Худі флісовий"></div>
+<div class="field"><label>Категорія</label><select id="mm-cat"><option value="">— Без категорії —</option></select></div>
+<div class="switch"><div class="sw-box" id="mm-ready" onclick="toggleReady()"></div><label>Готовий товар (без принтів)</label></div>
+<div class="field-row">
+  <div class="field"><label>Собівартість ₴</label><input id="mm-cost" type="number" value="0"></div>
+  <div class="field"><label>Дроп-ціна ₴</label><input id="mm-drop" type="number" value="0"></div>
+</div>
+<div class="field-row">
+  <div class="field"><label>Ставка пакування ₴</label><input id="mm-rpack" type="number" value="0"></div>
+  <div class="field"><label>Ставка принт ₴</label><input id="mm-rprint" type="number" value="0"></div>
+</div>
+<div class="field-row">
+  <div class="field"><label>Ставка нашивка ₴</label><input id="mm-rsew" type="number" value="0"></div>
+  <div class="field"><label>Ставка видача ₴</label><input id="mm-rdist" type="number" value="0"></div>
+</div>
+<div class="field"><label>Кольори</label><div class="chips" id="mm-colors"></div></div>
+<div class="field"><label>Розміри</label><div class="chips" id="mm-sizes"></div></div>
+<div class="field" id="mm-prints-wrap"><label>Принти</label><div class="chips" id="mm-prints"></div></div>
+<div class="field"><label>Нашивки</label><div class="chips" id="mm-patches"></div></div>
+<div id="mm-err" class="msg msg-err" style="display:none"></div>
+<div id="mm-preview" style="margin:12px 0;font-size:12px;color:var(--td)"></div>
+<div style="display:flex;gap:6px;margin-top:14px">
+  <button class="btn btn-p" onclick="saveModel()">🚀 Створити модель</button>
+  <button class="btn" onclick="closeM('model-modal')">Скасувати</button>
+</div>
+</div></div>
+
+<!-- MODAL: Incoming stock -->
+<div class="modal-bg" id="inc-modal"><div class="modal">
+<h3>📥 Прихід товару</h3>
+<div class="field"><label>Товар</label><select id="inc-bp" onchange="loadIncSizes()"></select></div>
+<div id="inc-sizes"></div>
+<div class="field"><label>Примітка</label><input id="inc-note" placeholder="Необов'язково"></div>
+<div style="display:flex;gap:6px;margin-top:14px">
+  <button class="btn btn-p" onclick="saveIncoming()">💾 Оприбуткувати</button>
+  <button class="btn" onclick="closeM('inc-modal')">Скасувати</button>
+</div>
+</div></div>
+
+<input type="file" id="photo-input" accept="image/*" style="display:none" onchange="handlePhoto(event)">
 
 <script>
-let currentUser=null;
-let editUserId=null;
-let editUserRole=null;
+let ME=null;
+// Cache
+let C_colors=[],C_sizes=[],C_prints=[],C_patches=[],C_cats_flat=[];
+let curDir="colors";
+let editDirId=null,editCatId=null,editUserId=null,editUserRole=null;
+let photoTarget=null; // {type:'bp'|'var', id:N}
 
-// ── Auth check ───────────────────────────────────────────────────
+// ── Init ─────────────────────────────────────────────────────────
 async function init(){
-  try{
-    const r=await fetch("/api/auth/me");
-    if(!r.ok)throw 0;
-    const d=await r.json();
-    currentUser=d.user;
-    document.getElementById("user-name").textContent=currentUser.name||currentUser.username;
-    document.getElementById("user-role").textContent=currentUser.role;
-    loadDashboard();
-  }catch(e){window.location.href="/login"}
+  try{const r=await api("/api/auth/me");ME=r.user;document.getElementById("u-name").textContent=ME.name||ME.username;loadDash()}catch(e){location.href="/login"}
 }
+async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
+function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
+async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Помилка");return d}
+function closeM(id){document.getElementById(id).classList.remove("on")}
+function openM(id){document.getElementById(id).classList.add("on")}
 
-async function logout(){
-  await fetch("/api/auth/logout",{method:"POST"});
-  window.location.href="/login";
-}
-
-// ── Navigation ───────────────────────────────────────────────────
+// ── Nav ──────────────────────────────────────────────────────────
 document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",()=>{
   document.querySelectorAll(".side-nav a").forEach(x=>x.classList.remove("on"));
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
-  a.classList.add("on");
-  document.getElementById("pg-"+a.dataset.page).classList.add("on");
-  if(a.dataset.page==="dashboard")loadDashboard();
-  if(a.dataset.page==="dropshippers")loadDropshippers();
-  if(a.dataset.page==="workers")loadWorkers();
-  if(a.dataset.page==="settings")loadSettings();
+  a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
+  const p=a.dataset.p;
+  if(p==="dash")loadDash();if(p==="dirs")loadDir();if(p==="cats")loadCats();
+  if(p==="models")loadModels();if(p==="stock")loadStock();
+  if(p==="drops")loadDrops();if(p==="workers")loadWorkers();if(p==="settings")loadSets();
 }));
 
-// ── API helper ───────────────────────────────────────────────────
-async function api(url,opts){
-  const r=await fetch(url,{headers:{"Content-Type":"application/json"},...opts});
-  const d=await r.json();
-  if(!r.ok)throw new Error(d.error||"Помилка");
-  return d;
-}
-
 // ── Dashboard ────────────────────────────────────────────────────
-async function loadDashboard(){
-  try{
-    const d=await api("/api/dashboard");
-    document.getElementById("dash-stats").innerHTML=`
-      <div class="sc"><div class="sv" style="color:var(--acc)">${d.users||0}</div><div class="sl">користувачів</div></div>
-      <div class="sc"><div class="sv" style="color:var(--blue)">${d.dropshippers||0}</div><div class="sl">дропшиперів</div></div>
-      <div class="sc"><div class="sv" style="color:var(--warn)">${d.warehouse_workers||0}</div><div class="sl">працівників</div></div>
-      <div class="sc"><div class="sv" style="color:var(--th)">${d.orders_today||0}</div><div class="sl">замовлень сьогодні</div></div>
-      <div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_new||0}</div><div class="sl">нових замовлень</div></div>
-      <div class="sc"><div class="sv" style="color:var(--td)">${d.orders_total||0}</div><div class="sl">всього замовлень</div></div>
-    `;
-  }catch(e){}
+async function loadDash(){
+  const d=await api("/api/dashboard");
+  document.getElementById("dash-s").innerHTML=`
+    <div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div>
+    <div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div>
+    <div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div>
+    <div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div>
+    <div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_new||0}</div><div class="sl">нових</div></div>
+    <div class="sc"><div class="sv" style="color:var(--td)">${d.orders_today||0}</div><div class="sl">сьогодні</div></div>`;
 }
 
-// ── Users list ───────────────────────────────────────────────────
-const ROLE_LABELS={admin:"Адмін",dropshipper:"Дропшипер",warehouse:"Склад"};
-const WORKER_LABELS={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};
+// ── Directories ──────────────────────────────────────────────────
+function showDir(type){curDir=type;document.querySelectorAll("[id^=dt-]").forEach(b=>b.className="btn");document.getElementById("dt-"+type).className="btn btn-a";loadDir()}
 
-async function loadDropshippers(){
-  try{
-    const{users}=await api("/api/users?role=dropshipper");
-    const el=document.getElementById("drop-list");
-    if(!users.length){el.innerHTML='<div class="empty"><span class="icon">🛒</span>Немає дропшиперів</div>';return}
-    el.innerHTML=`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Телефон</th><th>Статус</th><th></th></tr>
-      ${users.map(u=>`<tr>
-        <td><strong style="color:var(--th)">${esc(u.name||"—")}</strong></td>
-        <td class="mono">${esc(u.username)}</td>
-        <td>${u.discount_percent?u.discount_percent+"%":""}${u.discount_fixed?" "+u.discount_fixed+"₴":""}</td>
-        <td>${esc(u.phone||"—")}</td>
-        <td>${u.active?'<span class="tag tag-green">Активний</span>':'<span class="tag tag-red">Вимкнений</span>'}</td>
-        <td><button class="btn btn-sm btn-a" onclick="editUser(${u.id})">✏️</button></td>
-      </tr>`).join("")}</table>`;
-  }catch(e){}
+async function loadDir(){
+  await refreshCache();
+  const items=curDir==="colors"?C_colors:curDir==="sizes"?C_sizes:curDir==="prints"?C_prints:C_patches;
+  const el=document.getElementById("dir-list");
+  if(!items.length){el.innerHTML='<div class="empty"><span class="ic">📭</span>Порожньо</div>';return}
+  el.innerHTML=`<table class="tbl"><tr><th>Назва</th>${curDir==="colors"?"<th>Колір</th>":""}<th></th></tr>
+    ${items.map(i=>`<tr>
+      <td style="color:var(--th)">${esc(i.name)}</td>
+      ${curDir==="colors"?`<td><span class="cdot" style="background:${i.hex_code||'#808080'}"></span>${i.hex_code||''}</td>`:""}
+      <td><button class="btn btn-sm btn-a" onclick="editDirItem(${i.id})">✏️</button></td>
+    </tr>`).join("")}</table>`;
 }
 
-async function loadWorkers(){
-  try{
-    const{users}=await api("/api/users?role=warehouse");
-    const el=document.getElementById("worker-list");
-    if(!users.length){el.innerHTML='<div class="empty"><span class="icon">👷</span>Немає працівників</div>';return}
-    el.innerHTML=`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Роль</th><th>Ставка</th><th>Статус</th><th></th></tr>
-      ${users.map(u=>`<tr>
-        <td><strong style="color:var(--th)">${esc(u.name||"—")}</strong></td>
-        <td class="mono">${esc(u.username)}</td>
-        <td>${u.worker_role?'<span class="tag tag-blue">'+WORKER_LABELS[u.worker_role]+'</span>':'<span class="tag tag-gray">—</span>'}</td>
-        <td>${u.worker_rate?u.worker_rate+"₴":""}</td>
-        <td>${u.active?'<span class="tag tag-green">Активний</span>':'<span class="tag tag-red">Вимкнений</span>'}</td>
-        <td><button class="btn btn-sm btn-a" onclick="editUser(${u.id})">✏️</button></td>
-      </tr>`).join("")}</table>`;
-  }catch(e){}
+function addDirItem(){editDirId=null;document.getElementById("dm-title").textContent="Додати";document.getElementById("dm-name").value="";document.getElementById("dm-hex").value="#808080";document.getElementById("dm-hex-wrap").style.display=curDir==="colors"?"block":"none";document.getElementById("dm-del").style.display="none";openM("dir-modal")}
+
+function editDirItem(id){
+  const items=curDir==="colors"?C_colors:curDir==="sizes"?C_sizes:curDir==="prints"?C_prints:C_patches;
+  const item=items.find(i=>i.id===id);if(!item)return;
+  editDirId=id;document.getElementById("dm-title").textContent="Редагувати: "+item.name;
+  document.getElementById("dm-name").value=item.name;document.getElementById("dm-hex").value=item.hex_code||"#808080";
+  document.getElementById("dm-hex-wrap").style.display=curDir==="colors"?"block":"none";
+  document.getElementById("dm-del").style.display="block";openM("dir-modal");
 }
 
-// ── Modal ────────────────────────────────────────────────────────
-function openUserModal(role){
-  editUserId=null;editUserRole=role;
-  document.getElementById("modal-title").textContent=role==="dropshipper"?"Новий дропшипер":"Новий працівник";
-  document.getElementById("m-username").value="";
-  document.getElementById("m-password").value="";
-  document.getElementById("m-name").value="";
-  document.getElementById("m-phone").value="";
-  document.getElementById("m-email").value="";
-  document.getElementById("m-telegram").value="";
-  document.getElementById("m-username").disabled=false;
-  document.getElementById("m-drop-fields").style.display=role==="dropshipper"?"block":"none";
-  document.getElementById("m-worker-fields").style.display=role==="warehouse"?"block":"none";
-  if(role==="dropshipper"){document.getElementById("m-discount_percent").value=0;document.getElementById("m-discount_fixed").value=0}
-  if(role==="warehouse"){document.getElementById("m-worker_role").value="";document.getElementById("m-worker_rate").value=0}
-  document.getElementById("modal-del").style.display="none";
-  document.getElementById("modal-error").style.display="none";
-  document.getElementById("user-modal").classList.add("on");
-}
-
-async function editUser(id){
+async function saveDirItem(){
+  const data={name:document.getElementById("dm-name").value};
+  if(curDir==="colors")data.hex_code=document.getElementById("dm-hex").value;
   try{
-    const{user}=await api("/api/users/"+id);
-    editUserId=id;editUserRole=user.role;
-    document.getElementById("modal-title").textContent="Редагувати: "+user.name;
-    document.getElementById("m-username").value=user.username;
-    document.getElementById("m-username").disabled=true;
-    document.getElementById("m-password").value="";
-    document.getElementById("m-name").value=user.name;
-    document.getElementById("m-phone").value=user.phone;
-    document.getElementById("m-email").value=user.email;
-    document.getElementById("m-telegram").value=user.telegram;
-    document.getElementById("m-drop-fields").style.display=user.role==="dropshipper"?"block":"none";
-    document.getElementById("m-worker-fields").style.display=user.role==="warehouse"?"block":"none";
-    if(user.role==="dropshipper"){
-      document.getElementById("m-discount_percent").value=user.discount_percent||0;
-      document.getElementById("m-discount_fixed").value=user.discount_fixed||0;
-    }
-    if(user.role==="warehouse"){
-      document.getElementById("m-worker_role").value=user.worker_role||"";
-      document.getElementById("m-worker_rate").value=user.worker_rate||0;
-    }
-    document.getElementById("modal-del").style.display="block";
-    document.getElementById("modal-error").style.display="none";
-    document.getElementById("user-modal").classList.add("on");
-  }catch(e){}
-}
-
-function closeModal(){document.getElementById("user-modal").classList.remove("on")}
-
-async function saveUser(){
-  const err=document.getElementById("modal-error");
-  const data={
-    username:document.getElementById("m-username").value,
-    password:document.getElementById("m-password").value,
-    role:editUserRole,
-    name:document.getElementById("m-name").value,
-    phone:document.getElementById("m-phone").value,
-    email:document.getElementById("m-email").value,
-    telegram:document.getElementById("m-telegram").value,
-    discount_percent:parseFloat(document.getElementById("m-discount_percent")?.value)||0,
-    discount_fixed:parseFloat(document.getElementById("m-discount_fixed")?.value)||0,
-    worker_role:document.getElementById("m-worker_role")?.value||"",
-    worker_rate:parseFloat(document.getElementById("m-worker_rate")?.value)||0,
-    active:1,
-  };
-  try{
-    if(editUserId){
-      await api("/api/users/"+editUserId,{method:"PUT",body:JSON.stringify(data)});
-    }else{
-      if(!data.password)throw new Error("Пароль обов'язковий");
-      await api("/api/users",{method:"POST",body:JSON.stringify(data)});
-    }
-    closeModal();
-    if(editUserRole==="dropshipper")loadDropshippers();else loadWorkers();
-  }catch(e){err.textContent=e.message;err.style.display="block"}
-}
-
-async function deleteUser(){
-  if(!editUserId||!confirm("Видалити цього користувача?"))return;
-  try{
-    await api("/api/users/"+editUserId,{method:"DELETE"});
-    closeModal();
-    if(editUserRole==="dropshipper")loadDropshippers();else loadWorkers();
+    if(editDirId)await api(`/api/${curDir}/${editDirId}`,{method:"PUT",body:JSON.stringify(data)});
+    else await api(`/api/${curDir}`,{method:"POST",body:JSON.stringify(data)});
+    closeM("dir-modal");loadDir();
   }catch(e){alert(e.message)}
 }
 
-// ── Settings ─────────────────────────────────────────────────────
-async function loadSettings(){
-  try{
-    const{settings}=await api("/api/settings");
-    Object.entries(settings).forEach(([k,v])=>{
-      const el=document.getElementById("s-"+k);
-      if(el)el.value=v;
+async function delDirItem(){if(!editDirId||!confirm("Видалити?"))return;await api(`/api/${curDir}/${editDirId}`,{method:"DELETE"});closeM("dir-modal");loadDir()}
+
+// ── Categories ───────────────────────────────────────────────────
+async function loadCats(){
+  const{flat}=await api("/api/categories");C_cats_flat=flat;
+  const el=document.getElementById("cat-list");
+  if(!flat.length){el.innerHTML='<div class="empty"><span class="ic">📂</span>Немає категорій</div>';return}
+  // Build tree display
+  const map={};flat.forEach(c=>{c.children=[];map[c.id]=c});
+  const roots=[];flat.forEach(c=>{if(c.parent_id&&map[c.parent_id])map[c.parent_id].children.push(c);else roots.push(c)});
+  let html="";
+  function render(nodes,depth){
+    nodes.forEach(n=>{
+      html+=`<div class="tree-item"><span class="indent" style="width:${depth*20}px"></span><span class="tname">${"│ ".repeat(depth)}${depth?"└ ":""}${esc(n.name)}</span><button class="btn btn-sm btn-a" onclick="editCat(${n.id})">✏️</button></div>`;
+      render(n.children,depth+1);
     });
-  }catch(e){}
+  }
+  render(roots,0);
+  el.innerHTML=html;
 }
 
-async function saveSettings(){
-  const keys=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];
-  const data={};
-  keys.forEach(k=>{const el=document.getElementById("s-"+k);if(el)data[k]=el.value});
+function addCat(){editCatId=null;document.getElementById("cm-title").textContent="Нова категорія";document.getElementById("cm-name").value="";fillCatSelect("cm-parent",null);document.getElementById("cm-del").style.display="none";openM("cat-modal")}
+function editCat(id){
+  const c=C_cats_flat.find(x=>x.id===id);if(!c)return;editCatId=id;
+  document.getElementById("cm-title").textContent="Редагувати: "+c.name;document.getElementById("cm-name").value=c.name;
+  fillCatSelect("cm-parent",c.parent_id);document.getElementById("cm-del").style.display="block";openM("cat-modal");
+}
+function fillCatSelect(elId,val){
+  const sel=document.getElementById(elId);sel.innerHTML='<option value="">— Кореневий рівень —</option>';
+  C_cats_flat.forEach(c=>sel.innerHTML+=`<option value="${c.id}"${c.id==val?" selected":""}>${esc(c.name)}</option>`);
+}
+async function saveCat(){
+  const data={name:document.getElementById("cm-name").value,parent_id:document.getElementById("cm-parent").value||null};
+  try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");loadCats()}catch(e){alert(e.message)}
+}
+async function delCat(){if(!editCatId||!confirm("Видалити?"))return;await api(`/api/categories/${editCatId}`,{method:"DELETE"});closeM("cat-modal");loadCats()}
+
+// ── Models ───────────────────────────────────────────────────────
+async function loadModels(){
+  const{models}=await api("/api/models");
+  const el=document.getElementById("model-list");
+  if(!models.length){el.innerHTML='<div class="empty"><span class="ic">🏷</span>Немає моделей. Створіть першу!</div>';return}
+  el.innerHTML=`<table class="tbl"><tr><th>Назва</th><th>Тип</th><th>Кольори</th><th>Принти</th><th>Товарів</th><th>Варіацій</th></tr>
+    ${models.map(m=>`<tr>
+      <td><strong style="color:var(--th)">${esc(m.name)}</strong>${m.category_name?`<br><span style="font-size:10px;color:var(--td)">${esc(m.category_name)}</span>`:""}</td>
+      <td>${m.is_ready_product?'<span class="tag tag-b">Готовий</span>':'<span class="tag tag-y">База</span>'}</td>
+      <td>${m.colors.map(c=>`<span class="cdot" style="background:${c.hex_code}"></span>`).join("")}</td>
+      <td>${m.is_ready_product?"—":m.prints.map(p=>esc(p.name)).join(", ")}</td>
+      <td class="mono">${m.base_products_count}</td>
+      <td class="mono">${m.variations_count}</td>
+    </tr>`).join("")}</table>`;
+}
+
+let isReady=false;
+function toggleReady(){isReady=!isReady;document.getElementById("mm-ready").classList.toggle("on",isReady);document.getElementById("mm-prints-wrap").style.display=isReady?"none":"block";updatePreview()}
+
+async function openModelModal(){
+  isReady=false;document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-prints-wrap").style.display="block";
+  document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";
+  document.getElementById("mm-rpack").value="0";document.getElementById("mm-rprint").value="0";document.getElementById("mm-rsew").value="0";document.getElementById("mm-rdist").value="0";
+  document.getElementById("mm-err").style.display="none";
+  await refreshCache();
+  // Fill category select
+  const sel=document.getElementById("mm-cat");sel.innerHTML='<option value="">— Без категорії —</option>';
+  C_cats_flat.forEach(c=>sel.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
+  // Fill chips
+  fillChips("mm-colors",C_colors);fillChips("mm-sizes",C_sizes);fillChips("mm-prints",C_prints);fillChips("mm-patches",C_patches);
+  updatePreview();openM("model-modal");
+}
+
+function fillChips(elId,items){
+  document.getElementById(elId).innerHTML=items.map(i=>`<span class="chip" data-id="${i.id}" onclick="this.classList.toggle('on');updatePreview()">${esc(i.name)}</span>`).join("");
+}
+function getSelected(elId){return[...document.querySelectorAll(`#${elId} .chip.on`)].map(c=>parseInt(c.dataset.id))}
+
+function updatePreview(){
+  const colors=getSelected("mm-colors").length;
+  const sizes=getSelected("mm-sizes").length;
+  const prints=isReady?0:getSelected("mm-prints").length;
+  const bp=colors;
+  const vars=isReady?colors:colors*prints;
+  document.getElementById("mm-preview").innerHTML=bp?`Буде створено: <strong style="color:var(--acc)">${bp}</strong> базових товарів, <strong style="color:var(--warn)">${vars}</strong> варіацій (${sizes} розмірів кожен)`:"";
+}
+
+async function saveModel(){
+  const err=document.getElementById("mm-err");err.style.display="none";
+  const data={
+    name:document.getElementById("mm-name").value,
+    category_id:document.getElementById("mm-cat").value||null,
+    is_ready_product:isReady,
+    cost_price:document.getElementById("mm-cost").value,
+    drop_price:document.getElementById("mm-drop").value,
+    pack_rate:document.getElementById("mm-rpack").value,
+    print_rate:document.getElementById("mm-rprint").value,
+    sew_rate:document.getElementById("mm-rsew").value,
+    distribute_rate:document.getElementById("mm-rdist").value,
+    color_ids:getSelected("mm-colors"),
+    size_ids:getSelected("mm-sizes"),
+    print_ids:isReady?[]:getSelected("mm-prints"),
+    patch_ids:getSelected("mm-patches"),
+  };
   try{
-    await api("/api/settings",{method:"PUT",body:JSON.stringify(data)});
-    document.getElementById("settings-msg").innerHTML='<div class="msg msg-ok">✅ Збережено</div>';
-    setTimeout(()=>document.getElementById("settings-msg").innerHTML="",3000);
-  }catch(e){document.getElementById("settings-msg").innerHTML='<div class="msg msg-err">❌ '+e.message+'</div>'}
+    const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});
+    closeM("model-modal");loadModels();
+    alert(`✅ Створено ${r.base_products_created} товарів, ${r.variations_created} варіацій`);
+  }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
-function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
+// ── Stock ────────────────────────────────────────────────────────
+let stockProducts=[],stockSizes=[];
+async function loadStock(){
+  const d=await api("/api/base-products");
+  stockProducts=d.products;stockSizes=d.sizes;
+  const el=document.getElementById("stock-list");
+  if(!stockProducts.length){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">📦</span>Немає товарів. Створіть модель.</div>';return}
+  const threshold=parseInt(await getSetting("stock_warning_threshold"))||3;
+  el.innerHTML=stockProducts.map(p=>{
+    const mSizes=stockSizes.filter(s=>p.stock[s.id]!==undefined);
+    return`<div class="pcard">
+      <div class="pcard-img" onclick="uploadPhoto('bp',${p.id})">${p.photo?`<img src="${p.photo}">`:'📷 Додати фото'}</div>
+      <div class="pcard-body">
+        <div class="pcard-name">${esc(p.name)}</div>
+        <div class="pcard-cat">${esc(p.category_name||"")}</div>
+        <div class="pcard-prices">
+          <span class="pp tag tag-gray">${p.cost_price}₴</span>
+          <span class="pp tag tag-g">${p.drop_price}₴</span>
+        </div>
+        <div class="stock-row">${mSizes.map(s=>{
+          const q=p.stock[s.id]||0;
+          const cls=q<=0?"zero":q<=threshold?"low":"";
+          return`<div class="stock-sz ${cls}" title="${s.name}: ${q} шт"><b>${s.name}</b><br>${q}</div>`;
+        }).join("")}</div>
+      </div>
+    </div>`}).join("");
+}
+
+async function getSetting(key){try{const{settings}=await api("/api/settings");return settings[key]||""}catch(e){return""}}
+
+// Incoming
+async function openIncomingModal(){
+  const d=await api("/api/base-products");stockProducts=d.products;stockSizes=d.sizes;
+  const sel=document.getElementById("inc-bp");sel.innerHTML=stockProducts.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  loadIncSizes();openM("inc-modal");
+}
+function loadIncSizes(){
+  const bpId=parseInt(document.getElementById("inc-bp").value);
+  const p=stockProducts.find(x=>x.id===bpId);if(!p)return;
+  const mSizes=stockSizes.filter(s=>p.stock[s.id]!==undefined);
+  document.getElementById("inc-sizes").innerHTML=mSizes.map(s=>`<div class="field-row" style="margin-bottom:6px">
+    <div style="padding:8px 0;font-size:13px;color:var(--th)">${s.name} <span style="color:var(--td)">(зараз: ${p.stock[s.id]||0})</span></div>
+    <div><input type="number" data-sid="${s.id}" value="0" min="0" style="padding:8px;font-size:13px;background:var(--input);border:1px solid var(--brd2);border-radius:6px;color:#fff;width:80px"></div>
+  </div>`).join("");
+}
+async function saveIncoming(){
+  const bpId=parseInt(document.getElementById("inc-bp").value);
+  const items=[...document.querySelectorAll("#inc-sizes input[data-sid]")].map(el=>({size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})).filter(i=>i.quantity>0);
+  if(!items.length){alert("Введіть кількість");return}
+  await api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:bpId,items,note:document.getElementById("inc-note").value})});
+  closeM("inc-modal");loadStock();
+}
+
+// ── Photos ───────────────────────────────────────────────────────
+function uploadPhoto(type,id){photoTarget={type,id};document.getElementById("photo-input").click()}
+async function handlePhoto(e){
+  const file=e.target.files[0];if(!file||!photoTarget)return;
+  const reader=new FileReader();
+  reader.onload=async function(){
+    try{
+      const{url}=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:reader.result})});
+      if(photoTarget.type==="bp")await api(`/api/base-products/${photoTarget.id}/photo`,{method:"PUT",body:JSON.stringify({photo:url})});
+      else await api(`/api/variations/${photoTarget.id}/photo`,{method:"PUT",body:JSON.stringify({photo:url})});
+      loadStock();
+    }catch(e){alert("Помилка: "+e.message)}
+  };
+  reader.readAsDataURL(file);
+  e.target.value="";
+}
+
+// ── Users ────────────────────────────────────────────────────────
+const WR_LABELS={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};
+async function loadDrops(){
+  const{users}=await api("/api/users?role=dropshipper");
+  document.getElementById("drop-list").innerHTML=!users.length?'<div class="empty"><span class="ic">🛒</span>Немає</div>'
+    :`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Статус</th><th></th></tr>${users.map(u=>`<tr>
+      <td style="color:var(--th)">${esc(u.name||"—")}</td><td class="mono">${esc(u.username)}</td>
+      <td>${u.discount_percent?u.discount_percent+"%":""}${u.discount_fixed?" "+u.discount_fixed+"₴":""}</td>
+      <td>${u.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>'}</td>
+      <td><button class="btn btn-sm btn-a" onclick="editUser(${u.id},'dropshipper')">✏️</button></td></tr>`).join("")}</table>`;
+}
+async function loadWorkers(){
+  const{users}=await api("/api/users?role=warehouse");
+  document.getElementById("worker-list").innerHTML=!users.length?'<div class="empty"><span class="ic">👷</span>Немає</div>'
+    :`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Роль</th><th>Ставка</th><th></th></tr>${users.map(u=>`<tr>
+      <td style="color:var(--th)">${esc(u.name||"—")}</td><td class="mono">${esc(u.username)}</td>
+      <td>${WR_LABELS[u.worker_role]||"—"}</td><td>${u.worker_rate?u.worker_rate+"₴":""}</td>
+      <td><button class="btn btn-sm btn-a" onclick="editUser(${u.id},'warehouse')">✏️</button></td></tr>`).join("")}</table>`;
+}
+function openUserModal(role){editUserId=null;editUserRole=role;document.getElementById("um-title").textContent=role==="dropshipper"?"Новий дропшипер":"Новий працівник";
+  ["um-user","um-pass","um-name","um-phone","um-tg"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("um-user").disabled=false;document.getElementById("um-drop").style.display=role==="dropshipper"?"block":"none";
+  document.getElementById("um-wrk").style.display=role==="warehouse"?"block":"none";document.getElementById("um-del").style.display="none";
+  document.getElementById("um-err").style.display="none";openM("user-modal")}
+async function editUser(id,role){
+  const{user:u}=await api("/api/users/"+id);editUserId=id;editUserRole=role||u.role;
+  document.getElementById("um-title").textContent="Редагувати: "+u.name;document.getElementById("um-user").value=u.username;document.getElementById("um-user").disabled=true;
+  document.getElementById("um-pass").value="";document.getElementById("um-name").value=u.name;document.getElementById("um-phone").value=u.phone;document.getElementById("um-tg").value=u.telegram;
+  document.getElementById("um-drop").style.display=u.role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=u.role==="warehouse"?"block":"none";
+  if(u.role==="dropshipper"){document.getElementById("um-dp").value=u.discount_percent;document.getElementById("um-df").value=u.discount_fixed}
+  if(u.role==="warehouse"){document.getElementById("um-wr").value=u.worker_role;document.getElementById("um-wrt").value=u.worker_rate}
+  document.getElementById("um-del").style.display="block";document.getElementById("um-err").style.display="none";openM("user-modal")}
+async function saveUser(){
+  const err=document.getElementById("um-err");err.style.display="none";
+  const data={username:document.getElementById("um-user").value,password:document.getElementById("um-pass").value,role:editUserRole,name:document.getElementById("um-name").value,phone:document.getElementById("um-phone").value,telegram:document.getElementById("um-tg").value,
+    discount_percent:parseFloat(document.getElementById("um-dp")?.value)||0,discount_fixed:parseFloat(document.getElementById("um-df")?.value)||0,
+    worker_role:document.getElementById("um-wr")?.value||"",worker_rate:parseFloat(document.getElementById("um-wrt")?.value)||0,active:1};
+  try{if(editUserId)await api("/api/users/"+editUserId,{method:"PUT",body:JSON.stringify(data)});else await api("/api/users",{method:"POST",body:JSON.stringify(data)});
+    closeM("user-modal");if(editUserRole==="dropshipper")loadDrops();else loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}}
+async function delUser(){if(!editUserId||!confirm("Видалити?"))return;await api("/api/users/"+editUserId,{method:"DELETE"});closeM("user-modal");if(editUserRole==="dropshipper")loadDrops();else loadWorkers()}
+
+// ── Settings ─────────────────────────────────────────────────────
+async function loadSets(){try{const{settings:s}=await api("/api/settings");Object.entries(s).forEach(([k,v])=>{const el=document.getElementById("s-"+k);if(el)el.value=v})}catch(e){}}
+async function saveSets(){
+  const keys=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];
+  const data={};keys.forEach(k=>{const el=document.getElementById("s-"+k);if(el)data[k]=el.value});
+  try{await api("/api/settings",{method:"PUT",body:JSON.stringify(data)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">✅ Збережено</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2500)}catch(e){}}
+
+// ── Cache ────────────────────────────────────────────────────────
+async function refreshCache(){
+  const[c1,c2,c3,c4,c5]=await Promise.all([api("/api/colors"),api("/api/sizes"),api("/api/prints"),api("/api/patches"),api("/api/categories")]);
+  C_colors=c1.items;C_sizes=c2.items;C_prints=c3.items;C_patches=c4.items;C_cats_flat=c5.flat;
+}
+
 init();
 </script>
 </body>

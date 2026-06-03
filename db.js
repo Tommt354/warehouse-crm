@@ -7,10 +7,6 @@ const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
-// ══════════════════════════════════════════════════════════════════
-// SCHEMA — всі таблиці для всіх модулів
-// ══════════════════════════════════════════════════════════════════
-
 db.exec(`
   -- ── Користувачі ──────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS users (
@@ -22,95 +18,162 @@ db.exec(`
     phone TEXT DEFAULT '',
     email TEXT DEFAULT '',
     telegram TEXT DEFAULT '',
-    -- Дропшипер
     discount_percent REAL DEFAULT 0,
     discount_fixed REAL DEFAULT 0,
     payout_details TEXT DEFAULT '',
-    -- Склад працівник
-    worker_role TEXT DEFAULT '' CHECK(worker_role IN ('','packer','printer','sewer','distributor')),
+    worker_role TEXT DEFAULT '',
     worker_rate REAL DEFAULT 0,
-    -- Загальне
     active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     last_login TEXT DEFAULT ''
   );
 
-  -- ── Категорії ────────────────────────────────────────────────
-  CREATE TABLE IF NOT EXISTS categories (
+  -- ── ДОВІДНИКИ ────────────────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS colors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    parent_id INTEGER DEFAULT NULL,
-    sort_order INTEGER DEFAULT 0,
-    FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL
+    hex_code TEXT DEFAULT '#808080',
+    sort_order INTEGER DEFAULT 0
   );
 
-  -- ── Базові товари ────────────────────────────────────────────
-  CREATE TABLE IF NOT EXISTS base_products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    category_id INTEGER DEFAULT NULL,
-    photo TEXT DEFAULT '',
-    drop_price REAL DEFAULT 0,
-    description TEXT DEFAULT '',
-    active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
-  );
-
-  -- ── Розміри ──────────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS sizes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     sort_order INTEGER DEFAULT 0
   );
 
-  -- ── Принти ───────────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS prints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     photo TEXT DEFAULT '',
-    print_count INTEGER DEFAULT 1,
-    patch_count INTEGER DEFAULT 0,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0
   );
 
-  -- ── Варіації (базовий товар + принт) ─────────────────────────
+  CREATE TABLE IF NOT EXISTS patches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    photo TEXT DEFAULT '',
+    active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0
+  );
+
+  -- ── КАТЕГОРІЇ (дерево) ───────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_id INTEGER DEFAULT NULL,
+    sort_order INTEGER DEFAULT 0,
+    FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE
+  );
+
+  -- ── МОДЕЛІ — головна сутність ────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    category_id INTEGER DEFAULT NULL,
+    is_ready_product INTEGER DEFAULT 0,
+    cost_price REAL DEFAULT 0,
+    drop_price REAL DEFAULT 0,
+    pack_rate REAL DEFAULT 0,
+    print_rate REAL DEFAULT 0,
+    sew_rate REAL DEFAULT 0,
+    distribute_rate REAL DEFAULT 0,
+    photo TEXT DEFAULT '',
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+  );
+
+  -- Зв'язки модель ↔ довідники (many-to-many)
+  CREATE TABLE IF NOT EXISTS model_colors (
+    model_id INTEGER NOT NULL,
+    color_id INTEGER NOT NULL,
+    PRIMARY KEY (model_id, color_id),
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    FOREIGN KEY (color_id) REFERENCES colors(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS model_sizes (
+    model_id INTEGER NOT NULL,
+    size_id INTEGER NOT NULL,
+    PRIMARY KEY (model_id, size_id),
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS model_prints (
+    model_id INTEGER NOT NULL,
+    print_id INTEGER NOT NULL,
+    PRIMARY KEY (model_id, print_id),
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    FOREIGN KEY (print_id) REFERENCES prints(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS model_patches (
+    model_id INTEGER NOT NULL,
+    patch_id INTEGER NOT NULL,
+    PRIMARY KEY (model_id, patch_id),
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    FOREIGN KEY (patch_id) REFERENCES patches(id) ON DELETE CASCADE
+  );
+
+  -- ── БАЗОВІ ТОВАРИ (що бачить склад) ──────────────────────────
+  -- Генеруються автоматично: 1 per model × color
+
+  CREATE TABLE IF NOT EXISTS base_products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id INTEGER NOT NULL,
+    color_id INTEGER,
+    name TEXT NOT NULL,
+    photo TEXT DEFAULT '',
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    FOREIGN KEY (color_id) REFERENCES colors(id) ON DELETE SET NULL
+  );
+
+  -- ── ВАРІАЦІЇ (що бачить дропшипер для БАЗОВИХ моделей) ────────
+  -- Генеруються: 1 per base_product × print
+  -- Для ready_product — варіація = сам base_product (print_id = NULL)
+
   CREATE TABLE IF NOT EXISTS variations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     base_product_id INTEGER NOT NULL,
-    print_id INTEGER NOT NULL,
-    name TEXT DEFAULT '',
+    print_id INTEGER DEFAULT NULL,
+    name TEXT NOT NULL,
     photo TEXT DEFAULT '',
     drop_price_override REAL DEFAULT NULL,
     active INTEGER DEFAULT 1,
     FOREIGN KEY (base_product_id) REFERENCES base_products(id) ON DELETE CASCADE,
-    FOREIGN KEY (print_id) REFERENCES prints(id) ON DELETE CASCADE,
-    UNIQUE(base_product_id, print_id)
+    FOREIGN KEY (print_id) REFERENCES prints(id) ON DELETE SET NULL
   );
 
-  -- ── Залишки базового товару (по розмірах) ─────────────────────
+  -- ── ЗАЛИШКИ ──────────────────────────────────────────────────
+
   CREATE TABLE IF NOT EXISTS stock_base (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     base_product_id INTEGER NOT NULL,
     size_id INTEGER NOT NULL,
     quantity INTEGER DEFAULT 0,
+    UNIQUE(base_product_id, size_id),
     FOREIGN KEY (base_product_id) REFERENCES base_products(id) ON DELETE CASCADE,
-    FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE,
-    UNIQUE(base_product_id, size_id)
+    FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE
   );
 
-  -- ── Залишки повернень (варіація + розмір) ─────────────────────
   CREATE TABLE IF NOT EXISTS stock_returns (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     variation_id INTEGER NOT NULL,
     size_id INTEGER NOT NULL,
     quantity INTEGER DEFAULT 0,
+    UNIQUE(variation_id, size_id),
     FOREIGN KEY (variation_id) REFERENCES variations(id) ON DELETE CASCADE,
-    FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE,
-    UNIQUE(variation_id, size_id)
+    FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE
   );
 
-  -- ── Прихід товару ────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS stock_incoming (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     base_product_id INTEGER NOT NULL,
@@ -120,20 +183,17 @@ db.exec(`
     created_by INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (base_product_id) REFERENCES base_products(id),
-    FOREIGN KEY (size_id) REFERENCES sizes(id),
-    FOREIGN KEY (created_by) REFERENCES users(id)
+    FOREIGN KEY (size_id) REFERENCES sizes(id)
   );
 
-  -- ── Замовлення ───────────────────────────────────────────────
+  -- ── ЗАМОВЛЕННЯ ───────────────────────────────────────────────
+
   CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     dropshipper_id INTEGER NOT NULL,
-    status TEXT DEFAULT 'new' CHECK(status IN (
-      'new','in_progress','packed','shipped','delivering','delivered',
-      'refused','return_transit','return_warehouse','return_received','cancelled'
-    )),
-    client_name TEXT NOT NULL DEFAULT '',
-    client_phone TEXT NOT NULL DEFAULT '',
+    status TEXT DEFAULT 'new',
+    client_name TEXT DEFAULT '',
+    client_phone TEXT DEFAULT '',
     client_city TEXT DEFAULT '',
     client_warehouse TEXT DEFAULT '',
     cod_amount REAL DEFAULT 0,
@@ -149,11 +209,9 @@ db.exec(`
     note TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime')),
     updated_at TEXT DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (dropshipper_id) REFERENCES users(id),
-    FOREIGN KEY (packed_by) REFERENCES users(id)
+    FOREIGN KEY (dropshipper_id) REFERENCES users(id)
   );
 
-  -- ── Товари в замовленні ──────────────────────────────────────
   CREATE TABLE IF NOT EXISTS order_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER NOT NULL,
@@ -169,40 +227,35 @@ db.exec(`
     FOREIGN KEY (size_id) REFERENCES sizes(id)
   );
 
-  -- ── Виплати дропшиперам ──────────────────────────────────────
   CREATE TABLE IF NOT EXISTS payouts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     dropshipper_id INTEGER NOT NULL,
     amount REAL NOT NULL,
-    status TEXT DEFAULT 'pending' CHECK(status IN ('pending','paid')),
+    status TEXT DEFAULT 'pending',
     payout_details TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime')),
     paid_at TEXT DEFAULT '',
     FOREIGN KEY (dropshipper_id) REFERENCES users(id)
   );
 
-  -- ── Виробіток працівників ────────────────────────────────────
   CREATE TABLE IF NOT EXISTS worker_production (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     order_id INTEGER DEFAULT NULL,
     order_item_id INTEGER DEFAULT NULL,
-    work_type TEXT NOT NULL CHECK(work_type IN ('pack','print','sew','distribute')),
+    work_type TEXT NOT NULL,
     units INTEGER DEFAULT 1,
     rate REAL DEFAULT 0,
     total REAL DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (order_id) REFERENCES orders(id)
+    FOREIGN KEY (user_id) REFERENCES users(id)
   );
 
-  -- ── Налаштування ─────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT DEFAULT ''
   );
 
-  -- ── Сканування ЕН (з попереднього сканера) ────────────────────
   CREATE TABLE IF NOT EXISTS scans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL,
@@ -217,45 +270,47 @@ db.exec(`
     return_scanned_by TEXT DEFAULT ''
   );
   CREATE INDEX IF NOT EXISTS idx_scans_code ON scans(code);
-
-  -- ── Індекси ──────────────────────────────────────────────────
   CREATE INDEX IF NOT EXISTS idx_orders_drop ON orders(dropshipper_id);
   CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-  CREATE INDEX IF NOT EXISTS idx_orders_ttn ON orders(ttn);
-  CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
-  CREATE INDEX IF NOT EXISTS idx_stock_base ON stock_base(base_product_id, size_id);
-  CREATE INDEX IF NOT EXISTS idx_stock_returns ON stock_returns(variation_id, size_id);
+  CREATE INDEX IF NOT EXISTS idx_bp_model ON base_products(model_id);
+  CREATE INDEX IF NOT EXISTS idx_var_bp ON variations(base_product_id);
 `);
 
-// ── Дефолтні дані ────────────────────────────────────────────────
-// Створюємо адміна якщо ще немає
+// ── Migrate old columns ──────────────────────────────────────────
+const addCol = (t, col, def) => { try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${col} ${def}`); } catch(e){} };
+addCol("base_products", "model_id", "INTEGER DEFAULT NULL");
+addCol("base_products", "color_id", "INTEGER DEFAULT NULL");
+addCol("prints", "sort_order", "INTEGER DEFAULT 0");
+addCol("prints", "photo", "TEXT DEFAULT ''");
+
+// ── Default data ─────────────────────────────────────────────────
 const adminExists = db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get();
 if (!adminExists) {
-  const hash = bcrypt.hashSync("admin123", 10);
-  db.prepare("INSERT INTO users (username, password_hash, role, name) VALUES (?, ?, 'admin', 'Адміністратор')").run("admin", hash);
-  console.log("✅ Created default admin: admin / admin123");
+  db.prepare("INSERT INTO users (username, password_hash, role, name) VALUES (?, ?, 'admin', 'Адміністратор')")
+    .run("admin", bcrypt.hashSync("admin123", 10));
+  console.log("✅ Default admin: admin / admin123");
 }
 
-// Дефолтні розміри
-const sizesExist = db.prepare("SELECT id FROM sizes LIMIT 1").get();
-if (!sizesExist) {
-  const sizes = ["XXS", "XS", "S", "M", "L", "XL", "2XL", "3XL"];
+if (!db.prepare("SELECT id FROM users WHERE role='dropshipper' LIMIT 1").get()) {
+  db.prepare("INSERT INTO users (username, password_hash, role, name, phone) VALUES (?, ?, 'dropshipper', 'Тестовий дропшипер', '+380000000000')")
+    .run("drop1", bcrypt.hashSync("drop1234", 10));
+  console.log("✅ Default dropshipper: drop1 / drop1234");
+}
+
+if (!db.prepare("SELECT id FROM users WHERE role='warehouse' LIMIT 1").get()) {
+  db.prepare("INSERT INTO users (username, password_hash, role, name, worker_role, worker_rate) VALUES (?, ?, 'warehouse', 'Пакувальник 1', 'packer', 5)")
+    .run("pack1", bcrypt.hashSync("pack1234", 10));
+  console.log("✅ Default packer: pack1 / pack1234");
+}
+
+if (!db.prepare("SELECT id FROM sizes LIMIT 1").get()) {
   const stmt = db.prepare("INSERT INTO sizes (name, sort_order) VALUES (?, ?)");
-  sizes.forEach((s, i) => stmt.run(s, i));
-  console.log("✅ Created default sizes");
+  ["XXS","XS","S","M","L","XL","2XL","3XL"].forEach((s,i) => stmt.run(s, i));
+  console.log("✅ Default sizes created");
 }
 
-// Дефолтні налаштування
-const defaults = {
-  stock_warning_threshold: "3",
-  company_name: "Warehouse CRM",
-  np_api_key: process.env.NP_API_KEY || "",
-  sender_city: "",
-  sender_warehouse: "",
-  sender_phone: "",
-  sender_name: "",
-};
-const upsert = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
-Object.entries(defaults).forEach(([k, v]) => upsert.run(k, v));
+const defs = { stock_warning_threshold:"3", company_name:"Warehouse CRM", np_api_key:process.env.NP_API_KEY||"", sender_city:"", sender_warehouse:"", sender_phone:"", sender_name:"" };
+const ups = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+Object.entries(defs).forEach(([k,v]) => ups.run(k, v));
 
 module.exports = db;
