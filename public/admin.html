@@ -167,7 +167,8 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="cards" id="sbase-list" style="margin-top:10px"></div>
 </div>
 
-<div class="page" id="pg-sdrop"><div class="pt">🛒 Склад дроп (варіації для дропшиперів)</div>
+<div class="page" id="pg-sdrop"><div class="pt">🛒 Склад дроп</div>
+<div class="acts" style="margin-bottom:4px"><button class="btn on" id="dc-all" onclick="sdChannel='';sdCatP=null;loadSDrop()">Всі</button><button class="btn" id="dc-hot" onclick="sdChannel='hot';sdCatP=null;loadSDrop()">🔥 HOT</button><button class="btn" id="dc-ads" onclick="sdChannel='ads';sdCatP=null;loadSDrop()">📢 ADS</button></div>
 <div id="sdrop-bread"></div>
 <div class="acts">
   <button class="btn btn-p" onclick="addCatIn('drop')">+ Категорія</button>
@@ -254,6 +255,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld"><label>Назва</label><input id="mm-name" placeholder="Худі флісовий"></div>
 <div class="fld"><label>Категорія (склад база)</label><select id="mm-cat"><option value="">—</option></select></div>
 <div class="fld"><label>Категорія (склад дроп)</label><select id="mm-cat-drop"><option value="">—</option></select></div>
+<div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="hot">🔥 HOT DROP</option><option value="ads">📢 ADS DROP</option></select></div>
 <div class="sw"><div class="swb" id="mm-ready" onclick="this.classList.toggle('on');document.getElementById('mm-pw').style.display=this.classList.contains('on')?'none':'block'"></div><label>Готовий товар</label></div>
 <div class="fld-row"><div class="fld"><label>Собівартість ₴</label><input id="mm-cost" type="number" value="0"></div><div class="fld"><label>Дроп-ціна ₴</label><input id="mm-drop" type="number" value="0"></div></div>
 <div class="fld"><label>Кольори</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук кольорів..." onfocus="openPS(this,'mm-colors-dd')" oninput="filterPS(this,'mm-colors-dd')"><div class="popup-dd" id="mm-colors-dd"></div></div><div class="sel-tags" id="mm-colors-tags"></div></div>
@@ -461,7 +463,7 @@ async function editModelFields(id){
 
 async function saveModelEdit(){
   const err=document.getElementById("mm-err");err.style.display="none";
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount})),sync_products:true};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount})),sync_products:true};
   try{await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
@@ -511,7 +513,7 @@ async function saveModel(){
   if(editModelId) return saveModelEdit();
   const err=document.getElementById("mm-err");err.style.display="none";
   const isReady=document.getElementById("mm-ready").classList.contains("on");
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount}))};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount}))};
   try{const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();alert(`✅ ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
@@ -550,8 +552,9 @@ function renderSBase(products){
 function searchSBase(q){if(!q){renderSBase(sbProducts);return}renderSBase(sbProducts.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())))}
 
 // ── Stock drop with categories ───────────────────────────────────
-let sdVars=[],sdSizes=[],sdCatP=null;
+let sdVars=[],sdSizes=[],sdCatP=null,sdChannel="";
 async function loadSDrop(){
+  document.querySelectorAll("[id^=dc-]").forEach(function(b){b.className="btn";if(b.id==="dc-"+(sdChannel||"all"))b.className="btn btn-a"});
   const cd=await api(`/api/categories?parent_id=${sdCatP||""}&scope=drop`);
   let bc='<div class="bread"><a onclick="sdCatP=null;loadSDrop()">🛒 Всі варіації</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sdCatP=${b.id};loadSDrop()">${esc(b.name)}</a>`});
@@ -560,13 +563,16 @@ async function loadSDrop(){
     <div class="crd-img">${c.photo?`<img src="${c.photo}">`:'📁'}</div>
     <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
     <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'drop')">✏️</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">🗑</button></div></div></div>`).join("");
-  // Load variations
-  const url=sdCatP?`/api/variations?category_id=${sdCatP}`:"/api/variations";
+  // Load variations with channel filter
+  let url="/api/variations";const vp=[];
+  if(sdCatP)vp.push("category_id="+sdCatP);
+  if(sdChannel)vp.push("channel="+sdChannel);
+  if(vp.length)url+="?"+vp.join("&");
   const d=await api(url);sdVars=d.variations;sdSizes=d.sizes;
   // Load kits
-  const kurl=sdCatP?`/api/kits?category_id=${sdCatP}`:"/api/kits";
+  let kurl="/api/kits";
+  if(sdCatP)kurl+="?category_id="+sdCatP;
   const kd=await api(kurl);
-  // Merge kits into list
   const allItems=[...d.variations,...kd.kits.map(k=>({...k,is_kit:true,drop_price:k.drop_price}))];
   renderSDrop(allItems);
 }

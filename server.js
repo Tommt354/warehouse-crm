@@ -193,14 +193,14 @@ app.get("/api/models/:id", authMiddleware, (req, res) => {
 });
 
 app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, category_id, category_drop_id, is_ready_product, cost_price, drop_price, color_ids, size_ids, print_ids, patch_ids, workers } = req.body;
+  const { name, category_id, category_drop_id, is_ready_product, cost_price, drop_price, drop_channel, color_ids, size_ids, print_ids, patch_ids, workers } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
   if (!color_ids?.length) return res.status(400).json({ error: "Оберіть кольори" });
   if (!size_ids?.length) return res.status(400).json({ error: "Оберіть розміри" });
   if (!is_ready_product && !print_ids?.length) return res.status(400).json({ error: "Оберіть принти" });
 
   const result = db.transaction(() => {
-    const r = db.prepare("INSERT INTO models(name,category_id,category_drop_id,is_ready_product,cost_price,drop_price)VALUES(?,?,?,?,?,?)").run(name.trim(),category_id||null,category_drop_id||null,is_ready_product?1:0,parseFloat(cost_price)||0,parseFloat(drop_price)||0);
+    const r = db.prepare("INSERT INTO models(name,category_id,category_drop_id,is_ready_product,cost_price,drop_price,drop_channel)VALUES(?,?,?,?,?,?,?)").run(name.trim(),category_id||null,category_drop_id||null,is_ready_product?1:0,parseFloat(cost_price)||0,parseFloat(drop_price)||0,drop_channel||"hot");
     const mid = r.lastInsertRowid;
     const lc=db.prepare("INSERT INTO model_colors(model_id,color_id)VALUES(?,?)");
     const ls=db.prepare("INSERT INTO model_sizes(model_id,size_id)VALUES(?,?)");
@@ -431,9 +431,11 @@ app.put("/api/model-workers/:model_id", authMiddleware, requireRole("admin"), (r
 // ── VARIATIONS ───────────────────────────────────────────────────
 app.get("/api/variations", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
-  let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,m.name as model_name,m.drop_price as model_drop_price,m.is_ready_product,m.category_drop_id,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
+  const channel = req.query.channel;
+  let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,m.name as model_name,m.drop_price as model_drop_price,m.is_ready_product,m.category_drop_id,m.drop_channel,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
   const params = [];
   if (cat) { q += " AND m.category_drop_id=?"; params.push(parseInt(cat)); }
+  if (channel) { q += " AND m.drop_channel=?"; params.push(channel); }
   q += " ORDER BY m.name,c.sort_order,p.sort_order";
   const variations = db.prepare(q).all(...params);
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();

@@ -111,6 +111,7 @@
 </div>
 
 <div class="page" id="pg-catalog">
+<div style="display:flex;gap:4px;margin-bottom:10px"><button class="stab on" id="ct-hot" onclick="dropCh='hot';catP=null;loadCatalog()">🔥 HOT DROP</button><button class="stab" id="ct-ads" onclick="dropCh='ads';catP=null;loadCatalog()">📢 ADS DROP</button></div>
 <div id="cat-bread"></div>
 <div id="cat-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="cat-prods" class="cards"></div>
@@ -157,6 +158,7 @@
 <!-- Catalog picker for order -->
 <div class="modal-bg" id="cp-modal"><div class="modal" style="max-width:650px">
 <h3>📦 Оберіть товар</h3>
+<div style="display:flex;gap:4px;margin-bottom:8px"><button class="stab on" id="cpt-hot" onclick="dropCh='hot';cpCatP=null;loadCatPicker()">🔥 HOT</button><button class="stab" id="cpt-ads" onclick="dropCh='ads';cpCatP=null;loadCatPicker()">📢 ADS</button></div>
 <div id="cp-bread"></div>
 <div id="cp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="cp-prods" class="cards"></div>
@@ -164,7 +166,7 @@
 </div></div>
 
 <script>
-var ME,allV=[],allSz=[],oItems=[],ordStatus="",ordPage=0,catP=null,cpCatP=null;
+var ME,allV=[],allSz=[],oItems=[],dropCh="hot",ordStatus="",ordPage=0,catP=null,cpCatP=null;
 var SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 var SCL={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роботі"},{k:"packed",l:"Готові"},{k:"shipped",l:"Відправлені"},{k:"delivering",l:"Доставка"},{k:"delivered",l:"Отримані"},{k:"refused",l:"Відмови"},{k:"cancelled",l:"Скасовані"}];
@@ -245,13 +247,14 @@ async function openNewOrder(){
   oItems=[];renderOItems();
   ["no-name","no-phone","no-city","no-wh","no-cod","no-note"].forEach(function(id){document.getElementById(id).value=""});
   document.getElementById("no-pay").innerHTML="";document.getElementById("no-err").style.display="none";
-  var d=await api("/api/variations");allV=d.variations;allSz=d.sizes;
+  var d=await api("/api/variations?channel="+dropCh);allV=d.variations;allSz=d.sizes;
   try{var kd=await api("/api/kits");kd.kits.forEach(function(k){k.is_kit=true;allV.push(k)})}catch(e){}
   opM("no-modal");
 }
 
 function openCatPicker(){cpCatP=null;loadCatPicker();opM("cp-modal")}
 async function loadCatPicker(){
+  document.querySelectorAll("[id^=cpt-]").forEach(function(b){b.className="stab";if(b.id==="cpt-"+dropCh)b.className="stab on"});
   var cd=await api("/api/categories?parent_id="+(cpCatP||"")+"&scope=drop");
   var bc='<div class="bread"><a onclick="cpCatP=null;loadCatPicker()">📦 Каталог</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="cpCatP='+b.id+';loadCatPicker()">'+esc(b.name)+'</a>'});
@@ -259,6 +262,7 @@ async function loadCatPicker(){
   var cats=cd.categories.filter(function(c){return!c.hidden_from_drop});
   document.getElementById("cp-cats").innerHTML=cats.map(function(c){return '<div class="crd" onclick="cpCatP='+c.id+';loadCatPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':'📁')+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
   // Products
+  if(!allV.length||true){var dd=await api("/api/variations?channel="+dropCh);allV=dd.variations;allSz=dd.sizes}
   var filtered=cpCatP?allV.filter(function(v){return v.category_drop_id==cpCatP}):allV;
   var el=document.getElementById("cp-prods");
   el.innerHTML=filtered.slice(0,40).map(function(v){
@@ -292,13 +296,14 @@ async function submitOrder(){
 
 // ── CATALOG ──────────────────────────────────────────────────────
 async function loadCatalog(){
+  document.querySelectorAll("[id^=ct-]").forEach(function(b){b.className="stab";if(b.id==="ct-"+dropCh)b.className="stab on"});
   var cd=await api("/api/categories?parent_id="+(catP||"")+"&scope=drop");
   var bc='<div class="bread"><a onclick="catP=null;loadCatalog()">📦 Каталог</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="catP='+b.id+';loadCatalog()">'+esc(b.name)+'</a>'});
   bc+='</div>';document.getElementById("cat-bread").innerHTML=bc;
   var cats=cd.categories.filter(function(c){return!c.hidden_from_drop});
   document.getElementById("cat-cats").innerHTML=cats.map(function(c){return '<div class="crd" onclick="catP='+c.id+';loadCatalog()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':'📁')+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
-  if(!allV.length){var d=await api("/api/variations");allV=d.variations;allSz=d.sizes;try{var kd=await api("/api/kits");kd.kits.forEach(function(k){k.is_kit=true;allV.push(k)})}catch(e){}}
+  allV=[];var d=await api("/api/variations?channel="+dropCh);allV=d.variations;allSz=d.sizes;try{var kd=await api("/api/kits");kd.kits.forEach(function(k){k.is_kit=true;allV.push(k)})}catch(e){}
   var filtered=catP?allV.filter(function(v){return v.category_drop_id==catP}):allV;
   document.getElementById("cat-prods").innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});

@@ -271,6 +271,9 @@ addCol("order_items","kit_id","INTEGER DEFAULT NULL");
 addCol("variations","allow_negative_order","INTEGER DEFAULT 1");
 addCol("orders","np_ref","TEXT DEFAULT ''");
 addCol("orders","ttn_return","TEXT DEFAULT ''");
+addCol("models","drop_channel","TEXT DEFAULT 'hot'");
+addCol("order_items","drop_channel","TEXT DEFAULT ''");
+addCol("kits","drop_channel","TEXT DEFAULT 'hot'");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){
