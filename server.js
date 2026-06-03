@@ -782,7 +782,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
               CargoType: "Parcel", Weight: String(Math.max(0.5, itemsCount * 0.3)),
               ServiceType: "WarehouseWarehouse", SeatsAmount: "1", Description: "Одяг",
               Cost: String(o2.cod_amount || 300),
-              BackwardDeliveryData: o2.cod_amount > 0 ? [{ PayerType: "Recipient", CargoType: "Money", RedeliveryString: String(o2.cod_amount) }] : undefined,
+              AfterpaymentOnGoodsCost: o2.cod_amount > 0 ? String(o2.cod_amount) : undefined,
               CitySender: senderCity,
               Sender: sender.sender_ref,
               SenderAddress: sender.address_ref,
@@ -795,7 +795,14 @@ app.post("/api/orders", authMiddleware, (req, res) => {
               RecipientsPhone: cleanPhone(o2.client_phone),
             };
             console.log("Auto-TTN sending doc...");
-            const r2 = await npApi(apiKey, "InternetDocument", "save", docData);
+            let r2 = await npApi(apiKey, "InternetDocument", "save", docData);
+            // Retry without COD if PostPay unavailable
+            if (!r2.success && JSON.stringify(r2.errors||[]).includes("Післяплата") || JSON.stringify(r2.errors||[]).includes("Afterpayment") || JSON.stringify(r2.errors||[]).includes("Контроль")) {
+              console.log("Auto-TTN: COD not available at this branch, retrying without COD...");
+              delete docData.BackwardDeliveryData;
+              delete docData.AfterpaymentOnGoodsCost;
+              r2 = await npApi(apiKey, "InternetDocument", "save", docData);
+            }
             if (r2.success && r2.data?.[0]) {
               db.prepare("UPDATE orders SET ttn=?,np_ref=?,status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(r2.data[0].IntDocNumber, r2.data[0].Ref, o2.id);
               console.log("Auto-TTN SUCCESS:", r2.data[0].IntDocNumber);
@@ -1134,7 +1141,7 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
       CargoType: "Parcel", Weight: String(weight),
       ServiceType: "WarehouseWarehouse", SeatsAmount: "1", Description: "Одяг",
       Cost: String(o.cod_amount || 300),
-      BackwardDeliveryData: o.cod_amount > 0 ? [{ PayerType: "Recipient", CargoType: "Money", RedeliveryString: String(o.cod_amount) }] : undefined,
+      AfterpaymentOnGoodsCost: o.cod_amount > 0 ? String(o.cod_amount) : undefined,
       CitySender: senderCity,
       Sender: sender.sender_ref,
       SenderAddress: sender.address_ref,
