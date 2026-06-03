@@ -180,6 +180,9 @@ async function loadCatalog(){
   document.getElementById("cat-cats").innerHTML=cats.map(c=>`<div class="crd" onclick="catP=${c.id};loadCatalog()"><div class="crd-img">${c.photo?`<img src="${c.photo}">`:'📁'}</div><div class="crd-body"><div class="crd-name">${esc(c.name)}</div></div></div>`).join("");
   const url=catP?`/api/variations?category_id=${catP}`:"/api/variations";
   const vd=await api(url);allVars=vd.variations;allSizes=vd.sizes;
+  // Load kits
+  const kurl=catP?`/api/kits?category_id=${catP}`:"/api/kits";
+  try{const kd=await api(kurl);kd.kits.forEach(k=>{k.is_kit=true;allVars.push(k)})}catch(e){}
   renderProducts(allVars);
 }
 
@@ -189,18 +192,19 @@ function renderProducts(vars){
   el.innerHTML=vars.map(v=>{
     const szs=allSizes.filter(s=>v.stock[s.id]!==undefined);
     const szHtml=szs.map(s=>{const q=v.stock[s.id]||0;
-      return '<div class="stock-sz '+(q<=0?"zero":"")+'" data-vid="'+v.id+'" data-sid="'+s.id+'" data-q="'+q+'"><b>'+s.name+'</b><br>'+q+'</div>';
+      return '<div class="stock-sz '+(q<=0?"zero":"")+'" data-vid="'+v.id+'" data-sid="'+s.id+'" data-q="'+q+'" data-kit="'+(v.is_kit?'1':'0')+'"><b>'+s.name+'</b><br>'+q+'</div>';
     }).join("");
-    return '<div class="pcard"><div class="pcard-img">'+(v.photo||v.print_photo?'<img src="'+(v.photo||v.print_photo)+'">':'📷')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+'</div><div><span class="pp tag-g">'+v.drop_price+'₴</span></div><div class="stock-row">'+szHtml+'</div></div></div>';
+    return '<div class="pcard" style="'+(v.is_kit?'border-color:rgba(255,167,38,.3)':'')+'"><div class="pcard-img">'+(v.photo||v.print_photo?'<img src="'+(v.photo||v.print_photo)+'">':'📷')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">🎁 Комплект</span>':'')+'</div><div><span class="pp tag-g">'+v.drop_price+'₴</span></div><div class="stock-row">'+szHtml+'</div></div></div>';
   }).join("");
   // Attach click handlers to size buttons
   el.querySelectorAll(".stock-sz").forEach(btn=>{
     if(parseInt(btn.dataset.q)>0){
       btn.addEventListener("click",()=>{
         const vid=parseInt(btn.dataset.vid),sid=parseInt(btn.dataset.sid);
-        const v=allVars.find(x=>x.id===vid);if(!v)return;
+        const v=allVars.find(x=>x.id===vid&&x.is_kit===btn.dataset.kit==='1');
+        if(!v)return;
         const s=allSizes.find(x=>x.id===sid);if(!s)return;
-        addToCart(vid,sid,v.name,v.drop_price,s.name,v.photo||v.print_photo||"");
+        addToCart(v.is_kit?0:vid,sid,v.name,v.drop_price,s.name,v.photo||v.print_photo||"",v.is_kit?vid:null);
       });
     }
   });
@@ -209,11 +213,10 @@ function renderProducts(vars){
 let searchT;function doSearch(q){clearTimeout(searchT);searchT=setTimeout(()=>{if(!q){loadCatalog();return}document.getElementById("cat-cats").innerHTML="";document.getElementById("cat-bread").innerHTML="";renderProducts(allVars.filter(v=>v.name.toLowerCase().includes(q.toLowerCase())))},300)}
 
 // ── Cart ─────────────────────────────────────────────────────────
-function addToCart(varId,sizeId,name,price,sizeName,photo){
-  const existing=cart.find(c=>c.varId===varId&&c.sizeId===sizeId);
-  if(existing){existing.qty++;} else {cart.push({varId,sizeId,name,price,sizeName,photo,qty:1})}
+function addToCart(varId,sizeId,name,price,sizeName,photo,kitId){
+  const existing=cart.find(c=>c.varId===varId&&c.sizeId===sizeId&&c.kitId===kitId);
+  if(existing){existing.qty++;} else {cart.push({varId,sizeId,name,price,sizeName,photo,qty:1,kitId:kitId||null})}
   updateCartBadge();
-  // Flash feedback
   const tab=document.getElementById("tab-cart");tab.style.background="var(--acc)";tab.style.color="#0a0e17";
   setTimeout(()=>{tab.style.background="";tab.style.color=""},300);
 }
@@ -260,7 +263,7 @@ function calcPayout(){
 async function submitOrder(){
   const err=document.getElementById("order-err");err.style.display="none";
   const data={
-    items:cart.map(c=>({variation_id:c.varId,size_id:c.sizeId,quantity:c.qty})),
+    items:cart.map(c=>({variation_id:c.varId,size_id:c.sizeId,quantity:c.qty,kit_id:c.kitId||undefined})),
     client_name:document.getElementById("cl-name").value,
     client_phone:document.getElementById("cl-phone").value,
     client_city:document.getElementById("cl-city").value,

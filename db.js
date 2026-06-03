@@ -219,6 +219,27 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT DEFAULT '');
 
+  -- Комплекти (віртуальні товари для дропшиперів)
+  CREATE TABLE IF NOT EXISTS kits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    photo TEXT DEFAULT '',
+    category_drop_id INTEGER DEFAULT NULL,
+    drop_price REAL DEFAULT 0,
+    cost_price REAL DEFAULT 0,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (category_drop_id) REFERENCES categories(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS kit_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kit_id INTEGER NOT NULL,
+    variation_id INTEGER NOT NULL,
+    FOREIGN KEY (kit_id) REFERENCES kits(id) ON DELETE CASCADE,
+    FOREIGN KEY (variation_id) REFERENCES variations(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_orders_drop ON orders(dropshipper_id);
   CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
   CREATE INDEX IF NOT EXISTS idx_bp_model ON base_products(model_id);
@@ -234,6 +255,7 @@ addCol("categories","scope","TEXT DEFAULT 'base'");
 addCol("base_products","cost_price","REAL DEFAULT 0");
 addCol("base_products","drop_price","REAL DEFAULT 0");
 addCol("models","category_drop_id","INTEGER DEFAULT NULL");
+addCol("order_items","kit_id","INTEGER DEFAULT NULL");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){

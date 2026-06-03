@@ -535,6 +535,84 @@ app.post("/api/stock/incoming-bulk", authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── KITS (комплекти для дропшиперів) ─────────────────────────────
+
+app.get("/api/kits", authMiddleware, (req, res) => {
+  const cat = req.query.category_id;
+  let q = "SELECT k.*,c.name as category_name FROM kits k LEFT JOIN categories c ON k.category_drop_id=c.id WHERE k.active=1";
+  const params = [];
+  if (cat) { q += " AND k.category_drop_id=?"; params.push(parseInt(cat)); }
+  q += " ORDER BY k.name";
+  const kits = db.prepare(q).all(...params);
+  const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
+
+  kits.forEach(k => {
+    k.items = db.prepare("SELECT ki.*,v.name as var_name,v.photo as var_photo,v.base_product_id,v.print_id,bp.name as base_name,c.name as color_name FROM kit_items ki JOIN variations v ON ki.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id LEFT JOIN colors c ON bp.color_id=c.id WHERE ki.kit_id=?").all(k.id);
+    // Stock = min across all components per size
+    // Get all model sizes from first component
+    if (k.items.length) {
+      const firstVar = k.items[0];
+      const bp = db.prepare("SELECT model_id FROM base_products WHERE id=?").get(firstVar.base_product_id);
+      const modelSizes = bp ? db.prepare("SELECT size_id FROM model_sizes WHERE model_id=?").all(bp.model_id).map(r=>r.size_id) : [];
+      k.stock = {};
+      k.total_stock = 0;
+      for (const sid of modelSizes) {
+        let minStock = Infinity;
+        for (const item of k.items) {
+          const base = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(item.base_product_id, sid)?.quantity || 0;
+          const ret = item.print_id ? (db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(item.variation_id, sid)?.quantity || 0) : 0;
+          minStock = Math.min(minStock, base + ret);
+        }
+        if (minStock === Infinity) minStock = 0;
+        k.stock[sid] = minStock;
+        k.total_stock += minStock;
+      }
+    } else {
+      k.stock = {}; k.total_stock = 0;
+    }
+    k.is_kit = true;
+  });
+  res.json({ kits, sizes });
+});
+
+app.get("/api/kits/:id", authMiddleware, (req, res) => {
+  const k = db.prepare("SELECT * FROM kits WHERE id=?").get(req.params.id);
+  if (!k) return res.status(404).json({ error: "Не знайдено" });
+  k.items = db.prepare("SELECT ki.*,v.name as var_name,v.photo as var_photo,v.id as vid FROM kit_items ki JOIN variations v ON ki.variation_id=v.id WHERE ki.kit_id=?").all(k.id);
+  res.json({ kit: k });
+});
+
+app.post("/api/kits", authMiddleware, requireRole("admin"), (req, res) => {
+  const { name, photo, category_drop_id, drop_price, cost_price, variation_ids } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
+  if (!variation_ids?.length) return res.status(400).json({ error: "Додайте товари до комплекту" });
+
+  const r = db.transaction(() => {
+    const k = db.prepare("INSERT INTO kits(name,photo,category_drop_id,drop_price,cost_price)VALUES(?,?,?,?,?)").run(name.trim(), photo||"", category_drop_id||null, parseFloat(drop_price)||0, parseFloat(cost_price)||0);
+    const addItem = db.prepare("INSERT INTO kit_items(kit_id,variation_id)VALUES(?,?)");
+    variation_ids.forEach(vid => addItem.run(k.lastInsertRowid, vid));
+    return k.lastInsertRowid;
+  })();
+  res.json({ ok: true, kit_id: r });
+});
+
+app.put("/api/kits/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  const { name, photo, category_drop_id, drop_price, cost_price, active } = req.body;
+  const s=[],v=[];
+  if(name!==undefined){s.push("name=?");v.push(name.trim())}
+  if(photo!==undefined){s.push("photo=?");v.push(photo)}
+  if(category_drop_id!==undefined){s.push("category_drop_id=?");v.push(category_drop_id||null)}
+  if(drop_price!==undefined){s.push("drop_price=?");v.push(parseFloat(drop_price)||0)}
+  if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
+  if(active!==undefined){s.push("active=?");v.push(active?1:0)}
+  if(s.length){v.push(req.params.id);db.prepare(`UPDATE kits SET ${s.join(",")} WHERE id=?`).run(...v)}
+  res.json({ ok: true });
+});
+
+app.delete("/api/kits/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("DELETE FROM kits WHERE id=?").run(req.params.id);res.json({ ok: true });
+});
+
 // ── ORDERS ────────────────────────────────────────────────────────
 
 // Create order (dropshipper)
@@ -553,29 +631,43 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     const orderItems = [];
 
     for (const item of items) {
-      const v = db.prepare("SELECT v.*,bp.drop_price as bp_drop,m.drop_price as m_drop FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(item.variation_id);
-      if (!v) throw new Error(`Варіація ${item.variation_id} не знайдена`);
-
-      let dropPrice = v.drop_price_override || v.bp_drop || v.m_drop || 0;
-      // Apply discount
-      if (drop?.discount_percent) dropPrice = dropPrice * (1 - drop.discount_percent / 100);
-      if (drop?.discount_fixed) dropPrice = Math.max(0, dropPrice - drop.discount_fixed);
-      dropPrice = Math.round(dropPrice * 100) / 100;
-
       const qty = parseInt(item.quantity) || 1;
-      totalDrop += dropPrice * qty;
 
-      // Always deduct from base stock only
-      db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=?").run(qty, v.base_product_id, item.size_id);
+      if (item.kit_id) {
+        // Kit order — expand into components
+        const kit = db.prepare("SELECT * FROM kits WHERE id=?").get(item.kit_id);
+        if (!kit) throw new Error("Комплект не знайдено");
+        let kitPrice = kit.drop_price;
+        if (drop?.discount_percent) kitPrice = kitPrice * (1 - drop.discount_percent / 100);
+        if (drop?.discount_fixed) kitPrice = Math.max(0, kitPrice - drop.discount_fixed);
+        kitPrice = Math.round(kitPrice * 100) / 100;
+        totalDrop += kitPrice * qty;
 
-      // Check if returns exist (for packer hint, not auto-deduct)
-      let hasReturns = 0;
-      if (v.print_id) {
-        const ret = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(v.id, item.size_id);
-        if (ret && ret.quantity > 0) hasReturns = Math.min(ret.quantity, qty);
+        const kitComps = db.prepare("SELECT ki.variation_id FROM kit_items ki WHERE ki.kit_id=?").all(item.kit_id);
+        for (const comp of kitComps) {
+          const v = db.prepare("SELECT v.*,bp.id as bpid FROM variations v JOIN base_products bp ON v.base_product_id=bp.id WHERE v.id=?").get(comp.variation_id);
+          if (!v) continue;
+          db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=?").run(qty, v.bpid, item.size_id);
+          orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: 0, from_returns: 0, kit_id: item.kit_id });
+        }
+        // First component gets the kit price for display
+        if (orderItems.length && orderItems[orderItems.length - kitComps.length]) {
+          orderItems[orderItems.length - kitComps.length].drop_price = kitPrice;
+        }
+      } else {
+        // Regular item
+        const v = db.prepare("SELECT v.*,bp.drop_price as bp_drop,m.drop_price as m_drop FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(item.variation_id);
+        if (!v) throw new Error("Варіація не знайдена");
+
+        let dropPrice = v.drop_price_override || v.bp_drop || v.m_drop || 0;
+        if (drop?.discount_percent) dropPrice = dropPrice * (1 - drop.discount_percent / 100);
+        if (drop?.discount_fixed) dropPrice = Math.max(0, dropPrice - drop.discount_fixed);
+        dropPrice = Math.round(dropPrice * 100) / 100;
+        totalDrop += dropPrice * qty;
+
+        db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=?").run(qty, v.base_product_id, item.size_id);
+        orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: 0, kit_id: null });
       }
-
-      orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: 0 });
     }
 
     const cod = parseFloat(cod_amount) || 0;
@@ -584,8 +676,8 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note)VALUES(?,?,?,?,?,?,?,?,?)")
       .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"");
 
-    const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns)VALUES(?,?,?,?,?,?)");
-    orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns));
+    const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id)VALUES(?,?,?,?,?,?,?)");
+    orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id));
 
     return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout };
   })();
