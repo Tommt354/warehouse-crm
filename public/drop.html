@@ -291,18 +291,18 @@ function renderOItems(){
   el.innerHTML=oItems.map(function(c,i){return '<div class="oi-card">'+(c.photo?'<img src="'+c.photo+'" style="width:36px;height:36px;border-radius:5px;object-fit:cover">':'')+'<div style="flex:1;color:var(--th)">'+esc(c.name)+'</div><div style="color:var(--acc);font-weight:600">'+c.sz+'</div><div style="display:flex;align-items:center;gap:3px"><button onclick="oItems['+i+'].qty=Math.max(1,oItems['+i+'].qty-1);renderOItems();calcPay()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">−</button><span style="font-family:JetBrains Mono,monospace;font-size:11px;min-width:16px;text-align:center">'+c.qty+'</span><button onclick="oItems['+i+'].qty++;renderOItems();calcPay()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">+</button></div><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--td);min-width:40px;text-align:right">'+(c.price*c.qty).toFixed(0)+'₴</div><button class="oi-del" onclick="oItems.splice('+i+',1);renderOItems();calcPay()">✕</button></div>'}).join("");
 }
 
-var dropCityRef="",receiptPhoto="",lastCities=[];
+var dropCityRef="",dropSettleRef="",receiptPhoto="",lastCities=[];
 function togglePrepaid(){var p=document.getElementById("no-prepaid").checked;document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";calcPay()}
 
 var cityTimer;
 function searchNpCity(q){clearTimeout(cityTimer);if(q.length<2){document.getElementById("no-city-dd").innerHTML="";return}
   cityTimer=setTimeout(async function(){try{var r=await api("/api/nova-poshta/search-city",{method:"POST",body:JSON.stringify({query:q})});lastCities=r.cities;
-  document.getElementById("no-city-dd").innerHTML=r.cities.map(function(c){return '<div style="padding:8px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickCity(\''+(c.DeliveryCity||c.Ref)+'\',\''+c.MainDescription.replace(/'/g,"")+'\')">'+(c.Present||c.MainDescription)+'</div>'}).join("")||'<div style="padding:8px;font-size:11px;color:var(--td)">Не знайдено</div>'}catch(e){document.getElementById("no-city-dd").innerHTML='<div style="padding:6px;font-size:10px;color:var(--red)">Помилка: налаштуйте API ключ НП</div>'}},400)}
-function pickCity(ref,name){dropCityRef=ref;document.getElementById("no-city").value=name;document.getElementById("no-city-dd").innerHTML="";document.getElementById("no-wh").value="";document.getElementById("no-wh").focus()}
+  document.getElementById("no-city-dd").innerHTML=r.cities.map(function(c){return '<div style="padding:8px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickCity(\''+(c.DeliveryCity||c.Ref)+'\',\''+c.MainDescription.replace(/'/g,"")+'\',\''+c.Ref+'\')">'+(c.Present||c.MainDescription)+'</div>'}).join("")||'<div style="padding:8px;font-size:11px;color:var(--td)">Не знайдено</div>'}catch(e){document.getElementById("no-city-dd").innerHTML='<div style="padding:6px;font-size:10px;color:var(--red)">Помилка: налаштуйте API ключ НП</div>'}},400)}
+function pickCity(ref,name,setRef){dropCityRef=ref;dropSettleRef=setRef||ref;document.getElementById("no-city").value=name;document.getElementById("no-city-dd").innerHTML="";document.getElementById("no-wh").value="";document.getElementById("no-wh").focus()}
 // Auto-pick first city on blur
 document.addEventListener("DOMContentLoaded",function(){
   var ci=document.getElementById("no-city");
-  if(ci)ci.addEventListener("blur",function(){setTimeout(function(){if(!dropCityRef&&lastCities.length){pickCity(lastCities[0].DeliveryCity||lastCities[0].Ref,lastCities[0].MainDescription)}document.getElementById("no-city-dd").innerHTML=""},300)})
+  if(ci)ci.addEventListener("blur",function(){setTimeout(function(){if(!dropCityRef&&lastCities.length){pickCity(lastCities[0].DeliveryCity||lastCities[0].Ref,lastCities[0].MainDescription,lastCities[0].Ref)}document.getElementById("no-city-dd").innerHTML=""},300)})
 });
 
 var whTimer;
@@ -313,7 +313,7 @@ function searchNpWh(q){clearTimeout(whTimer);
     if(cityVal.length>=2&&lastCities.length){pickCity(lastCities[0].Ref,lastCities[0].MainDescription)}
     if(!dropCityRef){document.getElementById("no-wh-dd").innerHTML='<div style="padding:6px;font-size:10px;color:var(--red)">Спочатку оберіть місто</div>';return}
   }
-  whTimer=setTimeout(async function(){try{var r=await api("/api/nova-poshta/search-warehouse",{method:"POST",body:JSON.stringify({city_ref:dropCityRef,query:q})});
+  whTimer=setTimeout(async function(){try{var r=await api("/api/nova-poshta/search-warehouse",{method:"POST",body:JSON.stringify({city_ref:dropCityRef,settle_ref:dropSettleRef,query:q})});
   document.getElementById("no-wh-dd").innerHTML=r.warehouses.slice(0,10).map(function(w){return '<div style="padding:8px;cursor:pointer;font-size:11px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickWh(\''+w.Description.replace(/'/g,"")+'\')">'+(w.Description)+'</div>'}).join("")||'<div style="padding:6px;font-size:10px;color:var(--td)">Не знайдено</div>'}catch(e){}},300)}
 function pickWh(desc){document.getElementById("no-wh").value=desc;document.getElementById("no-wh-dd").innerHTML=""}
 

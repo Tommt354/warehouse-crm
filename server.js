@@ -1218,7 +1218,14 @@ app.post("/api/nova-poshta/search-warehouse", authMiddleware, async (req, res) =
   try {
     const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
     if (!apiKey) return res.status(400).json({ error: "Немає API ключа" });
-    const r = await npApi(apiKey, "Address", "getWarehouses", { CityRef: req.body.city_ref, FindByString: req.body.query || "", Limit: 20 });
+    // Try CityRef first, then SettlementRef for villages
+    let r = await npApi(apiKey, "Address", "getWarehouses", { CityRef: req.body.city_ref, FindByString: req.body.query || "", Limit: 20 });
+    if (!r.data?.length && req.body.settle_ref) {
+      r = await npApi(apiKey, "Address", "getWarehouses", { SettlementRef: req.body.settle_ref, FindByString: req.body.query || "", Limit: 20 });
+    }
+    if (!r.data?.length) {
+      r = await npApi(apiKey, "Address", "getWarehouses", { SettlementRef: req.body.city_ref, FindByString: req.body.query || "", Limit: 20 });
+    }
     res.json({ warehouses: r.data || [] });
   } catch (e) { res.status(500).json({ error: e.message }) }
 });
