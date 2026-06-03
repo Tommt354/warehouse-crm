@@ -297,12 +297,12 @@ function togglePrepaid(){var p=document.getElementById("no-prepaid").checked;doc
 var cityTimer;
 function searchNpCity(q){clearTimeout(cityTimer);if(q.length<2){document.getElementById("no-city-dd").innerHTML="";return}
   cityTimer=setTimeout(async function(){try{var r=await api("/api/nova-poshta/search-city",{method:"POST",body:JSON.stringify({query:q})});lastCities=r.cities;
-  document.getElementById("no-city-dd").innerHTML=r.cities.map(function(c){return '<div style="padding:8px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickCity(\''+c.Ref+'\',\''+c.MainDescription.replace(/'/g,"")+'\')">'+(c.Present||c.MainDescription)+'</div>'}).join("")||'<div style="padding:8px;font-size:11px;color:var(--td)">Не знайдено</div>'}catch(e){document.getElementById("no-city-dd").innerHTML='<div style="padding:6px;font-size:10px;color:var(--red)">Помилка: налаштуйте API ключ НП</div>'}},400)}
+  document.getElementById("no-city-dd").innerHTML=r.cities.map(function(c){return '<div style="padding:8px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickCity(\''+(c.DeliveryCity||c.Ref)+'\',\''+c.MainDescription.replace(/'/g,"")+'\')">'+(c.Present||c.MainDescription)+'</div>'}).join("")||'<div style="padding:8px;font-size:11px;color:var(--td)">Не знайдено</div>'}catch(e){document.getElementById("no-city-dd").innerHTML='<div style="padding:6px;font-size:10px;color:var(--red)">Помилка: налаштуйте API ключ НП</div>'}},400)}
 function pickCity(ref,name){dropCityRef=ref;document.getElementById("no-city").value=name;document.getElementById("no-city-dd").innerHTML="";document.getElementById("no-wh").value="";document.getElementById("no-wh").focus()}
 // Auto-pick first city on blur
 document.addEventListener("DOMContentLoaded",function(){
   var ci=document.getElementById("no-city");
-  if(ci)ci.addEventListener("blur",function(){setTimeout(function(){if(!dropCityRef&&lastCities.length){pickCity(lastCities[0].Ref,lastCities[0].MainDescription)}document.getElementById("no-city-dd").innerHTML=""},300)})
+  if(ci)ci.addEventListener("blur",function(){setTimeout(function(){if(!dropCityRef&&lastCities.length){pickCity(lastCities[0].DeliveryCity||lastCities[0].Ref,lastCities[0].MainDescription)}document.getElementById("no-city-dd").innerHTML=""},300)})
 });
 
 var whTimer;
