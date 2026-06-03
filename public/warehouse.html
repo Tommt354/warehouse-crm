@@ -5,50 +5,143 @@
 <title>CRM — Склад</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
-:root{--bg:#0a0e17;--card:#111827;--input:#0d1220;--brd:#1e2740;--brd2:#2a3a5c;--t:#c8cdd5;--td:#5a6378;--th:#f0f2f5;--acc:#00d4aa;--accbg:rgba(0,212,170,.06);--red:#ff6b6b;--warn:#ffa726;--blue:#42a5f5;--r:12px}
+:root{--bg:#0a0e17;--card:#111827;--input:#0d1220;--brd:#1e2740;--brd2:#2a3a5c;--t:#c8cdd5;--td:#5a6378;--th:#f0f2f5;--acc:#00d4aa;--accbg:rgba(0,212,170,.06);--red:#ff6b6b;--redbg:rgba(255,107,107,.06);--warn:#ffa726;--blue:#42a5f5;--r:12px}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min-height:100vh}
-.wrap{max-width:900px;margin:0 auto;padding:24px 16px 40px}
-.hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:1px solid var(--brd);margin-bottom:24px}
-.hdr h1{font-size:18px;font-weight:700;color:var(--th)}
-.hdr small{display:block;font-size:12px;color:var(--td);margin-top:2px}
-.btn-logout{background:none;border:1px solid var(--brd);border-radius:8px;color:var(--td);padding:8px 14px;font-size:12px;font-family:inherit;cursor:pointer}
-.btn-logout:hover{border-color:var(--red);color:var(--red)}
-.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:24px}
-.sc{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:16px;text-align:center}
-.sc .sv{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;line-height:1}
-.sc .sl{font-size:9px;color:var(--td);text-transform:uppercase;letter-spacing:.8px;margin-top:5px}
-.msg{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:24px;text-align:center;color:var(--td)}
-.msg .icon{font-size:44px;display:block;margin-bottom:8px}
+.wrap{max-width:900px;margin:0 auto;padding:16px 16px 40px}
+.hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:14px;border-bottom:1px solid var(--brd);margin-bottom:14px}
+.hdr h1{font-size:16px;font-weight:700;color:var(--th)}.hdr small{display:block;font-size:11px;color:var(--td);margin-top:2px}
+.btn-out{background:none;border:1px solid var(--brd);border-radius:6px;color:var(--td);padding:6px 12px;font-size:11px;font-family:inherit;cursor:pointer}
+.tabs{display:flex;gap:3px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:8px 14px;font-size:11px;font-family:inherit;font-weight:500;background:var(--card);border:1px solid var(--brd);border-radius:8px;color:var(--td);cursor:pointer;transition:.15s}
+.tab.on{color:var(--acc);border-color:rgba(0,212,170,.2);background:var(--accbg)}
+.tab .cnt{font-family:'JetBrains Mono',monospace;font-weight:700;margin-left:4px}
+.ocard{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.ocard-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.ocard-id{font-size:14px;font-weight:700;color:var(--th)}
+.ocard-client{font-size:12px;color:var(--th)}
+.ocard-phone{font-size:11px;color:var(--td)}
+.ocard-city{font-size:11px;color:var(--td)}
+.ocard-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd);font-size:11px}
+.ocard-item img{width:36px;height:36px;border-radius:5px;object-fit:cover}
+.ocard-item .oi-name{flex:1;color:var(--th)}
+.ocard-item .oi-size{color:var(--acc);font-weight:600;font-size:12px}
+.ocard-item .oi-qty{color:var(--td);font-family:'JetBrains Mono',monospace}
+.ocard-footer{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--brd)}
+.ocard-footer .of-amount{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--th)}
+.btn{padding:7px 14px;font-size:11px;font-family:inherit;font-weight:500;border:1px solid var(--brd);border-radius:7px;cursor:pointer;transition:.15s;background:var(--card);color:var(--t)}
+.btn:hover{border-color:var(--brd2)}
+.btn-p{background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600}
+.btn-w{border-color:rgba(255,167,38,.2);color:var(--warn)}
+.btn-d{border-color:rgba(255,107,107,.15);color:var(--red)}
+.tag{display:inline-block;font-size:9px;font-weight:600;padding:2px 7px;border-radius:4px}
+.tag-new{background:var(--accbg);color:var(--acc)}.tag-prog{background:rgba(66,165,245,.06);color:var(--blue)}
+.tag-ship{background:var(--warnbg);color:var(--warn)}.tag-done{background:var(--accbg);color:var(--acc)}
+.tag-bad{background:var(--redbg);color:var(--red)}
+.empty{text-align:center;padding:30px;color:var(--td);font-size:12px}.empty .ic{font-size:36px;display:block;margin-bottom:6px}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px}
+.sc{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:12px;text-align:center}
+.sc .sv{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;line-height:1}
+.sc .sl{font-size:8px;color:var(--td);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="hdr">
-    <div>
-      <h1>📦 Панель складу</h1>
-      <small id="user-info">Завантаження...</small>
-    </div>
-    <button class="btn-logout" onclick="logout()">Вийти</button>
+    <div><h1>📦 Склад</h1><small id="u-info">—</small></div>
+    <button class="btn-out" onclick="logout()">Вийти</button>
   </div>
   <div class="sg" id="stats"></div>
-  <div class="msg"><span class="icon">🚧</span>Черга замовлень, пакування, сканер — Модуль 3-4.<br>Скоро буде!</div>
+  <div class="tabs" id="status-tabs"></div>
+  <div id="orders-list"></div>
 </div>
 <script>
+let ME,curStatus="new";
+const STATUSES=[
+  {key:"new",label:"📥 Нові",next:"in_progress",nextLabel:"Взяти в роботу"},
+  {key:"in_progress",label:"🔧 В роботі",next:"packed",nextLabel:"Запаковано"},
+  {key:"packed",label:"📦 Запаковані",next:"shipped",nextLabel:"Відправлено"},
+  {key:"shipped",label:"🚚 Відправлені"},
+  {key:"delivering",label:"🚀 Доставка"},
+  {key:"delivered",label:"✅ Отримані"},
+  {key:"refused",label:"❌ Відмови"},
+];
+const SL={new:"Нове",in_progress:"В роботі",packed:"Запаковано",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
+const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-prog",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
+
 async function init(){
-  try{
-    const r=await fetch("/api/auth/me");if(!r.ok)throw 0;
-    const{user}=await r.json();
-    document.getElementById("user-info").textContent=user.name+" · "+({"packer":"Пакувальник","printer":"Принтувальник","sewer":"Нашивальник","distributor":"Видавач"}[user.worker_role]||"Працівник");
-    const d=await(await fetch("/api/dashboard")).json();
-    document.getElementById("stats").innerHTML=`
-      <div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_new||0}</div><div class="sl">нових</div></div>
-      <div class="sc"><div class="sv" style="color:var(--warn)">${d.orders_in_progress||0}</div><div class="sl">в роботі</div></div>
-      <div class="sc"><div class="sv" style="color:var(--blue)">${d.orders_packed||0}</div><div class="sl">запаковано</div></div>
-    `;
-  }catch(e){window.location.href="/login"}
+  try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name+" · "+({"packer":"Пакувальник","printer":"Принтувальник","sewer":"Нашивальник","distributor":"Видавач"}[ME.worker_role]||"Працівник");
+  renderTabs();loadStats();loadOrders()}catch(e){location.href="/login"}
 }
-async function logout(){await fetch("/api/auth/logout",{method:"POST"});window.location.href="/login"}
+async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
+function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
+async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Err");return d}
+
+function renderTabs(){
+  document.getElementById("status-tabs").innerHTML=STATUSES.map(s=>`<div class="tab ${s.key===curStatus?"on":""}" onclick="curStatus='${s.key}';renderTabs();loadOrders()">${s.label}<span class="cnt" id="cnt-${s.key}"></span></div>`).join("");
+}
+
+async function loadStats(){
+  const d=await api("/api/dashboard");
+  document.getElementById("stats").innerHTML='<div class="sc"><div class="sv" style="color:var(--acc)">'+(d.orders_new||0)+'</div><div class="sl">нових</div></div><div class="sc"><div class="sv" style="color:var(--blue)">'+(d.orders_in_progress||0)+'</div><div class="sl">в роботі</div></div><div class="sc"><div class="sv" style="color:var(--warn)">'+(d.orders_packed||0)+'</div><div class="sl">запаковано</div></div>';
+  for(const s of STATUSES){
+    try{
+      const r=await api("/api/orders?status="+s.key);
+      const el=document.getElementById("cnt-"+s.key);
+      if(el)el.textContent=r.orders.length||"";
+    }catch(e){}
+  }
+}
+
+async function loadOrders(){
+  const{orders}=await api(`/api/orders?status=${curStatus}`);
+  const el=document.getElementById("orders-list");
+  if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📭</span>Немає замовлень з цим статусом</div>';return}
+
+  const statusInfo=STATUSES.find(s=>s.key===curStatus);
+  let html="";
+  for(const o of orders){
+    const{order}=await api("/api/orders/"+o.id);
+    html+=`<div class="ocard">
+      <div class="ocard-hdr">
+        <div>
+          <div class="ocard-id">#${o.id} <span class="tag ${SC[o.status]||""}">${SL[o.status]||o.status}</span></div>
+          <div class="ocard-client">${esc(o.client_name)}</div>
+          <div class="ocard-phone">${esc(o.client_phone)}</div>
+          <div class="ocard-city">${esc(o.client_city)} · ${esc(o.client_warehouse)}</div>
+        </div>
+        <div style="text-align:right;font-size:10px;color:var(--td)">${esc(o.drop_name)}<br>${o.created_at?.slice(0,16)}</div>
+      </div>
+      ${order.items.map(i=>`<div class="ocard-item">
+        ${i.var_photo?`<img src="${i.var_photo}">`:'<div style="width:36px;height:36px;background:var(--bg);border-radius:5px"></div>'}
+        <div class="oi-name">${esc(i.var_name)}${i.print_name?` <span style="color:var(--warn);font-size:9px">${esc(i.print_name)}</span>`:""}</div>
+        <div class="oi-size">${esc(i.size_name)}</div>
+        <div class="oi-qty">×${i.quantity}</div>
+      </div>`).join("")}
+      <div class="ocard-footer">
+        <div class="of-amount">Наложка: ${o.cod_amount}₴</div>
+        <div style="display:flex;gap:4px">
+          ${statusInfo?.next?`<button class="btn btn-p" onclick="changeStatus(${o.id},'${statusInfo.next}')">${statusInfo.nextLabel}</button>`:""}
+          ${o.status==="new"?`<button class="btn btn-d" onclick="cancelOrder(${o.id})">Скасувати</button>`:""}
+        </div>
+      </div>
+      ${o.note?`<div style="margin-top:6px;font-size:11px;color:var(--td)">📝 ${esc(o.note)}</div>`:""}
+    </div>`;
+  }
+  el.innerHTML=html;
+}
+
+async function changeStatus(id,status){
+  await api(`/api/orders/${id}/status`,{method:"PUT",body:JSON.stringify({status})});
+  loadOrders();loadStats();renderTabs();
+}
+
+async function cancelOrder(id){
+  if(!confirm("Скасувати замовлення? Товари повернуться на склад."))return;
+  await api(`/api/orders/${id}/cancel`,{method:"POST"});
+  loadOrders();loadStats();renderTabs();
+}
+
 init();
 </script>
 </body>

@@ -122,6 +122,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
     <div class="nav-g">Склад</div>
     <a data-p="sbase">📦 Склад база</a>
     <a data-p="sdrop">🛒 Склад дроп</a>
+    <a data-p="orders">📋 Замовлення</a>
     <div class="nav-g">Користувачі</div>
     <a data-p="drops">🛒 Дропшипери</a>
     <a data-p="workers">👷 Працівники</a>
@@ -170,6 +171,20 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 </div>
 <div class="cards" id="sdrop-cats"></div>
 <div class="cards" id="sdrop-list" style="margin-top:10px"></div>
+</div>
+
+<div class="page" id="pg-orders"><div class="pt">📋 Замовлення</div>
+<div class="acts">
+  <button class="btn" onclick="loadAdmOrders('')" id="ao-all">Всі</button>
+  <button class="btn" onclick="loadAdmOrders('new')" id="ao-new">Нові</button>
+  <button class="btn" onclick="loadAdmOrders('in_progress')" id="ao-in_progress">В роботі</button>
+  <button class="btn" onclick="loadAdmOrders('packed')" id="ao-packed">Запаковані</button>
+  <button class="btn" onclick="loadAdmOrders('shipped')" id="ao-shipped">Відправлені</button>
+  <button class="btn" onclick="loadAdmOrders('delivered')" id="ao-delivered">Отримані</button>
+  <button class="btn" onclick="loadAdmOrders('refused')" id="ao-refused">Відмови</button>
+  <button class="btn" onclick="loadAdmOrders('cancelled')" id="ao-cancelled">Скасовані</button>
+</div>
+<div id="adm-orders"></div>
 </div>
 
 <div class="page" id="pg-drops"><div class="pt">🛒 Дропшипери</div>
@@ -292,7 +307,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},drops:loadDrops,workers:loadWorkers,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},orders:()=>loadAdmOrders(''),drops:loadDrops,workers:loadWorkers,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -626,6 +641,34 @@ async function deleteEditVar(){if(!confirm("Видалити варіацію?")
 async function openInc(){const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;const s=document.getElementById("inc-bp");s.innerHTML=sbProducts.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");loadIncSz();openM("inc-modal")}
 function loadIncSz(){const id=parseInt(document.getElementById("inc-bp").value);const p=sbProducts.find(x=>x.id===id);if(!p)return;document.getElementById("inc-sz").innerHTML=sbSizes.filter(s=>p.stock[s.id]!==undefined).map(s=>`<div class="fld-row" style="margin-bottom:4px"><div style="padding:6px 0;font-size:11px">${s.name} <span style="color:var(--td)">(${p.stock[s.id]||0})</span></div><div><input type="number" data-sid="${s.id}" value="0" min="0" style="padding:6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;width:70px"></div></div>`).join("")}
 async function saveInc(){const id=parseInt(document.getElementById("inc-bp").value);const items=[...document.querySelectorAll("#inc-sz input[data-sid]")].map(el=>({size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})).filter(i=>i.quantity>0);if(!items.length){alert("Кількість");return}await api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:id,items,note:document.getElementById("inc-note").value})});closeM("inc-modal");loadSBase()}
+
+// ── Admin Orders ─────────────────────────────────────────────────
+const OSL={new:"Нове",in_progress:"В роботі",packed:"Запаковано",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
+const OSC={new:"tag-g",in_progress:"tag-b",packed:"tag-b",shipped:"tag-y",delivering:"tag-y",delivered:"tag-g",refused:"tag-r",cancelled:"tag-r"};
+let admOrdFilter="";
+async function loadAdmOrders(status){
+  admOrdFilter=status;
+  document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");
+  const btn=document.getElementById("ao-"+(status||"all"));if(btn)btn.className="btn btn-a";
+  const url=status?`/api/orders?status=${status}`:"/api/orders";
+  const{orders}=await api(url);
+  const el=document.getElementById("adm-orders");
+  if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📋</span>Немає замовлень</div>';return}
+  el.innerHTML=`<table class="tbl"><tr><th>#</th><th>Дропшипер</th><th>Клієнт</th><th>Товарів</th><th>Наложка</th><th>Дроп</th><th>Виплата</th><th>Статус</th><th>Дата</th><th></th></tr>
+  ${orders.map(o=>`<tr>
+    <td style="color:var(--th);font-weight:600">${o.id}</td>
+    <td style="font-size:10px">${esc(o.drop_name)}</td>
+    <td>${esc(o.client_name)}<br><span style="font-size:9px;color:var(--td)">${esc(o.client_phone)}</span></td>
+    <td class="mono">${o.items_count}</td>
+    <td class="mono">${o.cod_amount}₴</td>
+    <td class="mono">${o.total_drop_price.toFixed(0)}₴</td>
+    <td class="mono" style="color:${o.payout_amount>=0?"var(--acc)":"var(--red)"}">${o.payout_amount.toFixed(0)}₴</td>
+    <td><span class="tag ${OSC[o.status]||""}">${OSL[o.status]||o.status}</span></td>
+    <td style="font-size:9px;color:var(--td)">${o.created_at?.slice(0,16)}</td>
+    <td><button class="btn btn-sm btn-d" onclick="cancelAdmOrder(${o.id})" title="Скасувати">✕</button></td>
+  </tr>`).join("")}</table>`;
+}
+async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api(`/api/orders/${id}/cancel`,{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
 
 // ── Users ────────────────────────────────────────────────────────
 const WL={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};

@@ -540,6 +540,152 @@ app.post("/api/stock/incoming-bulk", authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── ORDERS ────────────────────────────────────────────────────────
+
+// Create order (dropshipper)
+app.post("/api/orders", authMiddleware, (req, res) => {
+  const { items, client_name, client_phone, client_city, client_warehouse, cod_amount, note } = req.body;
+  if (!items?.length) return res.status(400).json({ error: "Додайте товари" });
+  if (!client_name?.trim()) return res.status(400).json({ error: "Вкажіть ПІБ клієнта" });
+  if (!client_phone?.trim()) return res.status(400).json({ error: "Вкажіть телефон" });
+
+  const dropId = req.user.role === "admin" ? (req.body.dropshipper_id || req.user.id) : req.user.id;
+  // Get dropshipper discount
+  const drop = db.prepare("SELECT discount_percent,discount_fixed FROM users WHERE id=?").get(dropId);
+
+  const result = db.transaction(() => {
+    let totalDrop = 0;
+    const orderItems = [];
+
+    for (const item of items) {
+      const v = db.prepare("SELECT v.*,bp.drop_price as bp_drop,m.drop_price as m_drop FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(item.variation_id);
+      if (!v) throw new Error(`Варіація ${item.variation_id} не знайдена`);
+
+      let dropPrice = v.drop_price_override || v.bp_drop || v.m_drop || 0;
+      // Apply discount
+      if (drop?.discount_percent) dropPrice = dropPrice * (1 - drop.discount_percent / 100);
+      if (drop?.discount_fixed) dropPrice = Math.max(0, dropPrice - drop.discount_fixed);
+      dropPrice = Math.round(dropPrice * 100) / 100;
+
+      const qty = parseInt(item.quantity) || 1;
+      totalDrop += dropPrice * qty;
+
+      // Check stock & deduct
+      let fromReturns = 0;
+      if (v.print_id) {
+        // Try returns first
+        const ret = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(v.id, item.size_id);
+        if (ret && ret.quantity > 0) {
+          const take = Math.min(ret.quantity, qty);
+          db.prepare("UPDATE stock_returns SET quantity=quantity-? WHERE variation_id=? AND size_id=?").run(take, v.id, item.size_id);
+          fromReturns = take;
+        }
+      }
+      const fromBase = qty - fromReturns;
+      if (fromBase > 0) {
+        db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=?").run(fromBase, v.base_product_id, item.size_id);
+      }
+
+      orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: fromReturns });
+    }
+
+    const cod = parseFloat(cod_amount) || 0;
+    const payout = Math.round((cod - totalDrop) * 100) / 100;
+
+    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note)VALUES(?,?,?,?,?,?,?,?,?)")
+      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"");
+
+    const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns)VALUES(?,?,?,?,?,?)");
+    orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns));
+
+    return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout };
+  })();
+
+  res.json({ ok: true, ...result });
+});
+
+// List orders
+app.get("/api/orders", authMiddleware, (req, res) => {
+  const { status, limit } = req.query;
+  let q = "SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id";
+  const params = [];
+  const where = [];
+
+  if (req.user.role === "dropshipper") { where.push("o.dropshipper_id=?"); params.push(req.user.id); }
+  if (status) { where.push("o.status=?"); params.push(status); }
+
+  if (where.length) q += " WHERE " + where.join(" AND ");
+  q += " ORDER BY o.created_at DESC";
+  if (limit) { q += " LIMIT ?"; params.push(parseInt(limit)); }
+
+  const orders = db.prepare(q).all(...params);
+  // Attach items count
+  orders.forEach(o => {
+    o.items_count = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 0;
+  });
+  res.json({ orders });
+});
+
+// Single order with items
+app.get("/api/orders/:id", authMiddleware, (req, res) => {
+  const o = db.prepare("SELECT o.*,u.name as drop_name,u.phone as drop_phone FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.id);
+  if (!o) return res.status(404).json({ error: "Не знайдено" });
+  if (req.user.role === "dropshipper" && o.dropshipper_id !== req.user.id) return res.status(403).json({ error: "Немає доступу" });
+
+  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,s.name as size_name,p.name as print_name
+    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id
+    WHERE oi.order_id=?`).all(o.id);
+  res.json({ order: o });
+});
+
+// Update order status
+app.put("/api/orders/:id/status", authMiddleware, (req, res) => {
+  const { status } = req.body;
+  const validStatuses = ['new','in_progress','packed','shipped','delivering','delivered','refused','return_transit','return_warehouse','return_received','cancelled'];
+  if (!validStatuses.includes(status)) return res.status(400).json({ error: "Невірний статус" });
+
+  const updates = ["status=?","updated_at=datetime('now','localtime')"];
+  const vals = [status];
+
+  if (status === "in_progress" || status === "packed") {
+    updates.push("packed_by=?"); vals.push(req.user.id);
+    if (status === "packed") { updates.push("packed_at=datetime('now','localtime')"); }
+  }
+
+  vals.push(req.params.id);
+  db.prepare(`UPDATE orders SET ${updates.join(",")} WHERE id=?`).run(...vals);
+  res.json({ ok: true });
+});
+
+// Cancel order (return stock)
+app.post("/api/orders/:id/cancel", authMiddleware, (req, res) => {
+  const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
+  if (!o) return res.status(404).json({ error: "Не знайдено" });
+  if (o.status === "cancelled") return res.status(400).json({ error: "Вже скасовано" });
+
+  db.transaction(() => {
+    // Return stock
+    const items = db.prepare("SELECT oi.*,v.base_product_id,v.print_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(o.id);
+    items.forEach(i => {
+      if (i.from_returns > 0 && i.print_id) {
+        db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(i.from_returns, i.variation_id, i.size_id);
+      }
+      const toBase = i.quantity - (i.from_returns || 0);
+      if (toBase > 0) {
+        db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(toBase, i.base_product_id, i.size_id);
+      }
+    });
+    db.prepare("UPDATE orders SET status='cancelled',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
+  })();
+  res.json({ ok: true });
+});
+
+// Delete order
+app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("DELETE FROM orders WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
 // ── DASHBOARD ────────────────────────────────────────────────────
 app.get("/api/dashboard", authMiddleware, (req, res) => {
   if (req.user.role === "admin") {
