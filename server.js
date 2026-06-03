@@ -840,7 +840,7 @@ app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) =
 // List stock returns (for admin view)
 app.get("/api/stock-returns", authMiddleware, (req, res) => {
   const items = db.prepare(`SELECT sr.*, v.name as var_name, v.photo as var_photo, s.name as size_name, 
-    p.name as print_name, bp.name as base_name, c.name as color_name
+    p.name as print_name, p.photo as print_photo, bp.name as base_name, c.name as color_name, bp.color_id, c.hex_code
     FROM stock_returns sr 
     JOIN variations v ON sr.variation_id=v.id 
     JOIN sizes s ON sr.size_id=s.id 
