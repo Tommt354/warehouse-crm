@@ -804,7 +804,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
               r2 = await npApi(apiKey, "InternetDocument", "save", docData);
             }
             if (r2.success && r2.data?.[0]) {
-              db.prepare("UPDATE orders SET ttn=?,np_ref=?,status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(r2.data[0].IntDocNumber, r2.data[0].Ref, o2.id);
+              db.prepare("UPDATE orders SET ttn=?,np_ref=?,updated_at=datetime('now','localtime') WHERE id=?").run(r2.data[0].IntDocNumber, r2.data[0].Ref, o2.id);
               console.log("Auto-TTN SUCCESS:", r2.data[0].IntDocNumber);
             } else {
               console.log("Auto-TTN NP error:", JSON.stringify(r2.errors||r2.warnings||[]));
@@ -1162,7 +1162,7 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
     const ttn = result.data[0].IntDocNumber;
     const npRef = result.data[0].Ref;
 
-    db.prepare("UPDATE orders SET ttn=?,np_ref=?,status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(ttn, npRef, o.id);
+    db.prepare("UPDATE orders SET ttn=?,np_ref=?,updated_at=datetime('now','localtime') WHERE id=?").run(ttn, npRef, o.id);
     res.json({ ok: true, ttn, np_ref: npRef });
   } catch (e) {
     res.status(500).json({ error: e.message });
