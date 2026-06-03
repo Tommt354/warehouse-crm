@@ -749,16 +749,51 @@ app.post("/api/orders", authMiddleware, (req, res) => {
             if (!whData) { console.log("Auto-TTN: warehouse not found"); return; }
             console.log("Auto-TTN wh OK:", whData.Description);
             const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o2.id).c || 1;
+            const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
+
+            // Get sender city from address
+            const senderWh = await npApi(apiKey, "Address", "getWarehouses", { Ref: sender.address_ref });
+            const senderCity = senderWh.data?.[0]?.CityRef || "";
+            console.log("Auto-TTN sender city:", senderCity);
+
+            // Create recipient counterparty
+            const nameParts = o2.client_name.trim().split(/\s+/);
+            const recipRes = await npApi(apiKey, "Counterparty", "save", {
+              FirstName: nameParts[1] || nameParts[0] || "Клієнт",
+              MiddleName: nameParts[2] || "",
+              LastName: nameParts[0] || "Клієнт",
+              Phone: cleanPhone(o2.client_phone),
+              Email: "",
+              CounterpartyType: "PrivatePerson",
+              CounterpartyProperty: "Recipient"
+            });
+            if (!recipRes.success || !recipRes.data?.[0]) {
+              console.log("Auto-TTN: recipient create error:", JSON.stringify(recipRes.errors||[]));
+              return;
+            }
+            const recipRef = recipRes.data[0].Ref;
+            const recipContact = recipRes.data[0].ContactPerson?.data?.[0]?.Ref || "";
+            console.log("Auto-TTN recipient OK:", recipRef, "contact:", recipContact);
+
             const docData = {
               PayerType: "Recipient", PaymentMethod: "Cash",
               DateTime: new Date().toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }),
-              CargoType: "Parcel", Weight: String(Math.max(0.5, itemsCount * 0.3)), ServiceType: "WarehouseWarehouse", SeatsAmount: "1", Description: "Одяг",
+              CargoType: "Parcel", Weight: String(Math.max(0.5, itemsCount * 0.3)),
+              ServiceType: "WarehouseWarehouse", SeatsAmount: "1", Description: "Одяг",
+              Cost: String(o2.cod_amount || 300),
               BackwardDeliveryData: o2.cod_amount > 0 ? [{ PayerType: "Recipient", CargoType: "Money", RedeliveryString: String(o2.cod_amount) }] : undefined,
-              Sender: sender.sender_ref, SenderAddress: sender.address_ref, ContactSender: sender.contact_ref, SendersPhone: sender.phone,
-              RecipientCityName: o2.client_city, RecipientAddressName: whData.Number || whNum,
-              RecipientName: o2.client_name, RecipientType: "PrivatePerson",
-              RecipientsPhone: o2.client_phone.replace(/[^\d+]/g, ""), RecipientAddress: whData.Ref, RecipientSettlementRef: cityData.Ref,
+              CitySender: senderCity,
+              Sender: sender.sender_ref,
+              SenderAddress: sender.address_ref,
+              ContactSender: sender.contact_ref,
+              SendersPhone: cleanPhone(sender.phone),
+              CityRecipient: cityData.DeliveryCity || cityData.Ref,
+              Recipient: recipRef,
+              RecipientAddress: whData.Ref,
+              ContactRecipient: recipContact,
+              RecipientsPhone: cleanPhone(o2.client_phone),
             };
+            console.log("Auto-TTN sending doc...");
             const r2 = await npApi(apiKey, "InternetDocument", "save", docData);
             if (r2.success && r2.data?.[0]) {
               db.prepare("UPDATE orders SET ttn=?,np_ref=?,status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(r2.data[0].IntDocNumber, r2.data[0].Ref, o2.id);
@@ -1067,38 +1102,47 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
     // Get items count and weight
     const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 1;
     const weight = Math.max(0.5, itemsCount * 0.3);
+    const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
 
-    // Create recipient contact
+    // Get sender city
+    const senderWh = await npApi(apiKey, "Address", "getWarehouses", { Ref: sender.address_ref });
+    const senderCity = senderWh.data?.[0]?.CityRef || "";
+
+    // Create recipient counterparty
     const nameParts = o.client_name.trim().split(/\s+/);
-    const recipientContactRes = await npApi(apiKey, "CounterpartyContactPerson", "save", {
-      CounterpartyRef: whData.Ref,
-      FirstName: nameParts[1] || nameParts[0],
-      LastName: nameParts[0],
-      Phone: o.client_phone.replace(/[^\d+]/g, "")
+    const recipRes = await npApi(apiKey, "Counterparty", "save", {
+      FirstName: nameParts[1] || nameParts[0] || "Клієнт",
+      MiddleName: nameParts[2] || "",
+      LastName: nameParts[0] || "Клієнт",
+      Phone: cleanPhone(o.client_phone),
+      Email: "",
+      CounterpartyType: "PrivatePerson",
+      CounterpartyProperty: "Recipient"
     });
+    if (!recipRes.success || !recipRes.data?.[0]) {
+      return res.status(400).json({ error: "Помилка створення отримувача: " + (recipRes.errors?.join(", ")||"") });
+    }
+    const recipRef = recipRes.data[0].Ref;
+    const recipContact = recipRes.data[0].ContactPerson?.data?.[0]?.Ref || "";
 
     // Create internet document
     const docData = {
-      PayerType: "Recipient",
-      PaymentMethod: "Cash",
+      PayerType: "Recipient", PaymentMethod: "Cash",
       DateTime: new Date().toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }),
-      CargoType: "Parcel",
-      Weight: String(weight),
-      ServiceType: "WarehouseWarehouse",
-      SeatsAmount: "1",
-      Description: "Одяг",
+      CargoType: "Parcel", Weight: String(weight),
+      ServiceType: "WarehouseWarehouse", SeatsAmount: "1", Description: "Одяг",
+      Cost: String(o.cod_amount || 300),
       BackwardDeliveryData: o.cod_amount > 0 ? [{ PayerType: "Recipient", CargoType: "Money", RedeliveryString: String(o.cod_amount) }] : undefined,
+      CitySender: senderCity,
       Sender: sender.sender_ref,
       SenderAddress: sender.address_ref,
       ContactSender: sender.contact_ref,
-      SendersPhone: sender.phone,
-      RecipientCityName: o.client_city,
-      RecipientAddressName: whData.Number || whNum,
-      RecipientName: o.client_name,
-      RecipientType: "PrivatePerson",
-      RecipientsPhone: o.client_phone.replace(/[^\d+]/g, ""),
+      SendersPhone: cleanPhone(sender.phone),
+      CityRecipient: cityData.DeliveryCity || cityData.Ref,
+      Recipient: recipRef,
       RecipientAddress: whData.Ref,
-      RecipientSettlementRef: cityData.Ref,
+      ContactRecipient: recipContact,
+      RecipientsPhone: cleanPhone(o.client_phone),
     };
 
     const result = await npApi(apiKey, "InternetDocument", "save", docData);
