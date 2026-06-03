@@ -751,10 +751,11 @@ app.post("/api/orders", authMiddleware, (req, res) => {
             const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o2.id).c || 1;
             const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
 
-            // Get sender city from address
-            const senderWh = await npApi(apiKey, "Address", "getWarehouses", { Ref: sender.address_ref });
-            const senderCity = senderWh.data?.[0]?.CityRef || "";
-            console.log("Auto-TTN sender city:", senderCity);
+            // Get sender city from counterparty addresses
+            const senderAddrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: sender.sender_ref, CounterpartyProperty: "Sender" });
+            const senderAddr = senderAddrs.data?.find(a => a.Ref === sender.address_ref) || senderAddrs.data?.[0];
+            const senderCity = senderAddr?.CityRef || "";
+            console.log("Auto-TTN sender city:", senderCity, senderAddr?.Description);
 
             // Create recipient counterparty
             const nameParts = o2.client_name.trim().split(/\s+/);
@@ -1104,9 +1105,10 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
     const weight = Math.max(0.5, itemsCount * 0.3);
     const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
 
-    // Get sender city
-    const senderWh = await npApi(apiKey, "Address", "getWarehouses", { Ref: sender.address_ref });
-    const senderCity = senderWh.data?.[0]?.CityRef || "";
+    // Get sender city from counterparty addresses
+    const senderAddrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: sender.sender_ref, CounterpartyProperty: "Sender" });
+    const senderAddr = senderAddrs.data?.find(a => a.Ref === sender.address_ref) || senderAddrs.data?.[0];
+    const senderCity = senderAddr?.CityRef || "";
 
     // Create recipient counterparty
     const nameParts = o.client_name.trim().split(/\s+/);
