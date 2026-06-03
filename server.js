@@ -731,20 +731,22 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     try {
       const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
       const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
+      console.log("Auto-TTN check:", "key:", !!apiKey, "sender:", sender?.name, "order:", result.order_id);
       if (apiKey && sender) {
-        // Trigger TTN creation asynchronously
-        const ttnReq = { params: { order_id: result.order_id }, user: req.user };
         setTimeout(async () => {
           try {
             const o2 = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(result.order_id);
-            if (!o2 || o2.ttn) return;
+            if (!o2 || o2.ttn) { console.log("Auto-TTN skip"); return; }
+            console.log("Auto-TTN for #"+o2.id, "city:", o2.client_city, "wh:", o2.client_warehouse);
             const cityRes = await npApi(apiKey, "Address", "searchSettlements", { CityName: o2.client_city, Limit: 1 });
             const cityData = cityRes.data?.[0]?.Addresses?.[0];
-            if (!cityData) return;
+            if (!cityData) { console.log("Auto-TTN: city not found"); return; }
+            console.log("Auto-TTN city OK:", cityData.MainDescription);
             const whNum = o2.client_warehouse.replace(/\D/g, "");
             const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.Ref, FindByString: whNum ? "№" + whNum : o2.client_warehouse });
             const whData = whRes.data?.[0];
-            if (!whData) return;
+            if (!whData) { console.log("Auto-TTN: warehouse not found"); return; }
+            console.log("Auto-TTN wh OK:", whData.Description);
             const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o2.id).c || 1;
             const docData = {
               PayerType: "Recipient", PaymentMethod: "Cash",
@@ -759,11 +761,16 @@ app.post("/api/orders", authMiddleware, (req, res) => {
             const r2 = await npApi(apiKey, "InternetDocument", "save", docData);
             if (r2.success && r2.data?.[0]) {
               db.prepare("UPDATE orders SET ttn=?,np_ref=?,status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(r2.data[0].IntDocNumber, r2.data[0].Ref, o2.id);
+              console.log("Auto-TTN SUCCESS:", r2.data[0].IntDocNumber);
+            } else {
+              console.log("Auto-TTN NP error:", JSON.stringify(r2.errors||r2.warnings||[]));
             }
           } catch(e) { console.log("Auto-TTN error:", e.message); }
         }, 1000);
+      } else {
+        console.log("Auto-TTN: no API key or sender");
       }
-    } catch(e) {}
+    } catch(e) { console.log("Auto-TTN init err:", e.message); }
   }
 
   res.json({ ok: true, ...result });
