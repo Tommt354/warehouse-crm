@@ -42,7 +42,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 .stock-sz{font-size:9px;padding:3px 6px;border-radius:4px;background:var(--bg);color:var(--t);border:1px solid var(--brd);font-family:'JetBrains Mono',monospace;text-align:center;min-width:34px;cursor:pointer;transition:.15s}
 .stock-sz:hover{border-color:var(--acc)}
 .stock-sz.sel{background:var(--accbg);border-color:var(--acc);color:var(--acc)}
-.stock-sz.zero{color:var(--red);border-color:rgba(255,107,107,.15);cursor:default;opacity:.5}
+.stock-sz.zero{color:var(--red);border-color:rgba(255,107,107,.15)}
 .search-bar{width:100%;max-width:280px;padding:7px 10px;font-size:12px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff;outline:0;margin-bottom:12px}
 .search-bar:focus{border-color:var(--acc)}
 /* Cart */
@@ -196,17 +196,16 @@ function renderProducts(vars){
     }).join("");
     return '<div class="pcard" style="'+(v.is_kit?'border-color:rgba(255,167,38,.3)':'')+'"><div class="pcard-img">'+(v.photo||v.print_photo?'<img src="'+(v.photo||v.print_photo)+'">':'📷')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">🎁 Комплект</span>':'')+'</div><div><span class="pp tag-g">'+v.drop_price+'₴</span></div><div class="stock-row">'+szHtml+'</div></div></div>';
   }).join("");
-  // Attach click handlers to size buttons
+  // Attach click handlers to ALL size buttons (server checks allow_negative_order)
   el.querySelectorAll(".stock-sz").forEach(btn=>{
-    if(parseInt(btn.dataset.q)>0){
-      btn.addEventListener("click",()=>{
+    btn.style.cursor="pointer";
+    btn.addEventListener("click",()=>{
         const vid=parseInt(btn.dataset.vid),sid=parseInt(btn.dataset.sid);
         const v=allVars.find(x=>x.id===vid&&x.is_kit===btn.dataset.kit==='1');
         if(!v)return;
         const s=allSizes.find(x=>x.id===sid);if(!s)return;
         addToCart(v.is_kit?0:vid,sid,v.name,v.drop_price,s.name,v.photo||v.print_photo||"",v.is_kit?vid:null);
       });
-    }
   });
 }
 
