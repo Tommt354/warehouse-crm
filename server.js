@@ -749,13 +749,15 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
     FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id
     WHERE oi.order_id=?`).all(o.id);
 
-  // Check return availability for each item
+  // Check return availability and current stock for each item
   o.items.forEach(i => {
     i.return_available = 0;
     if (i.print_id && !i.from_returns) {
       const ret = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(i.variation_id, i.size_id);
       if (ret && ret.quantity > 0) i.return_available = Math.min(ret.quantity, i.quantity);
     }
+    const stk = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(i.base_product_id, i.size_id);
+    i.current_stock = stk ? stk.quantity : 0;
   });
   res.json({ order: o });
 });
