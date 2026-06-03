@@ -1103,4 +1103,30 @@ app.get("/drop",pageAuth,pageRole("dropshipper"),(req,res)=>res.sendFile(path.jo
 app.get("/warehouse",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","warehouse.html")));
 app.get("*",(req,res)=>{if(req.path.startsWith("/api/"))return res.status(404).json({error:"Not found"});res.redirect("/login")});
 
+// Auto-track NP statuses every 15 minutes
+async function autoTrackNP(){
+  try{
+    const apiKey=db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    if(!apiKey)return;
+    const orders=db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status IN ('shipped','delivering')").all();
+    if(!orders.length)return;
+    for(const o of orders){
+      try{
+        const r=await npApi(apiKey,"TrackingDocument","getStatusDocuments",{Documents:[{DocumentNumber:o.ttn}]});
+        const st=r.data?.[0];if(!st)continue;
+        const code=parseInt(st.StatusCode);
+        let ns=null;
+        if(code>=7&&code<=8)ns="delivering";
+        if(code===9||code===10||code===11)ns="delivered";
+        if(code===17||code===102||code===103)ns="refused";
+        if(code===106)ns="return_transit";
+        if(ns&&ns!==o.status)db.prepare("UPDATE orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(ns,o.id);
+      }catch(e){}
+    }
+    console.log(`🔄 NP auto-track: checked ${orders.length} orders`);
+  }catch(e){}
+}
+setInterval(autoTrackNP,15*60*1000);
+setTimeout(autoTrackNP,30000); // First check 30s after start
+
 app.listen(PORT, () => console.log(`✅ CRM on http://localhost:${PORT}`));
