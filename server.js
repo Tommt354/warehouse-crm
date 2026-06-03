@@ -822,7 +822,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 
 // List orders
 app.get("/api/orders", authMiddleware, (req, res) => {
-  const { status, limit, ready, channel, date_from, date_to } = req.query;
+  const { status, limit, ready, channel, date_from, date_to, ttn_search } = req.query;
   let q = "SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id";
   const params = [];
   const where = [];
@@ -832,6 +832,7 @@ app.get("/api/orders", authMiddleware, (req, res) => {
   if (channel) { where.push("o.drop_channel=?"); params.push(channel); }
   if (date_from) { where.push("o.created_at>=?"); params.push(date_from); }
   if (date_to) { where.push("o.created_at<=?"); params.push(date_to + " 23:59:59"); }
+  if (ttn_search) { where.push("o.ttn LIKE ?"); params.push("%" + ttn_search + "%"); }
 
   if (where.length) q += " WHERE " + where.join(" AND ");
   q += " ORDER BY o.created_at DESC";

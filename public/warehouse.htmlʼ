@@ -25,7 +25,7 @@
 .ocard-meta{text-align:right;font-size:10px;color:var(--td)}.ocard-ttn{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--warn);margin-top:1px}
 .oitem{display:flex;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center}
 .oitem.item-missing{background:rgba(255,107,107,.08);border-left:4px solid var(--red)}
-.oitem-img{width:100px;height:100px;border-radius:10px;overflow:hidden;background:var(--bg);flex-shrink:0}
+.oitem-img{width:120px;height:120px;border-radius:10px;overflow:hidden;background:var(--bg);flex-shrink:0}
 .oitem-img img{width:100%;height:100%;object-fit:cover}
 .oitem-info{flex:1}
 .oitem-name{font-size:14px;font-weight:600;color:var(--th)}.oitem-print{font-size:11px;color:var(--warn);margin-top:2px}
@@ -87,8 +87,9 @@
       <button class="main-tab" id="rf-0" onclick="whReady='0';loadOrders()">🖨 Не готові</button>
       <button class="main-tab" id="rf-1" onclick="whReady='1';loadOrders()">✅ Готові товари</button>
     </div>
+    <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center"><button class="stab" id="wc-" onclick="whCh='';loadOrders()">Всі</button><button class="stab" id="wc-hot" onclick="whCh='hot';loadOrders()">🔥 HOT</button><button class="stab" id="wc-ads" onclick="whCh='ads';loadOrders()">📢 ADS</button><input type="date" id="wh-df" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit" onchange="loadOrders()"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="wh-dt" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit" onchange="loadOrders()"></div>
     <div class="stabs" id="wh-stabs"></div>
-    <div style="margin-bottom:10px"><button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="trackAll()">🔄 Оновити статуси НП</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center"><input id="wh-ttn" placeholder="🔍 Пошук по ТТН..." style="flex:1;padding:6px 10px;font-size:11px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;outline:0" oninput="loadOrders()"><button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="trackAll()">🔄 Оновити статуси НП</button></div>
     <div id="wh-orders"></div>
   </div>
   <div id="v-returns" style="display:none">
@@ -135,7 +136,7 @@
 </div></div>
 
 <script>
-let ME,whStatus="",whReady="",whProducts=[],whSizes=[];
+let ME,whStatus="",whReady="",whCh="",whProducts=[],whSizes=[];
 const SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 const WHS=[{key:"",label:"📋 Всі"},{key:"new",label:"📥 Нові",next:"in_progress",nl:"🔧 Взяти"},{key:"in_progress",label:"🔧 В роботі",next:"packed",nl:"✅ Готово"},{key:"packed",label:"✅ Готові"},{key:"shipped",label:"🚚 Відправлені"},{key:"delivered",label:"📬 Отримані"},{key:"refused",label:"❌ Відмови"},{key:"cancelled",label:"🚫 Скасовані"}];
@@ -166,7 +167,9 @@ function renderStabs(){
 async function loadOrders(){
   renderStabs();
   document.querySelectorAll("[id^=rf-]").forEach(function(b){b.classList.toggle("on",b.id===("rf-"+(whReady||"all")))});
-  var r;try{r=await api("/api/orders?limit=50"+(whStatus?"&status="+whStatus:"")+(whReady?"&ready="+whReady:""))}catch(e){return}
+  document.querySelectorAll("[id^=wc-]").forEach(function(b){b.classList.toggle("on",b.id==="wc-"+whCh)});
+  var df=document.getElementById("wh-df").value,dt=document.getElementById("wh-dt").value;
+  var r;try{r=await api("/api/orders?limit=50"+(whStatus?"&status="+whStatus:"")+(whReady?"&ready="+whReady:"")+(whCh?"&channel="+whCh:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(document.getElementById("wh-ttn").value?"&ttn_search="+document.getElementById("wh-ttn").value:""))}catch(e){return}
   var orders=r.orders;
   var el=document.getElementById("wh-orders");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📭</span>Немає замовлень</div>';return}
@@ -178,16 +181,15 @@ async function loadOrders(){
     var hasOOS=isActive&&od.items.some(function(i){return i.current_stock<=0});
     html+='<div class="ocard'+(hasOOS?' out-of-stock':'')+'">';
     html+='<div class="ocard-header"><div>';
-    html+='<div class="ocard-id">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(hasOOS?' <span class="tag tag-bad">⚠️ Немає</span>':'')+'</div>';
+    html+='<div class="ocard-id"><span style="font-size:18px">#'+o.id+'</span> <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(o.drop_channel==="hot"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(0,212,170,.1);color:#00d4aa">ADS</span>':'')+(hasOOS?' <span class="tag tag-bad">⚠️ Немає</span>':'')+'</div>';
     html+='<div class="cl-name">'+esc(o.client_name)+'</div><div class="cl-phone">'+esc(o.client_phone)+'</div>';
     html+='<div class="cl-addr">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
-    html+='</div><div class="ocard-meta"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div><div>'+(o.created_at?o.created_at.slice(0,16):"")+'</div>';
-    if(o.ttn)html+='<div class="ocard-ttn">ТТН: '+esc(o.ttn)+'</div>';
-    html+='</div></div>';
+    html+='</div><div class="ocard-meta"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div><div>'+(o.created_at?o.created_at.slice(0,16):"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
+    if(o.ttn)html+='<div style="margin:0 14px 8px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 12px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span></div>';
     for(var ii=0;ii<od.items.length;ii++){
       var i=od.items[ii];var missing=isActive&&i.current_stock<=0;var hasRet=isActive&&i.return_available>0;var usedRet=isActive&&i.from_returns>0;
       html+='<div class="oitem'+(missing?' item-missing':'')+'">';
-      html+='<div class="oitem-img">'+((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div style="width:80px;height:80px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td)">📷</div>')+'</div>';
+      html+='<div class="oitem-img">'+((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div style="width:120px;height:120px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td)">📷</div>')+'</div>';
       html+='<div class="oitem-info"><div class="oitem-name">'+esc(i.var_name)+'</div>';
       if(i.print_name)html+='<div class="oitem-print">🖼 '+esc(i.print_name)+'</div>';
       html+='<div><span class="oitem-size">'+esc(i.size_name)+'</span>';
@@ -200,7 +202,10 @@ async function loadOrders(){
     }
     if(o.note)html+='<div style="padding:0 16px 10px"><div class="ocard-note">📝 '+esc(o.note)+'</div></div>';
     var osi=WHS.find(function(s){return s.key===o.status});
-    html+='<div class="ocard-footer"><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
+    html+='<div class="ocard-footer"><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
+    html+='<select onchange="chSt('+o.id+',this.value)" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px">';
+    ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
+    html+='</select>';
     if(osi&&osi.next)html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\')">'+osi.nl+'</button>';
     if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="createTTN('+o.id+')">📦 Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="printTTN('+o.id+')">🖨 Друк ТТН</button>';

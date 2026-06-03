@@ -106,6 +106,7 @@
 <div class="page" id="pg-orders">
 <button class="btn-new" onclick="openNewOrder()">＋ Подати замовлення</button>
 <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit" onchange="loadOrders()"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit" onchange="loadOrders()"></div>
+<div style="margin-bottom:8px"><input id="dr-ttn" placeholder="🔍 Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadOrders()"></div>
 <div class="stabs" id="ord-stabs"></div>
 <div id="ord-list"></div>
 <div class="pagi" id="ord-pagi"></div>
@@ -210,7 +211,8 @@ function renderOrdTabs(){
 async function loadOrders(){
   renderOrdTabs();
   var df=document.getElementById("dr-df")?.value||"",dt=document.getElementById("dr-dt")?.value||"";
-  var url="/api/orders?limit=50"+(ordStatus?"&status="+ordStatus:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"");
+  var ttn=document.getElementById("dr-ttn")?.value||"";
+  var url="/api/orders?limit=50"+(ordStatus?"&status="+ordStatus:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(ttn?"&ttn_search="+ttn:"");
   var r=await api(url);var orders=r.orders;
   var el=document.getElementById("ord-list");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📋</span>Немає замовлень</div>';document.getElementById("ord-pagi").innerHTML="";return}
