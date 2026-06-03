@@ -742,8 +742,9 @@ app.post("/api/orders", authMiddleware, (req, res) => {
             const cityData = cityRes.data?.[0]?.Addresses?.[0];
             if (!cityData) { console.log("Auto-TTN: city not found"); return; }
             console.log("Auto-TTN city OK:", cityData.MainDescription);
-            const whNum = o2.client_warehouse.replace(/\D/g, "");
-            const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.Ref, FindByString: whNum ? "№" + whNum : o2.client_warehouse });
+            const whMatch = o2.client_warehouse.match(/№?\s*(\d+)/);
+            const whNum = whMatch ? whMatch[1] : "";
+            const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.DeliveryCity || cityData.Ref, FindByString: whNum || o2.client_warehouse, Limit: "5" });
             const whData = whRes.data?.[0];
             if (!whData) { console.log("Auto-TTN: warehouse not found"); return; }
             console.log("Auto-TTN wh OK:", whData.Description);
@@ -1050,8 +1051,9 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
     if (!cityData) return res.status(400).json({ error: "Місто не знайдено в НП: " + o.client_city });
 
     // Find recipient warehouse
-    const whNum = o.client_warehouse.replace(/\D/g, "");
-    const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.Ref, FindByString: whNum ? "№" + whNum : o.client_warehouse });
+    const whMatch = o.client_warehouse.match(/№?\s*(\d+)/);
+    const whNum = whMatch ? whMatch[1] : "";
+    const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.DeliveryCity || cityData.Ref, FindByString: whNum || o.client_warehouse, Limit: "5" });
     const whData = whRes.data?.[0];
     if (!whData) return res.status(400).json({ error: "Відділення не знайдено: " + o.client_warehouse });
 
