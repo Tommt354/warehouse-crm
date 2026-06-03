@@ -455,20 +455,73 @@ app.get("/api/variations", authMiddleware, (req, res) => {
 });
 
 app.get("/api/variations/:id", authMiddleware, (req, res) => {
-  const v = db.prepare("SELECT v.*,bp.model_id,bp.name as base_name,m.name as model_name,m.drop_price as model_drop_price,c.name as color_name,p.name as print_name FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.id=?").get(req.params.id);
+  const v = db.prepare("SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,bp.cost_price as base_cost,bp.drop_price as base_drop,m.name as model_name,m.drop_price as model_drop_price,m.id as mid,c.name as color_name,c.hex_code,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.id=?").get(req.params.id);
   if (!v) return res.status(404).json({ error: "Не знайдено" });
+  v.drop_price = v.drop_price_override || v.model_drop_price;
+  // Stock: base + returns per size
+  const modelSizes = db.prepare("SELECT s.id,s.name FROM model_sizes ms JOIN sizes s ON ms.size_id=s.id WHERE ms.model_id=? ORDER BY s.sort_order").all(v.mid);
+  v.stock_detail = modelSizes.map(s => {
+    const base = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(v.base_product_id, s.id)?.quantity || 0;
+    const ret = v.print_id ? (db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(v.id, s.id)?.quantity || 0) : 0;
+    return { size_id: s.id, size_name: s.name, base_qty: base, return_qty: ret, total: base + ret };
+  });
+  v.workers = db.prepare("SELECT mw.*,u.name as worker_name FROM model_workers mw JOIN users u ON mw.user_id=u.id WHERE mw.model_id=?").all(v.mid);
+  v.all_prints = db.prepare("SELECT * FROM prints WHERE active=1 ORDER BY sort_order").all();
   res.json({ variation: v });
 });
 
 app.put("/api/variations/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, drop_price_override, active } = req.body;
+  const { name, photo, drop_price_override, active, print_id } = req.body;
   const s=[],v=[];
   if(name!==undefined){s.push("name=?");v.push(name)}
   if(photo!==undefined){s.push("photo=?");v.push(photo)}
   if(drop_price_override!==undefined){s.push("drop_price_override=?");v.push(drop_price_override===null?null:parseFloat(drop_price_override))}
   if(active!==undefined){s.push("active=?");v.push(active?1:0)}
+  if(print_id!==undefined){s.push("print_id=?");v.push(print_id||null)}
   if(s.length){v.push(req.params.id);db.prepare(`UPDATE variations SET ${s.join(",")} WHERE id=?`).run(...v)}
   res.json({ ok: true });
+});
+
+// Set stock_returns quantity
+app.post("/api/stock-returns/set", authMiddleware, (req, res) => {
+  const { variation_id, size_id, quantity } = req.body;
+  if(!variation_id || !size_id) return res.status(400).json({ error: "Missing fields" });
+  db.prepare("UPDATE stock_returns SET quantity=? WHERE variation_id=? AND size_id=?").run(parseInt(quantity)||0, variation_id, size_id);
+  res.json({ ok: true });
+});
+
+// Duplicate base product
+app.post("/api/base-products/:id/duplicate", authMiddleware, requireRole("admin"), (req, res) => {
+  const orig = db.prepare("SELECT * FROM base_products WHERE id=?").get(req.params.id);
+  if(!orig) return res.status(404).json({ error: "Не знайдено" });
+  const r = db.prepare("INSERT INTO base_products(model_id,color_id,name,photo,cost_price,drop_price,active)VALUES(?,?,?,?,?,?,?)").run(orig.model_id,orig.color_id,orig.name+" (копія)",orig.photo,orig.cost_price,orig.drop_price,orig.active);
+  // Copy stock entries
+  const stocks = db.prepare("SELECT * FROM stock_base WHERE base_product_id=?").all(orig.id);
+  stocks.forEach(s => db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity)VALUES(?,?,?)").run(r.lastInsertRowid,s.size_id,s.quantity));
+  // Copy variations
+  const vars = db.prepare("SELECT * FROM variations WHERE base_product_id=?").all(orig.id);
+  vars.forEach(v => {
+    const nv = db.prepare("INSERT INTO variations(base_product_id,print_id,name,photo,drop_price_override,active)VALUES(?,?,?,?,?,?)").run(r.lastInsertRowid,v.print_id,v.name+" (копія)",v.photo,v.drop_price_override,v.active);
+    const rets = db.prepare("SELECT * FROM stock_returns WHERE variation_id=?").all(v.id);
+    rets.forEach(sr => db.prepare("INSERT INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,?)").run(nv.lastInsertRowid,sr.size_id,sr.quantity));
+  });
+  res.json({ ok: true, new_id: r.lastInsertRowid });
+});
+
+// Export stock as CSV
+app.get("/api/export/stock", authMiddleware, (req, res) => {
+  const products = db.prepare("SELECT bp.*,m.name as model_name,c.name as color_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id WHERE bp.active=1 ORDER BY m.name").all();
+  const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
+  let csv = "\uFEFF" + "Товар;Колір;Собівартість;Дроп-ціна;" + sizes.map(s=>s.name).join(";") + ";Всього\n";
+  products.forEach(p => {
+    const stocks = {};
+    db.prepare("SELECT size_id,quantity FROM stock_base WHERE base_product_id=?").all(p.id).forEach(s=>stocks[s.size_id]=s.quantity);
+    const total = Object.values(stocks).reduce((a,b)=>a+b,0);
+    csv += `${p.name};${p.color_name||""};${p.cost_price};${p.drop_price};${sizes.map(s=>stocks[s.id]||0).join(";")};${total}\n`;
+  });
+  res.setHeader("Content-Type","text/csv;charset=utf-8");
+  res.setHeader("Content-Disposition",`attachment;filename=stock_${new Date().toISOString().slice(0,10)}.csv`);
+  res.send(csv);
 });
 
 // ── STOCK INCOMING ───────────────────────────────────────────────

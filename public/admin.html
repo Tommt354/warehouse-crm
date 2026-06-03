@@ -155,6 +155,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="acts">
   <button class="btn btn-p" onclick="addCatIn('base')">+ Категорія</button>
   <button class="btn btn-a" onclick="openInc()">📥 Прихід товару</button>
+  <a class="btn" href="/api/export/stock" style="text-decoration:none">📊 Експорт CSV</a>
   <input class="search-bar" placeholder="Пошук товарів..." oninput="searchSBase(this.value)">
 </div>
 <div class="cards" id="sbase-cats"></div>
@@ -258,14 +259,16 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditBp()">💾 Зберегти</button><button class="btn" onclick="closeM('edit-bp-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditBp()">🗑</button></div>
 </div></div>
 
-<div class="modal-bg" id="edit-var-modal"><div class="modal"><h3 id="ev-t">Редагувати варіацію</h3>
+<div class="modal-bg" id="edit-var-modal"><div class="modal" style="max-width:560px"><h3 id="ev-t">Редагувати варіацію</h3>
 <div class="fld"><label>Назва</label><input id="ev-name"></div>
-<div class="fld"><label>Дроп-ціна ₴ (залиште 0 для ціни моделі)</label><input id="ev-price" type="number"></div>
-<div class="fld"><label>Прив'язаний принт</label><div id="ev-print" style="font-size:12px;color:var(--th)"></div></div>
-<div class="fld"><label>Базовий товар</label><div id="ev-base" style="font-size:11px;color:var(--td)"></div></div>
-<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ev-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ev-fi').click()">📷 Змінити</button><input type="file" id="ev-fi" accept="image/*" style="display:none" onchange="uploadVarPhoto(event)"></div></div>
+<div class="fld"><label>Дроп-ціна ₴ (0 = ціна моделі)</label><input id="ev-price" type="number"></div>
+<div class="fld"><label>Принт</label><select id="ev-print-sel"></select></div>
+<div class="fld"><label>Колір / Базовий товар</label><div id="ev-base" style="font-size:11px;color:var(--th)"></div></div>
+<div class="fld"><label>Залишки (база + повернення)</label><div id="ev-stock"></div></div>
+<div class="fld"><label>Працівники (з моделі)</label><div id="ev-workers" style="font-size:11px"></div></div>
+<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ev-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ev-fi').click()">📷</button><input type="file" id="ev-fi" accept="image/*" style="display:none" onchange="uploadVarPhoto(event)"></div></div>
 <div class="fld"><label>Статус</label><select id="ev-active"><option value="1">Активний</option><option value="0">Вимкнений</option></select></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditVar()">💾 Зберегти</button><button class="btn" onclick="closeM('edit-var-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditVar()">🗑 Видалити</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditVar()">💾 Зберегти</button><button class="btn" onclick="closeM('edit-var-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditVar()">🗑</button></div>
 </div></div>
 
 <script>
@@ -468,7 +471,7 @@ function renderSBase(products){
     <div class="pcard-name">${esc(p.name)}</div><div class="pcard-sub">${esc(p.category_name||"")}</div>
     <div class="pcard-prices"><span class="pp tag" style="background:var(--bg);color:var(--td)">${p.cost_price}₴</span><span class="pp tag tag-g">${p.drop_price}₴</span></div>
     <div class="stock-row">${szs.map(s=>{const q=p.stock[s.id]||0;return`<div class="stock-sz ${q<=0?"zero":q<=thr?"low":""}""><b>${s.name}</b><br>${q}</div>`}).join("")}</div>
-    <div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditBp(${p.id})">✏️</button></div>
+    <div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditBp(${p.id})">✏️</button> <button class="btn btn-sm" onclick="dupBp(${p.id})" title="Дублювати">📋</button></div>
     </div></div>`}).join("");
 }
 function searchSBase(q){if(!q){renderSBase(sbProducts);return}renderSBase(sbProducts.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())))}
@@ -564,6 +567,7 @@ async function saveEditBp(){
   }catch(e){alert(e.message)}
 }
 async function deleteEditBp(){if(!confirm("Видалити товар і всі його варіації?"))return;await api(`/api/base-products/${editBpId}`,{method:"DELETE"});closeM("edit-bp-modal");loadSBase()}
+async function dupBp(id){if(!confirm("Дублювати товар з усіма варіаціями?"))return;await api(`/api/base-products/${id}/duplicate`,{method:"POST"});loadSBase()}
 
 // ── Edit variation ───────────────────────────────────────────────
 async function openEditVar(id){
@@ -571,14 +575,47 @@ async function openEditVar(id){
   document.getElementById("ev-t").textContent="✏️ "+v.name;
   document.getElementById("ev-name").value=v.name;
   document.getElementById("ev-price").value=v.drop_price_override||"";
-  document.getElementById("ev-print").innerHTML=v.print_name?`🖼 <strong>${esc(v.print_name)}</strong>`:"Без принту (готовий товар)";
-  document.getElementById("ev-base").textContent=v.base_name||"—";
   document.getElementById("ev-active").value=v.active?"1":"0";
-  document.getElementById("ev-photo").innerHTML=v.photo?`<img src="${v.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";
+  // Print select
+  const ps=document.getElementById("ev-print-sel");
+  ps.innerHTML='<option value="">— Без принту (готовий товар) —</option>';
+  (v.all_prints||[]).forEach(p=>ps.innerHTML+=`<option value="${p.id}"${p.id==v.print_id?" selected":""}>${esc(p.name)}</option>`);
+  // Base info
+  document.getElementById("ev-base").innerHTML=`${esc(v.base_name)} ${v.color_name?`<span class="cdot" style="background:${v.hex_code||'#888'}"></span> ${esc(v.color_name)}`:""}`;
+  // Stock detail (base + returns)
+  document.getElementById("ev-stock").innerHTML=(v.stock_detail||[]).map(s=>`<div class="fld-row" style="margin-bottom:3px">
+    <div style="padding:4px 0;font-size:11px;color:var(--th)">${s.size_name}</div>
+    <div style="font-size:10px;display:flex;gap:4px;align-items:center">
+      <span style="color:var(--td)">база: ${s.base_qty}</span>
+      ${v.print_id?`<span style="color:var(--td)">+ поверн:</span><input type="number" data-sid="${s.size_id}" value="${s.return_qty}" min="0" style="padding:4px;font-size:10px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff;width:55px;text-align:center">`:""}
+      <span style="color:var(--acc);font-weight:600">= ${s.total}</span>
+    </div>
+  </div>`).join("");
+  // Workers
+  document.getElementById("ev-workers").innerHTML=(v.workers||[]).map(w=>`<div class="wrow"><span class="wname">${esc(w.worker_name)}</span><span style="color:var(--acc)">${w.amount}₴</span></div>`).join("")||'<span style="color:var(--td)">—</span>';
+  // Photo
+  document.getElementById("ev-photo").innerHTML=v.photo?`<img src="${v.photo}" style="width:100%;height:100%;object-fit:cover">`:(v.print_photo?`<img src="${v.print_photo}" style="width:100%;height:100%;object-fit:cover">`:"—");
   openM("edit-var-modal");
 }
 async function uploadVarPhoto(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const{url}=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});await api(`/api/variations/${editVarId}`,{method:"PUT",body:JSON.stringify({photo:url})});document.getElementById("ev-photo").innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover">`}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
-async function saveEditVar(){const p=document.getElementById("ev-price").value;try{await api(`/api/variations/${editVarId}`,{method:"PUT",body:JSON.stringify({name:document.getElementById("ev-name").value,drop_price_override:p?parseFloat(p):null,active:document.getElementById("ev-active").value==="1"})});closeM("edit-var-modal");loadSDrop()}catch(e){alert(e.message)}}
+async function saveEditVar(){
+  const p=document.getElementById("ev-price").value;
+  const printId=document.getElementById("ev-print-sel").value;
+  try{
+    await api(`/api/variations/${editVarId}`,{method:"PUT",body:JSON.stringify({
+      name:document.getElementById("ev-name").value,
+      drop_price_override:p?parseFloat(p):null,
+      print_id:printId||null,
+      active:document.getElementById("ev-active").value==="1"
+    })});
+    // Save return stock quantities
+    const retInputs=[...document.querySelectorAll("#ev-stock input[data-sid]")];
+    for(const el of retInputs){
+      await api("/api/stock-returns/set",{method:"POST",body:JSON.stringify({variation_id:editVarId,size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})});
+    }
+    closeM("edit-var-modal");loadSDrop();
+  }catch(e){alert(e.message)}
+}
 async function deleteEditVar(){if(!confirm("Видалити варіацію?"))return;await api(`/api/variations/${editVarId}`,{method:"DELETE"});closeM("edit-var-modal");loadSDrop()}
 
 // ── Incoming ─────────────────────────────────────────────────────
