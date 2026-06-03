@@ -456,7 +456,7 @@ async function saveModelEdit(){
   const err=document.getElementById("mm-err");err.style.display="none";
   const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount})),sync_products:true};
   try{await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();
-  alert("✅ Модель оновлена, назви і ціни товарів синхронізовані")}catch(e){err.textContent=e.message;err.style.display="block"}
+  }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
 async function deleteModel(id){if(!confirm("Видалити модель і ВСІ її товари?"))return;await api(`/api/models/${id}`,{method:"DELETE"});closeM("mdl-view");loadModels()}
@@ -728,7 +728,7 @@ function loadSwSizes(){
 }
 async function saveSwapSize(){
   const data={base_product_id:parseInt(document.getElementById("sw-bp").value),from_size_id:parseInt(document.getElementById("sw-from").value),to_size_id:parseInt(document.getElementById("sw-to").value),quantity:parseInt(document.getElementById("sw-qty").value)};
-  try{await api("/api/stock/swap-size",{method:"POST",body:JSON.stringify(data)});closeM("swap-modal");loadSBase();alert("✅ Розміри замінено")}catch(e){alert(e.message)}
+  try{await api("/api/stock/swap-size",{method:"POST",body:JSON.stringify(data)});closeM("swap-modal");loadSBase();}catch(e){alert(e.message)}
 }
 
 // ── Kits ─────────────────────────────────────────────────────────
@@ -764,7 +764,7 @@ async function saveKit(){
   if(!kitSelected.length){err.textContent="Додайте товари";err.style.display="block";return}
   try{
     await api("/api/kits",{method:"POST",body:JSON.stringify({name:document.getElementById("kit-name").value,cost_price:document.getElementById("kit-cost").value,drop_price:document.getElementById("kit-drop").value,category_drop_id:document.getElementById("kit-cat").value||null,variation_ids:kitSelected,photo:kitPhoto})});
-    closeM("kit-modal");loadSDrop();alert("✅ Комплект створено");
+    closeM("kit-modal");loadSDrop();;
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 

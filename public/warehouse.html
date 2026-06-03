@@ -91,13 +91,17 @@
       <button class="btn btn-d" onclick="openWhWO()">📤 Списати</button>
       <button class="btn btn-w" onclick="openWhSwap()">🔄 Заміна розміру</button>
     </div>
+    <div id="wh-stock-bread" style="margin-bottom:8px"></div>
+    <div class="cards" id="wh-stock-cats" style="margin-bottom:8px"></div>
     <div class="pcards" id="wh-stock-list"></div>
+    <div class="pagi" id="wh-stock-pagi"></div>
     <div style="margin-top:16px"><div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:8px">📦 Повернення на складі:</div><div id="wh-ret-stock"></div></div>
   </div>
 </div>
 
 <!-- Modals -->
 <div class="modal-bg" id="wh-inc-modal"><div class="modal"><h3>📥 Прихід товару</h3>
+<div class="fld"><label>Категорія</label><select id="whi-cat" onchange="filterWhBp('whi')"><option value="">— Всі —</option></select></div>
 <div class="fld"><label>Товар</label><select id="whi-bp" onchange="loadWhIncSz()"></select></div>
 <div id="whi-sizes"></div>
 <div class="fld"><label>Примітка</label><input id="whi-note"></div>
@@ -105,6 +109,7 @@
 </div></div>
 
 <div class="modal-bg" id="wh-wo-modal"><div class="modal"><h3>📤 Списати товар</h3>
+<div class="fld"><label>Категорія</label><select id="whw-cat" onchange="filterWhBp('whw')"><option value="">— Всі —</option></select></div>
 <div class="fld"><label>Товар</label><select id="whw-bp" onchange="loadWhWoSz()"></select></div>
 <div class="fld-row"><div class="fld"><label>Розмір</label><select id="whw-sz"></select></div><div class="fld"><label>Кількість</label><input id="whw-qty" type="number" min="1" value="1"></div></div>
 <div class="fld"><label>Причина</label><input id="whw-note"></div>
@@ -112,6 +117,7 @@
 </div></div>
 
 <div class="modal-bg" id="wh-swap-modal"><div class="modal"><h3>🔄 Заміна розміру</h3>
+<div class="fld"><label>Категорія</label><select id="whs-cat" onchange="filterWhBp('whs')"><option value="">— Всі —</option></select></div>
 <div class="fld"><label>Товар</label><select id="whs-bp" onchange="loadWhSwSz()"></select></div>
 <div class="fld-row"><div class="fld"><label>З розміру</label><select id="whs-from"></select></div><div class="fld"><label>На розмір</label><select id="whs-to"></select></div></div>
 <div class="fld"><label>Кількість</label><input id="whs-qty" type="number" min="1" value="1"></div>
@@ -193,7 +199,7 @@ async function loadOrders(){
 }
 async function chSt(id,st){await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadOrders()}
 async function canOrd(id){if(!confirm("Скасувати?"))return;await api("/api/orders/"+id+"/cancel",{method:"POST"});loadOrders()}
-async function useRet(id){try{await api("/api/order-items/"+id+"/use-return",{method:"POST",body:JSON.stringify({})});loadOrders()}catch(e){alert(e.message)}}
+async function useRet(id){try{await api("/api/order-items/"+id+"/use-return",{method:"POST",body:JSON.stringify({})});loadOrders()}catch(e){}}
 
 // ── RETURNS ──────────────────────────────────────────────────────
 async function scanTTN(){
@@ -219,22 +225,31 @@ async function scanTTN(){
     document.getElementById("scan-ttn").value="";document.getElementById("scan-ttn").focus();
   }catch(e){el.innerHTML='<div class="msg msg-err">❌ '+e.message+'</div>'}
 }
-async function retIt(id,el){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});el.classList.add("done");el.innerHTML="✓";el.onclick=null}catch(e){alert(e.message)}}
+async function retIt(id,el){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});el.classList.add("done");el.innerHTML="✓";el.onclick=null}catch(e){}}
 
 // ── STOCK ────────────────────────────────────────────────────────
-var whPage=0,whStockReady="";
+var whPage=0,whStockReady="",whStockCatP=null,whCats=[];
 async function loadWhStock(){
-  var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
-  renderWhStockPage();
-  // Returns as cards
+  // Categories
+  var cd=await api("/api/categories?parent_id="+(whStockCatP||"")+"&scope=base");
+  var bc='<div class="bread"><a onclick="whStockCatP=null;loadWhStock()">🏪 Склад</a>';
+  cd.breadcrumb.forEach(function(b){bc+='<span style="color:var(--td);margin:0 3px">›</span><a onclick="whStockCatP='+b.id+';loadWhStock()">'+esc(b.name)+'</a>'});
+  bc+='</div>';document.getElementById("wh-stock-bread").innerHTML=bc;
+  document.getElementById("wh-stock-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="whStockCatP='+c.id+';loadWhStock()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':'📁')+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
+  // Products
+  var url="/api/base-products",params=[];
+  if(whStockCatP)params.push("category_id="+whStockCatP);
+  if(whStockReady)params.push("is_ready="+whStockReady);
+  if(params.length)url+="?"+params.join("&");
+  var d=await api(url);whProducts=d.products;whSizes=d.sizes;
+  try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
+  whPage=0;renderWhStockPage();
+  // Returns
   try{
-    var r=await api("/api/stock-returns");
-    var rel=document.getElementById("wh-ret-stock");
+    var r=await api("/api/stock-returns");var rel=document.getElementById("wh-ret-stock");
     if(!r.items.length){rel.innerHTML='<div style="color:var(--td);font-size:12px;padding:10px">Немає повернень</div>';return}
-    // Group by variation
-    var groups={};r.items.forEach(function(i){if(!groups[i.variation_id])groups[i.variation_id]={name:i.var_name,photo:(i.var_photo||i.print_photo||i.bp_photo)||i.print_photo||"",print:i.print_name,color:i.color_name,sizes:[]};groups[i.variation_id].sizes.push({name:i.size_name,qty:i.quantity})});
-    var keys=Object.keys(groups);
-    rel.innerHTML='<div class="pcards">'+keys.map(function(k){var g=groups[k];return '<div class="pcard">'+(g.photo?'<div style="width:100%;height:100px;overflow:hidden;border-radius:8px 8px 0 0;margin:-10px -10px 8px -10px;width:calc(100% + 20px)"><img src="'+g.photo+'" style="width:100%;height:100%;object-fit:cover"></div>':'')+'<div class="pcard-name">'+esc(g.name)+'</div>'+(g.print?'<div style="font-size:9px;color:var(--warn)">🖼 '+esc(g.print)+'</div>':'')+(g.color?'<div style="font-size:9px;color:var(--td)">'+esc(g.color)+'</div>':'')+'<div class="stock-row" style="margin-top:4px">'+g.sizes.map(function(s){return '<div class="stock-sz"><b>'+s.name+'</b><br>'+s.qty+'</div>'}).join("")+'</div></div>'}).join("")+'</div>';
+    var groups={};r.items.forEach(function(i){if(!groups[i.variation_id])groups[i.variation_id]={name:i.var_name,photo:(i.var_photo||i.print_photo||i.bp_photo)||"",print:i.print_name,sizes:[]};groups[i.variation_id].sizes.push({name:i.size_name,qty:i.quantity})});
+    rel.innerHTML='<div class="pcards">'+Object.values(groups).map(function(g){return '<div class="pcard">'+(g.photo?'<div style="width:100%;height:90px;overflow:hidden;border-radius:8px 8px 0 0;margin:-10px -10px 6px -10px;width:calc(100% + 20px)"><img src="'+g.photo+'" style="width:100%;height:100%;object-fit:cover"></div>':'')+'<div class="pcard-name">'+esc(g.name)+'</div>'+(g.print?'<div style="font-size:9px;color:var(--warn)">🖼 '+esc(g.print)+'</div>':'')+'<div class="stock-row" style="margin-top:4px">'+g.sizes.map(function(s){return '<div class="stock-sz"><b>'+s.name+'</b><br>'+s.qty+'</div>'}).join("")+'</div></div>'}).join("")+'</div>';
   }catch(e){}
 }
 function renderWhStockPage(){
@@ -254,10 +269,25 @@ function renderWhStockPage(){
   el.innerHTML=html;
 }
 
+// Shared: populate category dropdown and filter products
+function populateCatSelect(prefix){
+  var sel=document.getElementById(prefix+"-cat");
+  sel.innerHTML='<option value="">— Всі —</option>';
+  whCats.forEach(function(c){sel.innerHTML+='<option value="'+c.id+'">'+esc(c.name)+'</option>'});
+}
+function filterWhBp(prefix){
+  var catId=document.getElementById(prefix+"-cat").value;
+  var filtered=catId?whProducts.filter(function(p){return p.category_id==catId}):whProducts;
+  var sel=document.getElementById(prefix+"-bp");
+  sel.innerHTML=filtered.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join("");
+  if(prefix==="whi")loadWhIncSz();if(prefix==="whw")loadWhWoSz();if(prefix==="whs")loadWhSwSz();
+}
+
 // Incoming
 async function openWhInc(){
   var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
-  document.getElementById("whi-bp").innerHTML=whProducts.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join("");
+  try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
+  populateCatSelect("whi");filterWhBp("whi");
   loadWhIncSz();opM("wh-inc-modal");
 }
 function loadWhIncSz(){
@@ -277,7 +307,8 @@ async function saveWhInc(){
 // Write-off
 async function openWhWO(){
   var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
-  document.getElementById("whw-bp").innerHTML=whProducts.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join("");
+  try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
+  populateCatSelect("whw");filterWhBp("whw");
   loadWhWoSz();opM("wh-wo-modal");
 }
 function loadWhWoSz(){
@@ -292,7 +323,8 @@ async function saveWhWO(){
 // Swap size
 async function openWhSwap(){
   var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
-  document.getElementById("whs-bp").innerHTML=whProducts.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join("");
+  try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
+  populateCatSelect("whs");filterWhBp("whs");
   loadWhSwSz();opM("wh-swap-modal");
 }
 function loadWhSwSz(){
@@ -302,7 +334,7 @@ function loadWhSwSz(){
 }
 async function saveWhSwap(){
   try{await api("/api/stock/swap-size",{method:"POST",body:JSON.stringify({base_product_id:parseInt(document.getElementById("whs-bp").value),from_size_id:parseInt(document.getElementById("whs-from").value),to_size_id:parseInt(document.getElementById("whs-to").value),quantity:parseInt(document.getElementById("whs-qty").value)})});
-  clM("wh-swap-modal");loadWhStock();alert("✅ Розміри замінено")}catch(e){alert(e.message)}
+  clM("wh-swap-modal");loadWhStock();}catch(e){}
 }
 
 init();

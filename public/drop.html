@@ -286,7 +286,7 @@ async function submitOrder(){
   if(!oItems.length){err.textContent="Додайте товари";err.style.display="block";return}
   try{
     var r=await api("/api/orders",{method:"POST",body:JSON.stringify({items:oItems.map(function(c){return{variation_id:c.kitId?undefined:c.varId,size_id:c.sizeId,quantity:c.qty,kit_id:c.kitId||undefined}}),client_name:document.getElementById("no-name").value,client_phone:document.getElementById("no-phone").value,client_city:document.getElementById("no-city").value,client_warehouse:document.getElementById("no-wh").value,cod_amount:parseFloat(document.getElementById("no-cod").value)||0,note:document.getElementById("no-note").value})});
-    clM("no-modal");loadDash();loadOrders();alert("✅ Замовлення #"+r.order_id+" · Заробіток: "+r.payout.toFixed(0)+"₴");
+    clM("no-modal");loadDash();loadOrders();
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
