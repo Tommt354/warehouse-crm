@@ -275,7 +275,7 @@ async function loadOrders(){
 function renderOC(o){
   var items=o._items||[];
   var ph=items.map(function(i){var p=i.var_photo||i.print_photo||i.bp_photo;return p?'<img style="width:120px;height:120px;border-radius:10px;object-fit:cover;border:1px solid var(--brd)" src="'+p+'">':'<div style="width:120px;height:120px;border-radius:10px;background:var(--bg);border:1px solid var(--brd)"></div>'}).join("");
-  var nm=items.map(function(i){return esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')}).join('<br>');
+  var nm=items.map(function(i){return esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.original_size_name||i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')}).join('<br>');
   var h='<div class="oc" onclick="viewOrder('+o.id+')"><div style="padding:12px 14px">';
   h+='<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><span style="font-size:16px;font-weight:700;color:var(--th)">#'+o.id+'</span> <span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th)">'+o.cod_amount+'₴</div><div style="font-size:13px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(0)+'₴</div></div></div>';
   if(o.ttn)h+='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 10px;margin-bottom:8px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span></div>';
@@ -440,7 +440,17 @@ async function submitOrder(){
       declared_value:isPre?(parseFloat(document.getElementById("no-dval").value)||0):0
     })});
     clM("no-modal");receiptPhoto="";dropCityRef="";dropSettleRef="";
-    setTimeout(function(){loadDash();loadOrders()},2500);
+    if(!isPre){
+      document.getElementById("loader").querySelector("div > div:last-child").textContent="Формування накладної НП...";
+      document.getElementById("loader").style.display="flex";
+      var pollId=r.order_id;var pollCount=0;
+      var pollTimer=setInterval(async function(){
+        pollCount++;
+        try{var po=await fetch("/api/orders/"+pollId,{headers:{"Content-Type":"application/json"}});var pd=await po.json();
+        if(pd.order&&pd.order.ttn){clearInterval(pollTimer);document.getElementById("loader").querySelector("div > div:last-child").textContent="Завантаження...";_lh();loadDash();loadOrders()}
+        else if(pollCount>=8){clearInterval(pollTimer);document.getElementById("loader").querySelector("div > div:last-child").textContent="Завантаження...";_lh();loadDash();loadOrders()}}catch(e){clearInterval(pollTimer);_lh();loadDash();loadOrders()}
+      },2000);
+    } else {loadDash();loadOrders()}
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
