@@ -59,6 +59,7 @@ var SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship
 var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(function(){if(_lc>0){var l=document.getElementById("loader");if(l)l.style.display="flex"}},800)}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){if(_lt){clearTimeout(_lt);_lt=null}var l=document.getElementById("loader");if(l)l.style.display="none"}}
 async function api(u,o){_ls();try{var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();_lh();if(!r.ok)throw new Error(d.error||"Err");return d}catch(e){_lh();throw e}}
 function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#22c55e';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
+function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.textContent="✅ "+t+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 
@@ -97,7 +98,7 @@ async function doScan(){
     html+='<div style="padding:12px 14px"><div style="font-size:18px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div>';
     html+='<div style="font-size:13px;color:var(--th);margin-top:4px">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
     html+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
-    if(o.ttn)html+='<div style="margin-top:4px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+'">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+'">📦 '+esc(o.np_status_text)+'</div>':'')+'</div>';
+    if(o.ttn)html+='<div style="margin-top:4px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="copyTTN(this.textContent)">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+'">📦 '+esc(o.np_status_text)+'</div>':'')+'</div>';
     html+='<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--th);margin-top:6px">Наложка: '+o.cod_amount+'₴</div></div>';
     for(var i=0;i<o.items.length;i++){
       var it=o.items[i];var ph=it.var_photo||it.print_photo||it.bp_photo;
