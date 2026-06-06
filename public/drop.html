@@ -150,12 +150,14 @@
 <div class="page" id="pg-settings">
 <div style="max-width:400px">
 <div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px">💳 Реквізити для виплат</div>
-<div class="fld"><label>Тип оплати</label><select id="set-ptype" onchange="togglePayType()" style="width:100%;padding:9px 10px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"><option value="card">Карта</option><option value="iban">IBAN</option></select></div>
-<div id="set-card-wrap" class="fld"><label>Номер карти</label><input id="set-card" placeholder="XXXX XXXX XXXX XXXX"></div>
-<div id="set-iban-wrap" class="fld" style="display:none"><label>IBAN</label><input id="set-iban" placeholder="UA..."></div>
+<div class="fld"><label>Тип оплати</label><select id="set-ptype" onchange="togglePayType()" style="width:100%;padding:9px 10px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"><option value="iban">IBAN</option><option value="card">Карта</option></select></div>
+<div id="set-card-wrap" class="fld" style="display:none"><label>Номер карти</label><input id="set-card" placeholder="XXXX XXXX XXXX XXXX"></div>
+<div id="set-iban-wrap" class="fld"><label>IBAN</label><input id="set-iban" placeholder="UA..."></div>
+<div id="set-iban-extra">
 <div class="fld"><label>ЄДРПОУ</label><input id="set-edrpou"></div>
 <div class="fld"><label>ПІБ</label><input id="set-fullname"></div>
 <div class="fld"><label>Призначення платежу</label><input id="set-purpose"></div>
+</div>
 <div class="fld"><label>Телефон</label><input id="set-phone"></div>
 <div class="fld"><label>Telegram</label><input id="set-tg"></div>
 <button class="btn-new" style="font-size:13px;padding:10px" onclick="saveProfile()">💾 Зберегти</button>
@@ -483,7 +485,7 @@ async function submitPayoutRequest(){
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────────
-function togglePayType(){var t=document.getElementById("set-ptype").value;document.getElementById("set-card-wrap").style.display=t==="card"?"":"none";document.getElementById("set-iban-wrap").style.display=t==="iban"?"":"none"}
+function togglePayType(){var t=document.getElementById("set-ptype").value;document.getElementById("set-card-wrap").style.display=t==="card"?"":"none";document.getElementById("set-iban-wrap").style.display=t==="iban"?"":"none";document.getElementById("set-iban-extra").style.display=t==="iban"?"":"none"}
 async function loadSettings(){
   document.getElementById("set-ptype").value=ME.payment_type||"card";togglePayType();
   document.getElementById("set-card").value=ME.payment_card||"";
