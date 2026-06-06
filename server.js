@@ -592,28 +592,29 @@ app.get("/api/kits", authMiddleware, (req, res) => {
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
 
   kits.forEach(k => {
-    k.items = db.prepare("SELECT ki.*,v.name as var_name,v.photo as var_photo,v.base_product_id,v.print_id,bp.name as base_name,c.name as color_name FROM kit_items ki JOIN variations v ON ki.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id LEFT JOIN colors c ON bp.color_id=c.id WHERE ki.kit_id=?").all(k.id);
-    // Stock = min across all components per size
-    // Get all model sizes from first component
-    if (k.items.length) {
-      const firstVar = k.items[0];
-      const bp = db.prepare("SELECT model_id FROM base_products WHERE id=?").get(firstVar.base_product_id);
+    k.items = db.prepare("SELECT ki.*,v.name as var_name,v.photo as var_photo,v.base_product_id,v.print_id,bp.name as base_name,bp.photo as bp_photo,c.name as color_name FROM kit_items ki JOIN variations v ON ki.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id LEFT JOIN colors c ON bp.color_id=c.id WHERE ki.kit_id=?").all(k.id);
+    // Per-component stock
+    k.items.forEach(item => {
+      item.component_stock = {};
+      const bp = db.prepare("SELECT model_id FROM base_products WHERE id=?").get(item.base_product_id);
       const modelSizes = bp ? db.prepare("SELECT size_id FROM model_sizes WHERE model_id=?").all(bp.model_id).map(r=>r.size_id) : [];
-      k.stock = {};
-      k.total_stock = 0;
-      for (const sid of modelSizes) {
+      modelSizes.forEach(sid => {
+        const base = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(item.base_product_id, sid)?.quantity || 0;
+        item.component_stock[sid] = base;
+      });
+    });
+    // Combined stock = min across components (for backward compat)
+    k.stock = {}; k.total_stock = 0;
+    if (k.items.length) {
+      const allSids = new Set();
+      k.items.forEach(i => Object.keys(i.component_stock).forEach(s => allSids.add(parseInt(s))));
+      for (const sid of allSids) {
         let minStock = Infinity;
-        for (const item of k.items) {
-          const base = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(item.base_product_id, sid)?.quantity || 0;
-          const ret = item.print_id ? (db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(item.variation_id, sid)?.quantity || 0) : 0;
-          minStock = Math.min(minStock, base + ret);
-        }
+        k.items.forEach(i => { minStock = Math.min(minStock, i.component_stock[sid] || 0); });
         if (minStock === Infinity) minStock = 0;
         k.stock[sid] = minStock;
         k.total_stock += minStock;
       }
-    } else {
-      k.stock = {}; k.total_stock = 0;
     }
     k.is_kit = true;
   });

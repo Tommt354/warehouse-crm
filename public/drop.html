@@ -188,6 +188,14 @@
 <div style="display:flex;gap:6px;margin-top:10px"><button class="btn-new" style="flex:1;margin:0;font-size:14px" onclick="submitOrder()">✅ Оформити</button><button class="btn" onclick="clM('no-modal')">Скасувати</button></div>
 </div></div>
 
+<!-- Kit size picker modal -->
+<div class="modal-bg" id="kit-pick-modal"><div class="modal" style="max-width:500px">
+<h3 id="kit-pick-title">🎁 Оберіть розміри</h3>
+<div id="kit-pick-body"></div>
+<div id="kit-pick-err" class="msg msg-err" style="display:none"></div>
+<div style="display:flex;gap:6px;margin-top:12px"><button class="btn-new" style="flex:1;margin:0;font-size:13px" onclick="confirmKitPick()">✅ Додати</button><button class="btn" onclick="clM('kit-pick-modal')">Скасувати</button></div>
+</div></div>
+
 <!-- Catalog picker for order -->
 <div class="modal-bg" id="cp-modal"><div class="modal" style="max-width:650px">
 <h3>📦 Оберіть товар</h3>
@@ -313,13 +321,61 @@ async function loadCatPicker(){
   el.innerHTML=filtered.slice(0,40).map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':'📷')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' 🎁':'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+')">'+s.name+'<br>'+q+'</div>'}).join("")+'</div></div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':'📷')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' 🎁':'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(0,212,170,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">🎁 Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+')">'+s.name+'<br>'+q+'</div>'}).join("")+'</div>')+'</div></div>';
   }).join("");
 }
 
 function pickItem(vid,sid,name,price,sz,photo,isKit){
   oItems.push({varId:vid,sizeId:sid,name:name,price:price,sz:sz,photo:photo,qty:1,kitId:isKit?vid:null});
   renderOItems();calcPay();clM("cp-modal");
+}
+
+var kitPickData=null;
+function openKitPick(kitId){
+  var kit=allV.find(function(v){return v.id===kitId&&v.is_kit});
+  if(!kit||!kit.items)return;
+  kitPickData={kit:kit,selections:{}};
+  var html='<div style="font-size:13px;color:var(--th);margin-bottom:10px">'+esc(kit.name)+' · '+kit.drop_price+'₴</div>';
+  kit.items.forEach(function(ci,idx){
+    var photo=ci.var_photo||ci.bp_photo||"";
+    html+='<div style="background:var(--bg);border-radius:8px;padding:10px;margin-bottom:8px">';
+    html+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'+(photo?'<img src="'+photo+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+'<div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(ci.var_name)+'</div></div>';
+    html+='<div style="display:flex;gap:3px;flex-wrap:wrap">';
+    allSz.forEach(function(s){
+      var q=ci.component_stock?ci.component_stock[s.id]:0;
+      if(q===undefined)return;
+      html+='<div class="stock-sz '+(q<=0?"zero":"")+'" style="cursor:pointer" onclick="selectKitSize('+idx+','+s.id+',\''+s.name+'\',this)">'+s.name+'<br>'+q+'</div>';
+    });
+    html+='</div></div>';
+  });
+  document.getElementById("kit-pick-body").innerHTML=html;
+  document.getElementById("kit-pick-err").style.display="none";
+  document.getElementById("kit-pick-title").textContent="🎁 "+kit.name;
+  opM("kit-pick-modal");
+}
+function selectKitSize(compIdx,sizeId,sizeName,el){
+  kitPickData.selections[compIdx]={sizeId:sizeId,sizeName:sizeName};
+  el.parentElement.querySelectorAll(".stock-sz").forEach(function(b){b.style.border="1px solid var(--brd)"});
+  el.style.border="2px solid var(--acc)";
+}
+function confirmKitPick(){
+  if(!kitPickData)return;
+  var kit=kitPickData.kit;
+  var err=document.getElementById("kit-pick-err");
+  // Check all components have size selected
+  for(var i=0;i<kit.items.length;i++){
+    if(!kitPickData.selections[i]){err.textContent="Оберіть розмір для: "+kit.items[i].var_name;err.style.display="block";return}
+  }
+  // Add each component as separate order item
+  kit.items.forEach(function(ci,idx){
+    var sel=kitPickData.selections[idx];
+    oItems.push({varId:ci.variation_id,sizeId:sel.sizeId,name:ci.var_name+" ("+kit.name+")",price:0,sz:sel.sizeName,photo:ci.var_photo||ci.bp_photo||"",qty:1,kitId:null});
+  });
+  // Add kit price as first item adjustment
+  if(oItems.length>=kit.items.length){
+    oItems[oItems.length-kit.items.length].price=kit.drop_price;
+  }
+  renderOItems();calcPay();clM("kit-pick-modal");clM("cp-modal");
 }
 
 function renderOItems(){
