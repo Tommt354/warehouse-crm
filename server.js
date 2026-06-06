@@ -1313,6 +1313,154 @@ app.post("/api/nova-poshta/detect-sender", authMiddleware, requireRole("admin"),
   } catch (e) { res.status(500).json({ error: e.message }) }
 });
 
+// ── WORKERS & PAYROLL ─────────────────────────────────────────────
+
+// CRUD workers
+app.get("/api/workers", authMiddleware, (req, res) => {
+  const workers = db.prepare("SELECT w.*,u.username FROM workers w LEFT JOIN users u ON w.user_id=u.id ORDER BY w.role,w.name").all();
+  workers.forEach(w => {
+    w.total_earned = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payroll WHERE worker_id=?").get(w.id).s;
+    w.total_paid = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payouts WHERE worker_id=?").get(w.id).s;
+    w.balance = w.total_earned - w.total_paid;
+  });
+  res.json({ workers });
+});
+
+app.post("/api/workers", authMiddleware, requireRole("admin"), (req, res) => {
+  const { name, role, daily_rate, per_item_rate, per_return_item_rate, username, password } = req.body;
+  if (!name?.trim() || !role) return res.status(400).json({ error: "Ім'я та роль обов'язкові" });
+  let userId = null;
+  // Create user account for packer and finalizer
+  if ((role === "packer" || role === "finalizer") && username && password) {
+    const { hashPassword } = require("./auth");
+    const uRole = role === "packer" ? "warehouse" : "finalizer";
+    const existing = db.prepare("SELECT id FROM users WHERE username=?").get(username);
+    if (existing) return res.status(400).json({ error: "Логін вже зайнятий" });
+    const u = db.prepare("INSERT INTO users(username,password,role,name)VALUES(?,?,?,?)").run(username, hashPassword(password), uRole, name.trim());
+    userId = u.lastInsertRowid;
+  }
+  const r = db.prepare("INSERT INTO workers(name,role,user_id,daily_rate,per_item_rate,per_return_item_rate)VALUES(?,?,?,?,?,?)").run(
+    name.trim(), role, userId, parseFloat(daily_rate)||0, parseFloat(per_item_rate)||0, parseFloat(per_return_item_rate)||0
+  );
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+
+app.put("/api/workers/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  const { name, daily_rate, per_item_rate, per_return_item_rate } = req.body;
+  db.prepare("UPDATE workers SET name=?,daily_rate=?,per_item_rate=?,per_return_item_rate=? WHERE id=?").run(
+    name, parseFloat(daily_rate)||0, parseFloat(per_item_rate)||0, parseFloat(per_return_item_rate)||0, req.params.id
+  );
+  res.json({ ok: true });
+});
+
+app.delete("/api/workers/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("UPDATE workers SET active=0 WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Worker detail with payroll history
+app.get("/api/workers/:id/detail", authMiddleware, (req, res) => {
+  const w = db.prepare("SELECT * FROM workers WHERE id=?").get(req.params.id);
+  if (!w) return res.status(404).json({ error: "Не знайдено" });
+  w.payroll = db.prepare("SELECT wp.*,o.client_name,o.ttn FROM worker_payroll wp LEFT JOIN orders o ON wp.order_id=o.id WHERE wp.worker_id=? ORDER BY wp.created_at DESC LIMIT 100").all(w.id);
+  w.payouts = db.prepare("SELECT * FROM worker_payouts WHERE worker_id=? ORDER BY created_at DESC").all(w.id);
+  w.total_earned = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payroll WHERE worker_id=?").get(w.id).s;
+  w.total_paid = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payouts WHERE worker_id=?").get(w.id).s;
+  w.balance = w.total_earned - w.total_paid;
+  res.json({ worker: w });
+});
+
+// Pay worker
+app.post("/api/workers/:id/pay", authMiddleware, requireRole("admin"), (req, res) => {
+  const w = db.prepare("SELECT * FROM workers WHERE id=?").get(req.params.id);
+  if (!w) return res.status(404).json({ error: "Не знайдено" });
+  const earned = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payroll WHERE worker_id=?").get(w.id).s;
+  const paid = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payouts WHERE worker_id=?").get(w.id).s;
+  const balance = earned - paid;
+  if (balance <= 0) return res.status(400).json({ error: "Нічого виплачувати" });
+  db.prepare("INSERT INTO worker_payouts(worker_id,amount)VALUES(?,?)").run(w.id, balance);
+  res.json({ ok: true, paid: balance });
+});
+
+// Product worker operations
+app.get("/api/product-worker-ops/:model_id", authMiddleware, (req, res) => {
+  const ops = db.prepare("SELECT * FROM product_worker_ops WHERE model_id=?").all(req.params.model_id);
+  res.json({ ops });
+});
+
+app.post("/api/product-worker-ops/:model_id", authMiddleware, requireRole("admin"), (req, res) => {
+  const { ops } = req.body; // [{worker_role, operations_count}]
+  db.prepare("DELETE FROM product_worker_ops WHERE model_id=?").run(req.params.model_id);
+  const ins = db.prepare("INSERT INTO product_worker_ops(model_id,worker_role,operations_count)VALUES(?,?,?)");
+  (ops||[]).forEach(o => ins.run(req.params.model_id, o.worker_role, parseInt(o.operations_count)||1));
+  res.json({ ok: true });
+});
+
+// ── SHIFTS ───────────────────────────────────────────────────────
+
+app.get("/api/shifts/current", authMiddleware, (req, res) => {
+  const shift = db.prepare("SELECT * FROM shifts WHERE packer_user_id=? AND status='open' ORDER BY id DESC LIMIT 1").get(req.user.id);
+  if (!shift) return res.json({ shift: null });
+  shift.workers = db.prepare("SELECT sw.*,w.name,w.role FROM shift_workers sw JOIN workers w ON sw.worker_id=w.id WHERE sw.shift_id=?").all(shift.id);
+  res.json({ shift });
+});
+
+app.post("/api/shifts/open", authMiddleware, (req, res) => {
+  const existing = db.prepare("SELECT id FROM shifts WHERE packer_user_id=? AND status='open'").get(req.user.id);
+  if (existing) return res.status(400).json({ error: "Зміна вже відкрита" });
+  const { worker_ids } = req.body;
+  const s = db.prepare("INSERT INTO shifts(packer_user_id)VALUES(?)").run(req.user.id);
+  const ins = db.prepare("INSERT INTO shift_workers(shift_id,worker_id)VALUES(?,?)");
+  (worker_ids||[]).forEach(id => ins.run(s.lastInsertRowid, id));
+  // Add daily rate for each worker
+  const addDaily = db.prepare("INSERT INTO worker_payroll(worker_id,shift_id,amount,type,note)VALUES(?,?,?,?,?)");
+  (worker_ids||[]).forEach(id => {
+    const w = db.prepare("SELECT * FROM workers WHERE id=?").get(id);
+    if (w && w.daily_rate > 0) addDaily.run(id, s.lastInsertRowid, w.daily_rate, "daily", "Ставка за зміну");
+  });
+  res.json({ ok: true, shift_id: s.lastInsertRowid });
+});
+
+app.post("/api/shifts/close", authMiddleware, (req, res) => {
+  const shift = db.prepare("SELECT * FROM shifts WHERE packer_user_id=? AND status='open' ORDER BY id DESC LIMIT 1").get(req.user.id);
+  if (!shift) return res.status(400).json({ error: "Немає відкритої зміни" });
+  db.prepare("UPDATE shifts SET status='closed',closed_at=datetime('now','localtime') WHERE id=?").run(shift.id);
+  const stats = db.prepare("SELECT COUNT(DISTINCT order_id) as orders FROM worker_payroll WHERE shift_id=? AND type!='daily'").get(shift.id);
+  res.json({ ok: true, orders_packed: stats?.orders || 0 });
+});
+
+// Calculate payroll when order is finalized (called from scan/finalize)
+function calcOrderPayroll(orderId, shiftId) {
+  const items = db.prepare(`SELECT oi.*,v.base_product_id,bp.model_id,oi.from_returns FROM order_items oi 
+    JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id WHERE oi.order_id=?`).all(orderId);
+  if (!shiftId) return;
+  const shiftWorkers = db.prepare("SELECT sw.worker_id,w.role,w.per_item_rate,w.per_return_item_rate FROM shift_workers sw JOIN workers w ON sw.worker_id=w.id WHERE sw.shift_id=?").all(shiftId);
+  const ins = db.prepare("INSERT INTO worker_payroll(worker_id,shift_id,order_id,amount,type,note)VALUES(?,?,?,?,?,?)");
+  
+  for (const item of items) {
+    const qty = item.quantity;
+    const isReturn = item.from_returns > 0;
+    // Product-specific ops (для швей і принтувальників)
+    const ops = db.prepare("SELECT * FROM product_worker_ops WHERE model_id=?").all(item.model_id);
+    for (const op of ops) {
+      const workers = shiftWorkers.filter(w => w.role === op.worker_role);
+      workers.forEach(w => {
+        const amount = w.per_item_rate * op.operations_count * qty;
+        if (amount > 0) ins.run(w.worker_id, shiftId, orderId, amount, "ops", op.worker_role + " ×" + op.operations_count);
+      });
+    }
+    // Packer (per item)
+    shiftWorkers.filter(w => w.role === "packer").forEach(w => {
+      const rate = isReturn ? (w.per_return_item_rate || w.per_item_rate) : w.per_item_rate;
+      if (rate > 0) ins.run(w.worker_id, shiftId, orderId, rate * qty, isReturn ? "return_item" : "item", isReturn ? "З повернення" : "Виробіток");
+    });
+    // Finalizer (per item, same rate regardless)
+    shiftWorkers.filter(w => w.role === "finalizer").forEach(w => {
+      if (w.per_item_rate > 0) ins.run(w.worker_id, shiftId, orderId, w.per_item_rate * qty, "item", "Виробіток");
+    });
+  }
+}
+
 // ── SCAN LOG ──────────────────────────────────────────────────────
 
 // Log a scan (shipment or return)
@@ -1335,6 +1483,9 @@ app.post("/api/scan/finalize/:order_id", authMiddleware, (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.order_id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   db.prepare("UPDATE orders SET status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
+  // Find active shift and calc payroll
+  const shift = db.prepare("SELECT s.id FROM shifts s JOIN shift_workers sw ON s.id=sw.shift_id WHERE s.status='open' ORDER BY s.id DESC LIMIT 1").get();
+  if (shift) calcOrderPayroll(o.id, shift.id);
   res.json({ ok: true });
 });
 

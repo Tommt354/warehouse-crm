@@ -274,6 +274,65 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 
+  CREATE TABLE IF NOT EXISTS workers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    user_id INTEGER DEFAULT NULL,
+    daily_rate REAL DEFAULT 0,
+    per_item_rate REAL DEFAULT 0,
+    per_return_item_rate REAL DEFAULT 0,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
+  CREATE TABLE IF NOT EXISTS shifts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    packer_user_id INTEGER NOT NULL,
+    status TEXT DEFAULT 'open',
+    opened_at TEXT DEFAULT (datetime('now','localtime')),
+    closed_at TEXT DEFAULT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS shift_workers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shift_id INTEGER NOT NULL,
+    worker_id INTEGER NOT NULL,
+    FOREIGN KEY(shift_id) REFERENCES shifts(id),
+    FOREIGN KEY(worker_id) REFERENCES workers(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS worker_payroll (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id INTEGER NOT NULL,
+    shift_id INTEGER,
+    order_id INTEGER,
+    amount REAL DEFAULT 0,
+    type TEXT DEFAULT 'item',
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(worker_id) REFERENCES workers(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS worker_payouts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id INTEGER NOT NULL,
+    amount REAL DEFAULT 0,
+    period_from TEXT,
+    period_to TEXT,
+    status TEXT DEFAULT 'paid',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(worker_id) REFERENCES workers(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS product_worker_ops (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id INTEGER NOT NULL,
+    worker_role TEXT NOT NULL,
+    operations_count INTEGER DEFAULT 1,
+    FOREIGN KEY(model_id) REFERENCES models(id)
+  );
+
   -- Комплекти (віртуальні товари для дропшиперів)
   CREATE TABLE IF NOT EXISTS kits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

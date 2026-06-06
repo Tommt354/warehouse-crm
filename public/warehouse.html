@@ -77,6 +77,8 @@
 <body>
 <div class="wrap">
   <div class="hdr"><div><h1>📦 Склад</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
+  <div id="shift-banner" style="background:rgba(255,107,107,.06);border:1px solid rgba(255,107,107,.15);border-radius:12px;padding:14px;margin-bottom:14px;text-align:center"><div style="font-size:14px;font-weight:600;color:var(--red);margin-bottom:8px">⚠️ Зміна не відкрита</div><button class="btn btn-p" onclick="openShiftModal()" style="font-size:14px">🔓 Розпочати зміну</button></div>
+  <div id="shift-active" style="display:none;background:var(--accbg);border:1px solid rgba(0,212,170,.15);border-radius:12px;padding:10px 14px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:12px;color:var(--acc);font-weight:600">✅ Зміна відкрита</span><div id="shift-crew" style="font-size:10px;color:var(--td);margin-top:2px"></div></div><button class="btn btn-sm" style="border-color:rgba(255,107,107,.2);color:var(--red)" onclick="closeShift()">🔒 Закрити зміну</button></div></div>
   <div class="main-tabs">
     <div class="main-tab on" onclick="showMain('orders')">📋 Замовлення</div>
     <div class="main-tab" onclick="showMain('returns')">📦 Повернення</div>
@@ -143,6 +145,20 @@
 <div style="margin-top:12px"><button class="btn" onclick="clM('swap-sz-modal')">Скасувати</button></div>
 </div></div>
 
+<!-- Shift modal -->
+<div class="modal-bg" id="shift-modal"><div class="modal" style="max-width:400px"><h3>🔓 Відкрити зміну</h3>
+<div style="font-size:12px;color:var(--td);margin-bottom:10px">Оберіть хто сьогодні на зміні:</div>
+<div id="shift-worker-list"></div>
+<div style="display:flex;gap:6px;margin-top:12px"><button class="btn btn-p" onclick="startShift()">✅ Розпочати</button><button class="btn" onclick="clM('shift-modal')">Скасувати</button></div>
+</div></div>
+
+<!-- Shift close modal -->
+<div class="modal-bg" id="shift-close-modal"><div class="modal" style="max-width:400px"><h3>🔒 Закрити зміну</h3>
+<div id="shift-close-crew" style="margin-bottom:10px"></div>
+<div id="shift-close-stats" style="margin-bottom:10px"></div>
+<div style="display:flex;gap:6px"><button class="btn btn-p" onclick="confirmCloseShift()">✅ Підтвердити</button><button class="btn" onclick="clM('shift-close-modal')">Скасувати</button></div>
+</div></div>
+
 <script>
 let ME,whStatus="",whReady="",whCh="",whProducts=[],whSizes=[];
 const SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
@@ -150,7 +166,7 @@ const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",refused:"tag-ba
 const WHS=[{key:"",label:"📋 Всі"},{key:"new",label:"📥 Нові",next:"in_progress",nl:"🔧 Взяти"},{key:"in_progress",label:"🔧 В роботі",next:"packed",nl:"✅ Готово"},{key:"packed",label:"✅ Готові"},{key:"shipped",label:"🚚 Відправлені"},{key:"delivered",label:"📬 Отримані"},{key:"refused",label:"❌ Відмови"},{key:"cancelled",label:"🚫 Скасовані"}];
 
 async function init(){
-  try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;loadOrders();
+  try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;await checkShift();loadOrders();
   document.getElementById("scan-ttn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();scanTTN()}});
   }catch(e){location.href="/login"}
 }
@@ -256,6 +272,45 @@ async function printTTN(id){
 }
 async function trackAll(){
   try{var r=await api("/api/nova-poshta/track-all",{method:"POST"});loadOrders()}catch(e){}
+}
+
+// ── SHIFTS ────────────────────────────────────────────────────────
+var currentShift=null,shiftSelected=[];
+async function checkShift(){
+  try{var r=await api("/api/shifts/current");currentShift=r.shift;
+  if(currentShift){
+    document.getElementById("shift-banner").style.display="none";
+    document.getElementById("shift-active").style.display="";
+    document.getElementById("shift-crew").textContent=currentShift.workers.map(function(w){return w.name+" ("+({packer:"Пакувальник",finalizer:"Пакувальниця",seamstress:"Швея",printer:"Принтувальник"}[w.role]||w.role)+")"}).join(", ");
+  }else{
+    document.getElementById("shift-banner").style.display="";
+    document.getElementById("shift-active").style.display="none";
+  }}catch(e){}
+}
+async function openShiftModal(){
+  try{var r=await api("/api/workers");shiftSelected=[];
+  document.getElementById("shift-worker-list").innerHTML=r.workers.filter(function(w){return w.active}).map(function(w){
+    var rl={packer:"Пакувальник",finalizer:"Пакувальниця",seamstress:"Швея",printer:"Принтувальник"}[w.role]||w.role;
+    return '<label style="display:flex;align-items:center;gap:8px;padding:6px;cursor:pointer;border-bottom:1px solid var(--brd)"><input type="checkbox" value="'+w.id+'" onchange="toggleShiftWorker('+w.id+')" style="width:18px;height:18px;accent-color:var(--acc)"><div><div style="font-size:12px;color:var(--th);font-weight:600">'+esc(w.name)+'</div><div style="font-size:10px;color:var(--td)">'+rl+'</div></div></label>'
+  }).join("");
+  opM("shift-modal")}catch(e){}
+}
+function toggleShiftWorker(id){var i=shiftSelected.indexOf(id);if(i>=0)shiftSelected.splice(i,1);else shiftSelected.push(id)}
+async function startShift(){
+  if(!shiftSelected.length){return}
+  try{await api("/api/shifts/open",{method:"POST",body:JSON.stringify({worker_ids:shiftSelected})});clM("shift-modal");checkShift()}catch(e){}
+}
+async function closeShift(){
+  if(!currentShift)return;
+  document.getElementById("shift-close-crew").innerHTML='<div style="font-size:12px;color:var(--th);margin-bottom:6px">Працівники цієї зміни:</div>'+currentShift.workers.map(function(w){return '<div style="padding:4px 0;font-size:11px;color:var(--t)">'+esc(w.name)+' ('+w.role+')</div>'}).join("");
+  document.getElementById("shift-close-stats").innerHTML='<div style="color:var(--td);font-size:11px">Закрити зміну?</div>';
+  opM("shift-close-modal");
+}
+async function confirmCloseShift(){
+  try{var r=await api("/api/shifts/close",{method:"POST"});clM("shift-close-modal");
+  document.getElementById("shift-close-modal").classList.remove("on");
+  currentShift=null;checkShift();
+  document.getElementById("wh-orders").innerHTML='<div class="msg msg-ok" style="text-align:center;font-size:14px;padding:20px">✅ Зміна закрита! Запаковано замовлень: <b>'+r.orders_packed+'</b></div>'}catch(e){}
 }
 
 // ── RETURNS ──────────────────────────────────────────────────────
