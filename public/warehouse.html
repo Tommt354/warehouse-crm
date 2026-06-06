@@ -201,6 +201,7 @@ async function loadOrders(){
       html+='<div class="oitem-info"><div class="oitem-name">'+esc(i.var_name)+'</div>';
       if(i.print_name)html+='<div class="oitem-print">🖼 '+esc(i.print_name)+'</div>';
       html+='<div><span class="oitem-size">'+esc(i.size_name)+'</span>';
+      if(i.original_size_name)html+=' <span style="font-size:10px"><span style="color:var(--red);text-decoration:line-through">'+esc(i.original_size_name)+'</span> → <span style="color:var(--acc);font-weight:700">'+esc(i.size_name)+'</span></span>';
       if(i.quantity>1)html+=' <span style="color:var(--td)">×'+i.quantity+'</span>';
       html+='</div>';
       if(missing)html+='<div><span class="oitem-missing-badge">❌ Немає на складі (залишок: '+i.current_stock+')</span></div><div style="margin-top:4px"><button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="openSwapSize('+i.id+',\''+esc(i.var_name).replace(/'/g,"")+'\')">🔄 Замінити розмір</button></div>';

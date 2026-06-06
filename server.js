@@ -875,8 +875,8 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (req.user.role === "dropshipper" && o.dropshipper_id !== req.user.id) return res.status(403).json({ error: "Немає доступу" });
 
-  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product
-    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id
+  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product,oi.original_size_id,os.name as original_size_name
+    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN sizes os ON oi.original_size_id=os.id
     WHERE oi.order_id=?`).all(o.id);
 
   // Check return availability and current stock for each item
@@ -898,7 +898,12 @@ app.post("/api/order-items/:id/swap-size", authMiddleware, (req, res) => {
   const item = db.prepare("SELECT oi.*,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   const stock = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(item.base_product_id, new_size_id);
-  db.prepare("UPDATE order_items SET size_id=? WHERE id=?").run(new_size_id, item.id);
+  // Save original size if not already saved
+  if (!item.original_size_id) {
+    db.prepare("UPDATE order_items SET original_size_id=?,size_id=? WHERE id=?").run(item.size_id, new_size_id, item.id);
+  } else {
+    db.prepare("UPDATE order_items SET size_id=? WHERE id=?").run(new_size_id, item.id);
+  }
   res.json({ ok: true, new_stock: stock?.quantity || 0 });
 });
 
@@ -1013,8 +1018,8 @@ app.get("/api/stock-returns", authMiddleware, (req, res) => {
 app.get("/api/orders/by-ttn/:ttn", authMiddleware, (req, res) => {
   const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.ttn=? OR o.ttn_return=?").get(req.params.ttn, req.params.ttn);
   if (!o) return res.status(404).json({ error: "Замовлення з такою ТТН не знайдено" });
-  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product
-    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id
+  o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product,oi.original_size_id,os.name as original_size_name
+    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN sizes os ON oi.original_size_id=os.id
     WHERE oi.order_id=?`).all(o.id);
   res.json({ order: o });
 });

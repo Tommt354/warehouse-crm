@@ -847,6 +847,7 @@ async function loadAdmOrders(status){
       html+='<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>';
       if(i.print_name)html+='<div style="font-size:10px;color:var(--warn)">🖼 '+esc(i.print_name)+'</div>';
       html+='<span style="font-size:14px;font-weight:700;color:var(--acc);background:var(--accbg);padding:3px 12px;border-radius:6px;margin-top:4px;display:inline-block">'+esc(i.size_name)+'</span>';
+      if(i.original_size_name)html+=' <span style="font-size:11px"><span style="color:var(--red);text-decoration:line-through">'+esc(i.original_size_name)+'</span> → <span style="color:var(--acc);font-weight:700">'+esc(i.size_name)+'</span></span>';
       if(i.quantity>1)html+=' <span style="color:var(--td);font-size:13px">×'+i.quantity+'</span>';
       html+='</div></div>';
     }
