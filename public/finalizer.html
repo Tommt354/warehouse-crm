@@ -98,7 +98,7 @@ async function doScan(){
     html+='<div style="padding:12px 14px"><div style="font-size:18px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div>';
     html+='<div style="font-size:13px;color:var(--th);margin-top:4px">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
     html+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
-    if(o.ttn)html+='<div style="margin-top:4px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="copyTTN(this.textContent)">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+'">📦 '+esc(o.np_status_text)+'</div>':'')+'</div>';
+    if(o.ttn)html+='<div style="margin-top:4px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="copyTTN(this.textContent)">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+'">📦 '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">↩ '+esc(o.return_ttn)+'</div>':'')+'</div>';
     html+='<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--th);margin-top:6px">Наложка: '+o.cod_amount+'₴</div></div>';
     for(var i=0;i<o.items.length;i++){
       var it=o.items[i];var ph=it.var_photo||it.print_photo||it.bp_photo;
