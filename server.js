@@ -1317,8 +1317,11 @@ app.get("/api/payouts/my", authMiddleware, (req, res) => {
   const active = db.prepare(`SELECT * FROM payout_requests WHERE dropshipper_id=? AND status='pending' ORDER BY id DESC LIMIT 1`).get(uid);
   let activeItems = [];
   if (active) activeItems = db.prepare(`SELECT pi.*,o.cod_amount,o.payout_amount,o.client_name,o.ttn,o.status as order_status FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(active.id);
-  // History
+  // History with items
   const history = db.prepare(`SELECT * FROM payout_requests WHERE dropshipper_id=? ORDER BY id DESC`).all(uid);
+  history.forEach(h => {
+    h.items = db.prepare(`SELECT pi.*,o.cod_amount,o.payout_amount,o.client_name,o.ttn,o.status as order_status,o.created_at as order_date FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(h.id);
+  });
   res.json({ unpaid, returns, active, activeItems, history });
 });
 

@@ -477,7 +477,24 @@ async function loadPayouts(){
     // Unpaid orders
     document.getElementById("pay-unpaid").innerHTML=r.unpaid.length?r.unpaid.map(function(o){return '<div class="pay-card"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.ttn||"без ТТН")+'</div></div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(0)+'₴</div></div>'}).join("")+(r.returns.length?'<div style="font-size:12px;font-weight:600;color:var(--red);margin:8px 0 4px">Повернення:</div>'+r.returns.map(function(o){return '<div class="pay-card" style="border-color:rgba(255,107,107,.2)"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--red)">Повернення</div></div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--red);font-weight:700">-'+o.payout_amount.toFixed(0)+'₴</div></div>'}).join(""):''):'<div style="color:var(--td);font-size:11px">Немає замовлень для виплати</div>';
     // History
-    document.getElementById("pay-history").innerHTML=r.history.length?r.history.map(function(p){return '<div class="pay-card" style="border-color:'+(p.status==="paid"?"rgba(0,212,170,.2)":"rgba(255,107,107,.2)")+'"><div><div style="font-size:12px;font-weight:600;color:var(--th)">Запит #'+p.id+'</div><div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+(p.comment?'<div style="font-size:10px;color:var(--t)">💬 '+esc(p.comment)+'</div>':'')+'</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+p.total_amount.toFixed(0)+'₴</div><div style="font-size:10px;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+(p.status==="paid"?"✅ Виплачено":"⏳ Не виплачено")+'</div></div></div>'}).join(""):'<div style="color:var(--td);font-size:11px">Немає історії</div>';
+    document.getElementById("pay-history").innerHTML=r.history.length?r.history.map(function(p){
+      var success=(p.items||[]).filter(function(i){return !i.is_return});
+      var rets=(p.items||[]).filter(function(i){return i.is_return});
+      var sSum=success.reduce(function(s,i){return s+i.amount},0);
+      var rSum=rets.reduce(function(s,i){return s+Math.abs(i.amount)},0);
+      return '<div style="background:var(--card);border:1px solid '+(p.status==="paid"?"rgba(0,212,170,.2)":"rgba(255,107,107,.2)")+';border-radius:12px;margin-bottom:8px;overflow:hidden">'+
+      '<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
+      '<div><div style="font-size:13px;font-weight:600;color:var(--th)">Запит #'+p.id+'</div>'+
+      '<div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+
+      (p.comment?'<div style="font-size:10px;color:var(--t)">💬 '+esc(p.comment)+'</div>':'')+
+      '<div style="font-size:9px;margin-top:2px"><span style="color:var(--acc)">✅'+success.length+'</span> · <span style="color:var(--red)">❌'+rets.length+'</span></div>'+
+      '</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+p.total_amount.toFixed(0)+'₴</div>'+
+      '<div style="font-size:10px;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+(p.status==="paid"?"✅ Виплачено":"⏳ Очікує")+'</div></div></div>'+
+      '<div style="display:none;border-top:1px solid var(--brd);padding:8px 12px">'+
+      (success.length?'<div style="font-size:10px;font-weight:600;color:var(--acc);margin-bottom:4px">Успішні (+'+sSum.toFixed(0)+'₴):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+(i.ttn?' <span style="color:var(--warn)">'+esc(i.ttn)+'</span>':'')+'</div><div style="color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">+'+i.amount.toFixed(0)+'₴</div></div>'}).join(""):"")+
+      (rets.length?'<div style="font-size:10px;font-weight:600;color:var(--red);margin:6px 0 4px">Повернення (-'+rSum.toFixed(0)+'₴):</div>'+rets.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+'</div><div style="color:var(--red);font-weight:700;font-family:JetBrains Mono,monospace">'+i.amount.toFixed(0)+'₴</div></div>'}).join(""):"")+
+      '</div></div>'
+    }).join(""):'<div style="color:var(--td);font-size:11px">Немає історії</div>';
   }catch(e){}
 }
 async function submitPayoutRequest(){
