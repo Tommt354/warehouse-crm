@@ -24,7 +24,9 @@ app.post("/api/auth/login", (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({ error: "Невірний логін або пароль" });
   db.prepare("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?").run(user.id);
   res.cookie("token", createToken(user), { httpOnly: true, maxAge: 7*24*3600000, sameSite: "lax" });
-  res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, name: user.name } });
+  let redirect = {admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse"}[user.role] || "/login";
+  if (user.role === "warehouse" && user.worker_role === "finalizer") redirect = "/finalizer";
+  res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, worker_role: user.worker_role }, redirect });
 });
 app.get("/api/auth/me", authMiddleware, (req, res) => {
   const u = db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,payout_details,payment_type,payment_card,payment_iban,edrpou,full_name,payment_purpose FROM users WHERE id=?").get(req.user.id);
