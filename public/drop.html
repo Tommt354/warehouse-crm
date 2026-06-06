@@ -217,7 +217,8 @@ var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роб
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash()}catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
-async function api(u,o){var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();if(!r.ok)throw new Error(d.error||"Err");return d}
+var _lc=0;function _ls(){_lc++;var l=document.getElementById("loader");if(l)l.style.display="flex"}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){var l=document.getElementById("loader");if(l)l.style.display="none"}}
+async function api(u,o){_ls();try{var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();_lh();if(!r.ok)throw new Error(d.error||"Err");return d}catch(e){_lh();throw e}}
 function clM(id){document.getElementById(id).classList.remove("on")}
 function opM(id){document.getElementById(id).classList.add("on")}
 
@@ -520,5 +521,7 @@ async function saveProfile(){
 
 init();
 </script>
+<div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 </body>
 </html>
