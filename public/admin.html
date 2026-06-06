@@ -551,7 +551,7 @@ async function deleteVar(id,modelId){if(!confirm("Видалити варіац�
 // ── Create model ─────────────────────────────────────────────────
 async function openNewModel(){
   editModelId=null;
-  await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};modelOps=[];
+  await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};modelOps=[];renderModelOps();
   document.getElementById("mdl-t").textContent="Нова модель";
   document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
@@ -559,7 +559,7 @@ async function openNewModel(){
   const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';(CC.cats_base||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
   const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
-  renderSelTags();renderWorkers();
+  renderSelTags();renderModelOps();
   const ws=document.getElementById("mm-wadd");ws.innerHTML='<option value="">+ працівник</option>';
   (await api("/api/users?role=warehouse")).users.forEach(u=>ws.innerHTML+=`<option value="${u.id}">${esc(u.name)}</option>`);
   // worker ops handled via modelOps
@@ -579,13 +579,13 @@ function renderSelTags(){
     tags.innerHTML=[...mmSel[key]].map(id=>{const i=items.find(x=>x.id===id);return i?`<span class="sel-tag" onclick="mmSel.${key}.delete(${id});renderSelTags()">${esc(i.name)} ✕</span>`:""}).join("");
   });
 }
-function renderWorkers(){document.getElementById("mm-workers").innerHTML=mmWorkers.map((w,i)=>`<div class="wrow"><span class="wname">${esc(w.name)}</span><input type="number" value="${w.amount}" onchange="mmWorkers[${i}].amount=parseFloat(this.value)||0" placeholder="₴"><button class="wdel" onclick="mmWorkers.splice(${i},1);renderWorkers()">✕</button></div>`).join("")}
+// renderWorkers replaced by renderModelOps
 
 async function saveModel(){
   if(editModelId) return saveModelEdit();
   const err=document.getElementById("mm-err");err.style.display="none";
   const isReady=document.getElementById("mm-ready").classList.contains("on");
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount}))};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches]};
   try{const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();alert(`✅ ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
