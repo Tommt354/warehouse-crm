@@ -217,7 +217,7 @@ var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роб
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash()}catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
-var _lc=0;function _ls(){_lc++;var l=document.getElementById("loader");if(l)l.style.display="flex"}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){var l=document.getElementById("loader");if(l)l.style.display="none"}}
+var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(function(){if(_lc>0){var l=document.getElementById("loader");if(l)l.style.display="flex"}},800)}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){if(_lt){clearTimeout(_lt);_lt=null}var l=document.getElementById("loader");if(l)l.style.display="none"}}
 async function api(u,o){_ls();try{var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();_lh();if(!r.ok)throw new Error(d.error||"Err");return d}catch(e){_lh();throw e}}
 function clM(id){document.getElementById(id).classList.remove("on")}
 function opM(id){document.getElementById(id).classList.add("on")}
@@ -440,17 +440,19 @@ async function submitOrder(){
       declared_value:isPre?(parseFloat(document.getElementById("no-dval").value)||0):0
     })});
     clM("no-modal");receiptPhoto="";dropCityRef="";dropSettleRef="";
+    loadDash();loadOrders();
     if(!isPre){
-      document.getElementById("loader").querySelector("div > div:last-child").textContent="Формування накладної НП...";
-      document.getElementById("loader").style.display="flex";
-      var pollId=r.order_id;var pollCount=0;
-      var pollTimer=setInterval(async function(){
-        pollCount++;
-        try{var po=await fetch("/api/orders/"+pollId,{headers:{"Content-Type":"application/json"}});var pd=await po.json();
-        if(pd.order&&pd.order.ttn){clearInterval(pollTimer);document.getElementById("loader").querySelector("div > div:last-child").textContent="Завантаження...";_lh();loadDash();loadOrders()}
-        else if(pollCount>=8){clearInterval(pollTimer);document.getElementById("loader").querySelector("div > div:last-child").textContent="Завантаження...";_lh();loadDash();loadOrders()}}catch(e){clearInterval(pollTimer);_lh();loadDash();loadOrders()}
-      },2000);
-    } else {loadDash();loadOrders()}
+      setTimeout(function(){
+        var card=document.querySelector(".oc:first-child");
+        if(card){var ttnArea=card.querySelector("[data-ttn-area]");if(!ttnArea){var d=document.createElement("div");d.setAttribute("data-ttn-area","1");d.style.cssText="padding:8px 14px";d.innerHTML='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:10px;display:flex;align-items:center;gap:8px"><div style="width:18px;height:18px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:12px;color:var(--warn)">Формування накладної НП...</span></div>';card.insertBefore(d,card.children[1])}}
+        var pollId=r.order_id,pollN=0;
+        var pt=setInterval(async function(){pollN++;
+          try{var po=await fetch("/api/orders/"+pollId,{headers:{"Content-Type":"application/json"}});var pd=await po.json();
+          if((pd.order&&pd.order.ttn)||pollN>=10){clearInterval(pt);loadOrders()}}
+          catch(e){clearInterval(pt);loadOrders()}
+        },2000);
+      },500);
+    }
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
