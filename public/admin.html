@@ -920,7 +920,7 @@ async function loadAdmOrders(status){
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
     html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">✏️</button>';
-    if(o.status==="refused"||o.status==="return_transit")html+='<button class="btn btn-sm" onclick="fetchRetCost('+o.id+')" style="border-color:rgba(255,107,107,.3);color:var(--red)">💰 Сума поверн.</button>';
+    
     html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">✕ Скасувати</button></div></div></div>';
   }
   el.innerHTML=html;
