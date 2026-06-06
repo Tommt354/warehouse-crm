@@ -883,23 +883,21 @@ app.post("/api/order-items/:id/use-return", authMiddleware, (req, res) => {
 // Swap size in order item
 app.post("/api/order-items/:id/swap-size", authMiddleware, (req, res) => {
   const { new_size_id } = req.body;
-  const item = db.prepare("SELECT * FROM order_items WHERE id=?").get(req.params.id);
+  const item = db.prepare("SELECT oi.*,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
-  // Check new size has stock
-  const stock = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='in' THEN quantity ELSE -quantity END),0) as q FROM stock_movements WHERE base_product_id=(SELECT base_product_id FROM variations WHERE id=?) AND size_id=?").get(item.variation_id, new_size_id);
-  // Update the order item
+  const stock = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(item.base_product_id, new_size_id);
   db.prepare("UPDATE order_items SET size_id=? WHERE id=?").run(new_size_id, item.id);
-  res.json({ ok: true, new_stock: stock?.q || 0 });
+  res.json({ ok: true, new_stock: stock?.quantity || 0 });
 });
 
 // Get available sizes for a variation
 app.get("/api/order-items/:id/available-sizes", authMiddleware, (req, res) => {
   const item = db.prepare("SELECT oi.*,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
-  const sizes = db.prepare(`SELECT s.id,s.name,COALESCE(SUM(CASE WHEN sm.type='in' THEN sm.quantity ELSE -sm.quantity END),0) as stock 
-    FROM sizes s LEFT JOIN stock_movements sm ON sm.size_id=s.id AND sm.base_product_id=? 
-    GROUP BY s.id HAVING stock IS NOT NULL ORDER BY s.sort_order`).all(item.base_product_id);
-  res.json({ sizes: sizes.filter(s => s.stock !== 0 || s.id === item.size_id), current_size_id: item.size_id });
+  const sizes = db.prepare(`SELECT s.id,s.name,COALESCE(sb.quantity,0) as stock 
+    FROM stock_base sb JOIN sizes s ON sb.size_id=s.id 
+    WHERE sb.base_product_id=? ORDER BY s.sort_order`).all(item.base_product_id);
+  res.json({ sizes, current_size_id: item.size_id });
 });
   const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
