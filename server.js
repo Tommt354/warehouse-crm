@@ -1313,6 +1313,58 @@ app.post("/api/nova-poshta/detect-sender", authMiddleware, requireRole("admin"),
   } catch (e) { res.status(500).json({ error: e.message }) }
 });
 
+// ── SCAN LOG ──────────────────────────────────────────────────────
+
+// Log a scan (shipment or return)
+app.post("/api/scan", authMiddleware, (req, res) => {
+  const { ttn, scan_type } = req.body;
+  if (!ttn) return res.status(400).json({ error: "ТТН обов'язкова" });
+  const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.ttn=?").get(ttn);
+  if (!o) return res.status(404).json({ error: "Замовлення з ТТН " + ttn + " не знайдено" });
+  // Log the scan
+  db.prepare("INSERT INTO scan_log(ttn,order_id,scan_type,user_id)VALUES(?,?,?,?)").run(ttn, o.id, scan_type || "shipment", req.user.id);
+  // Get full order
+  const items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product,oi.original_size_id,os.name as original_size_name
+    FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN sizes os ON oi.original_size_id=os.id
+    WHERE oi.order_id=?`).all(o.id);
+  res.json({ order: { ...o, items } });
+});
+
+// Finalize order (пакувальниця confirms)
+app.post("/api/scan/finalize/:order_id", authMiddleware, (req, res) => {
+  const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.order_id);
+  if (!o) return res.status(404).json({ error: "Не знайдено" });
+  db.prepare("UPDATE orders SET status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
+  res.json({ ok: true });
+});
+
+// Get scan stats
+app.get("/api/scan/stats", authMiddleware, (req, res) => {
+  const today = db.prepare("SELECT COUNT(*) as c FROM scan_log WHERE date(created_at)=date('now','localtime') AND scan_type='shipment'").get().c;
+  const yesterday = db.prepare("SELECT COUNT(*) as c FROM scan_log WHERE date(created_at)=date('now','localtime','-1 day') AND scan_type='shipment'").get().c;
+  const week = db.prepare("SELECT COUNT(*) as c FROM scan_log WHERE created_at>=datetime('now','localtime','-7 days') AND scan_type='shipment'").get().c;
+  const returnsToday = db.prepare("SELECT COUNT(*) as c FROM scan_log WHERE date(created_at)=date('now','localtime') AND scan_type='return'").get().c;
+  const returnsTotal = db.prepare("SELECT COUNT(*) as c FROM scan_log WHERE scan_type='return'").get().c;
+  // By day
+  const byDay = db.prepare("SELECT date(created_at) as day,COUNT(*) as c,scan_type FROM scan_log GROUP BY day,scan_type ORDER BY day DESC LIMIT 30").all();
+  // Recent scans
+  const recent = db.prepare(`SELECT sl.*,o.client_name,o.client_city,o.status as order_status,o.cod_amount,o.np_status_text 
+    FROM scan_log sl LEFT JOIN orders o ON sl.order_id=o.id ORDER BY sl.created_at DESC LIMIT 50`).all();
+  res.json({ today, yesterday, week, returnsToday, returnsTotal, byDay, recent });
+});
+
+// Get returns list for admin
+app.get("/api/returns", authMiddleware, (req, res) => {
+  const orders = db.prepare(`SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id 
+    WHERE o.status IN ('refused','return_transit') ORDER BY o.updated_at DESC`).all();
+  orders.forEach(o => {
+    o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,s.name as size_name,oi.returned_to_stock
+      FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id
+      WHERE oi.order_id=?`).all(o.id);
+  });
+  res.json({ orders });
+});
+
 // ── DASHBOARD ────────────────────────────────────────────────────
 
 // Update user profile
@@ -1424,11 +1476,12 @@ app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), (req, res)
 function pageAuth(req,res,next){const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");req.user=u;next()}
 function pageRole(...r){return(req,res,next)=>{if(!r.includes(req.user.role))return res.redirect("/login");next()}}
 app.get("/login",(req,res)=>res.sendFile(path.join(__dirname,"public","login.html")));
-app.get("/",(req,res)=>{const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");res.redirect({admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse"}[u.role]||"/login")});
+app.get("/",(req,res)=>{const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");res.redirect({admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse",finalizer:"/finalizer"}[u.role]||"/login")});
 app.get("/admin",pageAuth,pageRole("admin"),(req,res)=>res.sendFile(path.join(__dirname,"public","admin.html")));
 app.get("/admin/*",pageAuth,pageRole("admin"),(req,res)=>res.sendFile(path.join(__dirname,"public","admin.html")));
 app.get("/drop",pageAuth,pageRole("dropshipper"),(req,res)=>res.sendFile(path.join(__dirname,"public","drop.html")));
 app.get("/warehouse",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","warehouse.html")));
+app.get("/finalizer",pageAuth,pageRole("finalizer"),(req,res)=>res.sendFile(path.join(__dirname,"public","finalizer.html")));
 app.get("*",(req,res)=>{if(req.path.startsWith("/api/"))return res.status(404).json({error:"Not found"});res.redirect("/login")});
 
 // Auto-track NP statuses every 15 minutes

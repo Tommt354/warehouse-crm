@@ -265,6 +265,15 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 
+  CREATE TABLE IF NOT EXISTS scan_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ttn TEXT NOT NULL,
+    order_id INTEGER,
+    scan_type TEXT DEFAULT 'shipment',
+    user_id INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
   -- Комплекти (віртуальні товари для дропшиперів)
   CREATE TABLE IF NOT EXISTS kits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

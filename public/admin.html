@@ -129,6 +129,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
     <a data-p="workers">👷 Працівники</a>
     <div class="nav-g">Система</div>
     <a data-p="payouts">💰 Виплати</a>
+    <a data-p="adm-returns">↩ Повернення</a>
     <a data-p="stocklog">📊 Рух товару</a>
     <a data-p="settings">⚙️ Налаштування</a>
   </div>
@@ -214,6 +215,18 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="page" id="pg-payouts"><div class="pt">💰 Виплати</div>
 <div style="margin-bottom:10px"><input id="pay-search" placeholder="🔍 Пошук по дропшиперу..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="filterPayouts()"></div>
 <div id="adm-payouts"></div>
+</div>
+
+<div class="page" id="pg-adm-returns"><div class="pt">↩ Повернення</div>
+<div class="sg" style="margin-bottom:10px">
+  <div class="sc"><div class="sv" style="color:var(--red)" id="ret-total">0</div><div class="sl">повернень</div></div>
+  <div class="sc"><div class="sv" style="color:var(--warn)" id="ret-transit">0</div><div class="sl">в дорозі</div></div>
+  <div class="sc"><div class="sv" style="color:var(--acc)" id="ret-processed">0</div><div class="sl">оброблено</div></div>
+</div>
+<input class="search-bar" id="ret-scan-adm" placeholder="🔍 Скануйте ТТН повернення або пошук..." style="max-width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace;margin-bottom:10px">
+<div id="ret-scan-result"></div>
+<div style="font-size:13px;font-weight:600;color:var(--th);margin:10px 0 8px">Всі повернення:</div>
+<div id="adm-returns-list"></div>
 </div>
 
 <div class="page" id="pg-stocklog"><div class="pt">📊 Рух товару</div>
@@ -384,7 +397,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},orders:()=>loadAdmOrders(''),returns:loadReturns,drops:loadDrops,workers:loadWorkers,payouts:loadAdmPayouts,stocklog:loadStockLog,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},orders:()=>loadAdmOrders(''),returns:loadReturns,drops:loadDrops,workers:loadWorkers,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -912,6 +925,44 @@ function renderPayouts(list){
 async function markPaid(id){if(!confirm("Підтвердити виплату?"))return;try{await api("/api/payouts/"+id+"/paid",{method:"PUT"});loadAdmPayouts()}catch(e){}}
 
 // ── STOCK LOG ────────────────────────────────────────────────────
+
+// ── ADMIN RETURNS ────────────────────────────────────────────────
+async function loadAdmReturns(){
+  try{
+    var r=await api("/api/returns");
+    var transit=r.orders.filter(function(o){return o.status==="return_transit"}).length;
+    var processed=r.orders.filter(function(o){return o.items.every(function(i){return i.returned_to_stock})}).length;
+    document.getElementById("ret-total").textContent=r.orders.length;
+    document.getElementById("ret-transit").textContent=transit;
+    document.getElementById("ret-processed").textContent=processed;
+    document.getElementById("adm-returns-list").innerHTML=r.orders.map(function(o){
+      var allDone=o.items.every(function(i){return i.returned_to_stock});
+      return '<div style="background:var(--card);border:1px solid '+(allDone?'rgba(0,212,170,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:8px;overflow:hidden">'+
+      '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(allDone?' <span style="font-size:10px;color:var(--acc)">✅ На складі</span>':'')+'</div>'+
+      '<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · '+esc(o.drop_name)+'</div>'+
+      (o.ttn?'<div style="font-size:11px;color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:var(--td)">📦 '+esc(o.np_status_text)+'</div>':'')+
+      '</div><div style="font-size:10px;color:var(--td)">'+(o.updated_at?.slice(0,16)||"")+'</div></div>'+
+      '<div style="padding:4px 14px 10px">'+o.items.map(function(it){var ph=it.var_photo||it.print_photo||it.bp_photo;
+        return '<div style="display:flex;gap:8px;padding:4px 0;align-items:center;border-top:1px solid var(--brd);">'+(ph?'<img src="'+ph+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+
+        '<div style="flex:1;font-size:11px;color:var(--th)">'+esc(it.var_name)+' <b style="color:var(--acc)">'+esc(it.size_name)+'</b></div>'+
+        '<div style="font-size:10px;color:'+(it.returned_to_stock?'var(--acc)':'var(--red)')+'">'+(it.returned_to_stock?'✅ На складі':'⏳ Очікує')+'</div>'+
+        (!it.returned_to_stock?'<button class="btn btn-sm btn-p" onclick="admRetItem('+it.id+',this)" style="font-size:9px">📦 На склад</button>':'')+
+        '</div>'}).join("")+'</div></div>'
+    }).join("")||'<div class="empty"><span class="ic">↩</span>Немає повернень</div>';
+  }catch(e){}
+  // Scan handler
+  var inp=document.getElementById("ret-scan-adm");
+  inp.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();admScanReturn(inp.value.trim());inp.value=""}};
+}
+async function admScanReturn(ttn){
+  if(!ttn)return;var el=document.getElementById("ret-scan-result");
+  try{var r=await api("/api/scan",{method:"POST",body:JSON.stringify({ttn:ttn,scan_type:"return"})});
+  var o=r.order;
+  el.innerHTML='<div class="msg msg-ok">✅ Повернення #'+o.id+' · '+esc(o.client_name)+' зареєстровано</div>';
+  loadAdmReturns()}catch(e){el.innerHTML='<div class="msg msg-err">❌ '+esc(e.message)+'</div>'}
+}
+async function admRetItem(id,btn){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});btn.parentElement.querySelector("div:nth-child(3)").innerHTML='✅ На складі';btn.parentElement.querySelector("div:nth-child(3)").style.color='var(--acc)';btn.remove()}catch(e){}}
+
 async function loadStockLog(){
   try{const{logs}=await api("/api/stock-log");
   var tl={incoming:"📥 Прихід",writeoff:"📤 Списання",swap:"🔄 Заміна"};
