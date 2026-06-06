@@ -987,6 +987,33 @@ app.put("/api/orders/:id/status", authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
+// Get return cost manually
+app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) => {
+  const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
+  if (!o) return res.status(404).json({ error: "Не знайдено" });
+  if (!o.return_ttn && !o.ttn) return res.status(400).json({ error: "Немає ТТН" });
+  const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+  if (!apiKey) return res.status(400).json({ error: "NP API ключ не налаштований" });
+  try {
+    // First check original TTN for return info
+    const r1 = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: o.ttn }] });
+    const st1 = r1.data?.[0];
+    let retTtn = o.return_ttn || st1?.LastCreatedOnTheBasisNumber || "";
+    let cost = 0;
+    if (st1?.RedeliverySum) cost = parseFloat(st1.RedeliverySum);
+    // Save return TTN if found
+    if (retTtn && !o.return_ttn) db.prepare("UPDATE orders SET return_ttn=? WHERE id=?").run(retTtn, o.id);
+    // Track return TTN for cost
+    if (retTtn && cost === 0) {
+      const r2 = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: retTtn }] });
+      const st2 = r2.data?.[0];
+      if (st2) cost = parseFloat(st2.CostOnSite) || parseFloat(st2.DocumentCost) || parseFloat(st2.StoragePrice) || 0;
+    }
+    if (cost > 0) db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost, o.id);
+    res.json({ ok: true, return_ttn: retTtn, return_cost: cost, raw: st1 });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Cancel order (return stock)
 app.post("/api/orders/:id/cancel", authMiddleware, (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
@@ -1666,18 +1693,22 @@ async function autoTrackNP(){
         // Handle returns - get return TTN and cost
         if((ns==="refused"||ns==="return_transit"||o.status==="refused"||o.status==="return_transit") && st.LastCreatedOnTheBasisNumber){
           const retTtn=st.LastCreatedOnTheBasisNumber;
-          const existing=db.prepare("SELECT return_ttn FROM orders WHERE id=?").get(o.id);
-          if(!existing?.return_ttn){
-            db.prepare("UPDATE orders SET return_ttn=? WHERE id=?").run(retTtn,o.id);
-            // Get return shipping cost from return TTN
+          db.prepare("UPDATE orders SET return_ttn=? WHERE id=? AND (return_ttn IS NULL OR return_ttn='')").run(retTtn,o.id);
+          // Get return shipping cost from return TTN
+          const existingCost=db.prepare("SELECT return_cost FROM orders WHERE id=?").get(o.id);
+          if(!existingCost?.return_cost || existingCost.return_cost===0){
             try{
               const rr=await npApi(apiKey,"TrackingDocument","getStatusDocuments",{Documents:[{DocumentNumber:retTtn}]});
               const rst=rr.data?.[0];
               if(rst){
-                const cost=parseFloat(rst.CostOnSite)||parseFloat(rst.DocumentCost)||0;
+                const cost=parseFloat(rst.CostOnSite)||parseFloat(rst.DocumentCost)||parseFloat(rst.StoragePrice)||parseFloat(rst.RedeliverySum)||0;
                 if(cost>0)db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost,o.id);
               }
             }catch(e){}
+            // Also try from original TTN fields
+            if(st.RedeliverySum && parseFloat(st.RedeliverySum)>0){
+              db.prepare("UPDATE orders SET return_cost=? WHERE id=? AND (return_cost=0 OR return_cost IS NULL)").run(parseFloat(st.RedeliverySum),o.id);
+            }
           }
         }
       }catch(e){}
