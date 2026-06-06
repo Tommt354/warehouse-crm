@@ -791,7 +791,15 @@ async function loadAdmOrders(status){
   admOrdFilter=status;
   document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");
   const btn=document.getElementById("ao-"+(status||"all"));if(btn)btn.className="btn btn-a";
-  const url=status?"/api/orders?status="+status+"&limit=50":"/api/orders?limit=50";
+  document.querySelectorAll("[id^=ar-]").forEach(b=>{b.className="btn";if(b.id==="ar-"+(admReady||"all"))b.className="btn btn-a"});
+  document.querySelectorAll("[id^=ac-]").forEach(b=>{b.className="btn";if(b.id==="ac-"+(admCh||"all"))b.className="btn btn-a"});
+  let url="/api/orders?limit=50";
+  if(status)url+="&status="+status;
+  if(admReady)url+="&ready="+admReady;
+  if(admCh)url+="&channel="+admCh;
+  var df=document.getElementById("adm-df")?.value||"",dt=document.getElementById("adm-dt")?.value||"";
+  if(df)url+="&date_from="+df;if(dt)url+="&date_to="+dt;
+  var ttn=document.getElementById("adm-ttn")?.value||"";if(ttn)url+="&ttn_search="+ttn;
   const{orders}=await api(url);
   const el=document.getElementById("adm-orders");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📋</span>Немає замовлень</div>';return}
@@ -800,31 +808,31 @@ async function loadAdmOrders(status){
     const{order}=await api("/api/orders/"+o.id);
     html+='<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;margin-bottom:12px;overflow:hidden">';
     html+='<div style="padding:12px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--brd)">';
-    html+='<div><div style="font-size:16px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+( OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span></div>';
+    html+='<div><div style="font-size:18px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(o.drop_channel==="hot"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(0,212,170,.1);color:#00d4aa">ADS</span>':'')+'</div>';
     html+='<div style="font-size:13px;color:var(--th);margin-top:3px">'+esc(o.client_name)+' · <span style="color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(o.client_phone)+'</span></div>';
     html+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div></div>';
-    html+='<div style="text-align:right;font-size:10px;color:var(--td)"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div>'+( o.created_at?.slice(0,16)||"");
-    if(o.ttn)html+='<div style="color:var(--warn);font-family:JetBrains Mono,monospace;margin-top:2px">ТТН: '+esc(o.ttn)+'</div>';
-    html+='</div></div>';
-    // TTN input
-    html+='<div style="padding:4px 14px;display:flex;gap:4px;align-items:center"><input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." style="flex:1;padding:5px 8px;font-size:11px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><button class="btn btn-sm" style="font-size:10px" onclick="saveTtn('+o.id+')">💾</button></div>';
+    html+='<div style="text-align:right"><div style="font-size:10px;color:var(--blue)">'+esc(o.drop_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
+    // TTN block
+    html+='<div style="padding:8px 14px;display:flex;gap:6px;align-items:center">';
+    if(o.ttn)html+='<div style="flex:1;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span></div>';
+    html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><button class="btn btn-sm" onclick="saveTtn('+o.id+')">💾</button></div>';
+    // Items
     for(const i of order.items){
-      html+='<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center">';
-      html+=((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>');
-      html+='<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>';
+      html+='<div style="display:flex;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center">';
+      html+=((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'" style="width:120px;height:120px;border-radius:10px;object-fit:cover">':'<div style="width:120px;height:120px;background:var(--bg);border-radius:10px"></div>');
+      html+='<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>';
       if(i.print_name)html+='<div style="font-size:10px;color:var(--warn)">🖼 '+esc(i.print_name)+'</div>';
-      html+='<span style="font-size:13px;font-weight:700;color:var(--acc);background:var(--accbg);padding:2px 10px;border-radius:5px">'+esc(i.size_name)+'</span>';
-      if(i.quantity>1)html+=' <span style="color:var(--td)">×'+i.quantity+'</span>';
+      html+='<span style="font-size:14px;font-weight:700;color:var(--acc);background:var(--accbg);padding:3px 12px;border-radius:6px;margin-top:4px;display:inline-block">'+esc(i.size_name)+'</span>';
+      if(i.quantity>1)html+=' <span style="color:var(--td);font-size:13px">×'+i.quantity+'</span>';
       html+='</div></div>';
     }
-    if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:11px;color:var(--warn);padding:5px 8px;background:rgba(255,167,38,.06);border-radius:5px;border:1px solid rgba(255,167,38,.1)">📝 '+esc(o.note)+'</div></div>';
-    html+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.1)">';
-    html+='<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
-    html+='<select onchange="chAdmSt('+o.id+',this.value)" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px">';
+    if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:12px;color:var(--warn);padding:6px 10px;background:rgba(255,167,38,.06);border-radius:6px;border:1px solid rgba(255,167,38,.1)">📝 '+esc(o.note)+'</div></div>';
+    html+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.1);flex-wrap:wrap;gap:6px">';
+    html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
+    html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
-    html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">✕ Скасувати</button>';
-    html+='</div></div>';
+    html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">✕ Скасувати</button></div></div></div>';
   }
   el.innerHTML=html;
 }

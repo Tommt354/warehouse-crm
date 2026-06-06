@@ -209,7 +209,7 @@ async function loadOrders(){
     if(osi&&osi.next)html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\')">'+osi.nl+'</button>';
     if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="createTTN('+o.id+')">📦 Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="printTTN('+o.id+')">🖨 Друк ТТН</button>';
-    if(o.status==="new")html+='<button class="btn btn-d btn-sm" onclick="canOrd('+o.id+')">✕</button>';
+    
     html+='</div></div></div>';
   }
   el.innerHTML=html;
