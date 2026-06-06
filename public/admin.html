@@ -317,7 +317,14 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld"><label>Принти</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук принтів..." onfocus="openPS(this,'mm-prints-dd')" oninput="filterPS(this,'mm-prints-dd')"><div class="popup-dd" id="mm-prints-dd"></div></div><div class="sel-tags" id="mm-prints-tags"></div></div>
 <div class="fld"><label>Нашивки</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук нашивок..." onfocus="openPS(this,'mm-patches-dd')" oninput="filterPS(this,'mm-patches-dd')"><div class="popup-dd" id="mm-patches-dd"></div></div><div class="sel-tags" id="mm-patches-tags"></div></div>
 </div>
-<div class="fld"><label>Працівники</label><div id="mm-workers"></div><div style="margin-top:4px"><select id="mm-wadd" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати працівника</option></select></div></div>
+<div class="fld"><label>Операції для ЗП</label>
+<div id="mm-ops"></div>
+<div style="display:flex;gap:4px;margin-top:4px">
+  <select id="mm-op-role" style="flex:1;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати роль</option><option value="seamstress">🧵 Швея (нашивки)</option><option value="printer">🖨 Принтувальник (принти)</option></select>
+  <input id="mm-op-count" type="number" value="1" min="1" style="width:60px;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff" placeholder="К-сть">
+  <button class="btn btn-sm" onclick="addModelOp()">+</button>
+</div>
+</div>
 <div id="mm-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveModel()">🚀 Створити</button><button class="btn" onclick="closeM('model-modal')">Скасувати</button></div>
 </div></div>
@@ -407,7 +414,9 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 let ME,CC={colors:[],sizes:[],prints:[],patches:[],cats:[]};
 let curDir="colors",editDirId=null,editCatId=null,catPhoto="";
 let editUID=null,editUR=null,editBpId=null,editVarId=null;
-let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let mmWorkers=[];
+let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let modelOps=[];
+function addModelOp(){var r=document.getElementById("mm-op-role").value;var c=parseInt(document.getElementById("mm-op-count").value)||1;if(!r)return;var rl={"seamstress":"🧵 Швея","printer":"🖨 Принтувальник"};if(modelOps.find(function(o){return o.worker_role===r}))return;modelOps.push({worker_role:r,operations_count:c});renderModelOps();document.getElementById("mm-op-role").value=""}
+function renderModelOps(){document.getElementById("mm-ops").innerHTML=modelOps.map(function(o,i){var rl={"seamstress":"🧵 Швея (нашивки)","printer":"🖨 Принтувальник (принти)"};return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+rl[o.worker_role]+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="modelOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="modelOps.splice('+i+',1);renderModelOps()">✕</button></div>'}).join("")}
 
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-name").textContent=ME.name||ME.username;
   const h=location.hash.slice(1);const navBtn=h&&document.querySelector(`.side-nav a[data-p="${h}"]`);
@@ -516,17 +525,17 @@ async function editModelFields(id){
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();
   // Workers
-  mmWorkers=m.workers.map(w=>({user_id:w.user_id,name:w.worker_name,amount:w.amount}));renderWorkers();
+  modelOps=[];renderModelOps(); // ops loaded separately
   const ws=document.getElementById("mm-wadd");ws.innerHTML='<option value="">+ працівник</option>';
   (await api("/api/users?role=warehouse")).users.forEach(u=>ws.innerHTML+=`<option value="${u.id}">${esc(u.name)}</option>`);
-  ws.onchange=function(){if(this.value){mmWorkers.push({user_id:parseInt(this.value),name:this.options[this.selectedIndex].text,amount:0});this.value="";renderWorkers()}};
+  // worker ops handled via modelOps
   document.getElementById("mm-err").style.display="none";
   openM("model-modal");
 }
 
 async function saveModelEdit(){
   const err=document.getElementById("mm-err");err.style.display="none";
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,workers:mmWorkers.map(w=>({user_id:w.user_id,amount:w.amount})),sync_products:true};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,sync_products:true};
   try{await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
@@ -542,7 +551,7 @@ async function deleteVar(id,modelId){if(!confirm("Видалити варіац�
 // ── Create model ─────────────────────────────────────────────────
 async function openNewModel(){
   editModelId=null;
-  await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};mmWorkers=[];
+  await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};modelOps=[];
   document.getElementById("mdl-t").textContent="Нова модель";
   document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
@@ -553,7 +562,7 @@ async function openNewModel(){
   renderSelTags();renderWorkers();
   const ws=document.getElementById("mm-wadd");ws.innerHTML='<option value="">+ працівник</option>';
   (await api("/api/users?role=warehouse")).users.forEach(u=>ws.innerHTML+=`<option value="${u.id}">${esc(u.name)}</option>`);
-  ws.onchange=function(){if(this.value){mmWorkers.push({user_id:parseInt(this.value),name:this.options[this.selectedIndex].text,amount:0});this.value="";renderWorkers()}};
+  // worker ops handled via modelOps
   openM("model-modal");
 }
 
