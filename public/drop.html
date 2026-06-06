@@ -292,7 +292,7 @@ async function viewOrder(id){
   h+='<div style="font-size:13px;color:var(--th);margin-top:6px">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
   h+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
   if(o.ttn)h+='<div style="font-size:11px;color:var(--warn);font-family:JetBrains Mono,monospace;margin-top:3px">ТТН: '+esc(o.ttn)+'</div>';
-  for(var i=0;i<o.items.length;i++){var it=o.items[i];h+='<div class="od-item">'+((it.var_photo||it.print_photo||it.bp_photo)?'<img src="'+(it.var_photo||it.print_photo||it.bp_photo)+'">':'<div style="width:50px;height:50px;background:var(--bg);border-radius:6px"></div>')+'<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(it.var_name)+'</div><span style="color:var(--acc);font-weight:700">'+esc(it.size_name)+'</span>'+(it.quantity>1?' ×'+it.quantity:'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+(it.drop_price*it.quantity).toFixed(0)+'₴</div></div>'}
+  for(var i=0;i<o.items.length;i++){var it=o.items[i];h+='<div class="od-item">'+((it.var_photo||it.print_photo||it.bp_photo)?'<img src="'+(it.var_photo||it.print_photo||it.bp_photo)+'">':'<div style="width:50px;height:50px;background:var(--bg);border-radius:6px"></div>')+'<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(it.var_name)+'</div><span style="color:var(--acc);font-weight:700">'+esc(it.original_size_name||it.size_name)+'</span>'+(it.quantity>1?' ×'+it.quantity:'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+(it.drop_price*it.quantity).toFixed(0)+'₴</div></div>'}
   h+='<div style="margin-top:10px;text-align:right"><div>Наложка: <strong>'+o.cod_amount+'₴</strong></div><div>Дроп: '+o.total_drop_price.toFixed(0)+'₴</div><div style="color:var(--acc);font-size:15px;font-weight:700">Заробіток: '+o.payout_amount.toFixed(0)+'₴</div></div>';
   if(o.note)h+='<div style="margin-top:6px;font-size:11px;color:var(--warn)">📝 '+esc(o.note)+'</div>';
   h+='</div>';document.getElementById("od-b").innerHTML=h;opM("od-modal");
@@ -442,16 +442,18 @@ async function submitOrder(){
     clM("no-modal");receiptPhoto="";dropCityRef="";dropSettleRef="";
     loadDash();loadOrders();
     if(!isPre){
-      setTimeout(function(){
-        var card=document.querySelector(".oc:first-child");
-        if(card){var ttnArea=card.querySelector("[data-ttn-area]");if(!ttnArea){var d=document.createElement("div");d.setAttribute("data-ttn-area","1");d.style.cssText="padding:8px 14px";d.innerHTML='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:10px;display:flex;align-items:center;gap:8px"><div style="width:18px;height:18px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:12px;color:var(--warn)">Формування накладної НП...</span></div>';card.insertBefore(d,card.children[1])}}
-        var pollId=r.order_id,pollN=0;
-        var pt=setInterval(async function(){pollN++;
-          try{var po=await fetch("/api/orders/"+pollId,{headers:{"Content-Type":"application/json"}});var pd=await po.json();
-          if((pd.order&&pd.order.ttn)||pollN>=10){clearInterval(pt);loadOrders()}}
-          catch(e){clearInterval(pt);loadOrders()}
-        },2000);
-      },500);
+      var ttnBanner=document.createElement("div");
+      ttnBanner.id="ttn-pending";
+      ttnBanner.style.cssText="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:10px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:10px";
+      ttnBanner.innerHTML='<div style="width:20px;height:20px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0"></div><div><div style="font-size:13px;font-weight:600;color:var(--warn)">Формування накладної НП...</div><div style="font-size:10px;color:var(--td)">Замовлення #'+r.order_id+'</div></div>';
+      var ordList=document.getElementById("ord-list");
+      if(ordList)ordList.insertBefore(ttnBanner,ordList.firstChild);
+      var pollId=r.order_id,pollN=0;
+      var pt=setInterval(async function(){pollN++;
+        try{var po=await fetch("/api/orders/"+pollId,{headers:{"Content-Type":"application/json"}});var pd=await po.json();
+        if((pd.order&&pd.order.ttn)||pollN>=12){clearInterval(pt);var b=document.getElementById("ttn-pending");if(b)b.remove();loadOrders()}}
+        catch(e){clearInterval(pt);var b=document.getElementById("ttn-pending");if(b)b.remove();loadOrders()}
+      },2000);
     }
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
@@ -533,7 +535,7 @@ async function saveProfile(){
 
 init();
 </script>
-<div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
+<div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
 <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 </body>
 </html>
