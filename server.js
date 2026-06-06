@@ -1332,11 +1332,11 @@ app.post("/api/workers", authMiddleware, requireRole("admin"), (req, res) => {
   let userId = null;
   // Create user account for packer and finalizer
   if ((role === "packer" || role === "finalizer") && username && password) {
-    const { hashPassword } = require("./auth");
+    const bcrypt = require("bcryptjs");
     const uRole = role === "packer" ? "warehouse" : "finalizer";
     const existing = db.prepare("SELECT id FROM users WHERE username=?").get(username);
     if (existing) return res.status(400).json({ error: "Логін вже зайнятий" });
-    const u = db.prepare("INSERT INTO users(username,password,role,name)VALUES(?,?,?,?)").run(username, hashPassword(password), uRole, name.trim());
+    const u = db.prepare("INSERT INTO users(username,password_hash,role,name)VALUES(?,?,?,?)").run(username, bcrypt.hashSync(password, 10), uRole, name.trim());
     userId = u.lastInsertRowid;
   }
   const r = db.prepare("INSERT INTO workers(name,role,user_id,daily_rate,per_item_rate,per_return_item_rate)VALUES(?,?,?,?,?,?)").run(
