@@ -27,7 +27,7 @@ app.post("/api/auth/login", (req, res) => {
   res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, name: user.name } });
 });
 app.get("/api/auth/me", authMiddleware, (req, res) => {
-  const u = db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,payout_details FROM users WHERE id=?").get(req.user.id);
+  const u = db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,payout_details,payment_type,payment_card,payment_iban,edrpou,full_name,payment_purpose FROM users WHERE id=?").get(req.user.id);
   if (!u) return res.status(401).json({ error: "Не знайдено" });
   res.json({ user: u });
 });
@@ -708,7 +708,8 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     }
 
     const cod = parseFloat(cod_amount) || 0;
-    const payout = Math.round((cod - totalDrop) * 100) / 100;
+    const isPrepaid = req.body.is_prepaid ? 1 : 0;
+    const payout = isPrepaid ? 0 : Math.round((cod - totalDrop) * 100) / 100;
 
     // Detect channel from first variation
     let orderChannel = "";
@@ -1259,6 +1260,71 @@ app.post("/api/nova-poshta/detect-sender", authMiddleware, requireRole("admin"),
 });
 
 // ── DASHBOARD ────────────────────────────────────────────────────
+
+// Update user profile
+app.put("/api/auth/profile", authMiddleware, (req, res) => {
+  const { payment_type, payment_card, payment_iban, edrpou, full_name, payment_purpose, phone, telegram } = req.body;
+  db.prepare("UPDATE users SET payment_type=?,payment_card=?,payment_iban=?,edrpou=?,full_name=?,payment_purpose=?,phone=?,telegram=? WHERE id=?")
+    .run(payment_type||"card", payment_card||"", payment_iban||"", edrpou||"", full_name||"", payment_purpose||"", phone||"", telegram||"", req.user.id);
+  res.json({ ok: true });
+});
+
+// ── PAYOUTS ──────────────────────────────────────────────────────
+
+// Get payout data for dropshipper
+app.get("/api/payouts/my", authMiddleware, (req, res) => {
+  const uid = req.user.id;
+  // Orders delivered but not in any payout
+  const unpaid = db.prepare(`SELECT o.* FROM orders o WHERE o.dropshipper_id=? AND o.status='delivered' AND o.id NOT IN (SELECT order_id FROM payout_items) AND o.is_prepaid=0`).all(uid);
+  // Returns not in any payout
+  const returns = db.prepare(`SELECT o.* FROM orders o WHERE o.dropshipper_id=? AND o.status IN ('refused','return_transit') AND o.id NOT IN (SELECT order_id FROM payout_items) AND o.is_prepaid=0`).all(uid);
+  // Active (pending) payout request
+  const active = db.prepare(`SELECT * FROM payout_requests WHERE dropshipper_id=? AND status='pending' ORDER BY id DESC LIMIT 1`).get(uid);
+  let activeItems = [];
+  if (active) activeItems = db.prepare(`SELECT pi.*,o.cod_amount,o.payout_amount,o.client_name,o.ttn,o.status as order_status FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(active.id);
+  // History
+  const history = db.prepare(`SELECT * FROM payout_requests WHERE dropshipper_id=? ORDER BY id DESC`).all(uid);
+  res.json({ unpaid, returns, active, activeItems, history });
+});
+
+// Create or add to payout request
+app.post("/api/payouts/request", authMiddleware, (req, res) => {
+  const uid = req.user.id;
+  const { comment } = req.body;
+  // Find or create active request
+  let pr = db.prepare(`SELECT * FROM payout_requests WHERE dropshipper_id=? AND status='pending' ORDER BY id DESC LIMIT 1`).get(uid);
+  if (!pr) {
+    const r = db.prepare("INSERT INTO payout_requests(dropshipper_id,comment)VALUES(?,?)").run(uid, comment || "");
+    pr = { id: r.lastInsertRowid };
+  } else if (comment) {
+    db.prepare("UPDATE payout_requests SET comment=? WHERE id=?").run(comment, pr.id);
+  }
+  // Add delivered orders not yet in any payout
+  const unpaid = db.prepare(`SELECT o.* FROM orders o WHERE o.dropshipper_id=? AND o.status='delivered' AND o.id NOT IN (SELECT order_id FROM payout_items) AND o.is_prepaid=0`).all(uid);
+  const returns = db.prepare(`SELECT o.* FROM orders o WHERE o.dropshipper_id=? AND o.status IN ('refused','return_transit') AND o.id NOT IN (SELECT order_id FROM payout_items) AND o.is_prepaid=0`).all(uid);
+  const ins = db.prepare("INSERT OR IGNORE INTO payout_items(payout_request_id,order_id,amount,is_return)VALUES(?,?,?,?)");
+  unpaid.forEach(o => ins.run(pr.id, o.id, o.payout_amount, 0));
+  returns.forEach(o => ins.run(pr.id, o.id, -(o.payout_amount || 0), 1));
+  // Recalc total
+  const total = db.prepare("SELECT SUM(amount) as s FROM payout_items WHERE payout_request_id=?").get(pr.id).s || 0;
+  db.prepare("UPDATE payout_requests SET total_amount=? WHERE id=?").run(total, pr.id);
+  res.json({ ok: true, request_id: pr.id, total });
+});
+
+// Admin: list all payout requests
+app.get("/api/payouts/all", authMiddleware, requireRole("admin"), (req, res) => {
+  const requests = db.prepare(`SELECT pr.*,u.name as drop_name,u.payment_type,u.payment_card,u.payment_iban,u.full_name,u.phone FROM payout_requests pr JOIN users u ON pr.dropshipper_id=u.id ORDER BY CASE WHEN pr.status='pending' THEN 0 ELSE 1 END, pr.created_at DESC`).all();
+  requests.forEach(r => {
+    r.items = db.prepare(`SELECT pi.*,o.cod_amount,o.client_name,o.ttn,o.status as order_status FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(r.id);
+  });
+  res.json({ requests });
+});
+
+// Admin: mark payout as paid
+app.put("/api/payouts/:id/paid", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("UPDATE payout_requests SET status='paid',paid_at=datetime('now','localtime') WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
 app.get("/api/dashboard", authMiddleware, (req, res) => {
   if (req.user.role === "admin") {
     res.json({ dropshippers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='dropshipper' AND active=1").get().c, warehouse_workers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='warehouse' AND active=1").get().c, models: db.prepare("SELECT COUNT(*) as c FROM models WHERE active=1").get().c, base_products: db.prepare("SELECT COUNT(*) as c FROM base_products WHERE active=1").get().c, variations: db.prepare("SELECT COUNT(*) as c FROM variations WHERE active=1").get().c, orders_today: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime')").get().c, orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='new'").get().c });

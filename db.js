@@ -231,6 +231,28 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 
+  CREATE TABLE IF NOT EXISTS payout_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dropshipper_id INTEGER NOT NULL,
+    total_amount REAL DEFAULT 0,
+    status TEXT DEFAULT 'pending',
+    comment TEXT DEFAULT '',
+    admin_comment TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    paid_at TEXT DEFAULT NULL,
+    FOREIGN KEY(dropshipper_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS payout_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payout_request_id INTEGER NOT NULL,
+    order_id INTEGER NOT NULL,
+    amount REAL DEFAULT 0,
+    is_return INTEGER DEFAULT 0,
+    FOREIGN KEY(payout_request_id) REFERENCES payout_requests(id),
+    FOREIGN KEY(order_id) REFERENCES orders(id)
+  );
+
   -- Комплекти (віртуальні товари для дропшиперів)
   CREATE TABLE IF NOT EXISTS kits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -269,6 +291,14 @@ addCol("base_products","drop_price","REAL DEFAULT 0");
 addCol("models","category_drop_id","INTEGER DEFAULT NULL");
 addCol("order_items","kit_id","INTEGER DEFAULT NULL");
 addCol("variations","allow_negative_order","INTEGER DEFAULT 1");
+addCol("users","payment_type","TEXT DEFAULT 'card'");
+addCol("users","payment_card","TEXT DEFAULT ''");
+addCol("users","payment_iban","TEXT DEFAULT ''");
+addCol("users","edrpou","TEXT DEFAULT ''");
+addCol("users","full_name","TEXT DEFAULT ''");
+addCol("users","payment_purpose","TEXT DEFAULT ''");
+addCol("users","phone","TEXT DEFAULT ''");
+addCol("users","telegram","TEXT DEFAULT ''");
 addCol("orders","np_ref","TEXT DEFAULT ''");
 addCol("orders","ttn_return","TEXT DEFAULT ''");
 addCol("models","drop_channel","TEXT DEFAULT 'hot'");

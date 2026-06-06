@@ -128,6 +128,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
     <a data-p="drops">🛒 Дропшипери</a>
     <a data-p="workers">👷 Працівники</a>
     <div class="nav-g">Система</div>
+    <a data-p="payouts">💰 Виплати</a>
     <a data-p="settings">⚙️ Налаштування</a>
   </div>
   <div class="side-bottom"><div class="side-user"><b id="u-name">—</b></div><button class="btn-out" onclick="logout()">Вийти</button></div>
@@ -208,6 +209,11 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 
 <div class="page" id="pg-workers"><div class="pt">👷 Працівники</div>
 <div class="acts"><button class="btn btn-p" onclick="openUM('warehouse')">+ Додати</button></div><div id="worker-list"></div></div>
+
+<div class="page" id="pg-payouts"><div class="pt">💰 Виплати</div>
+<div style="margin-bottom:10px"><input id="pay-search" placeholder="🔍 Пошук по дропшиперу..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="filterPayouts()"></div>
+<div id="adm-payouts"></div>
+</div>
 
 <div class="page" id="pg-settings"><div class="pt">⚙️ Налаштування</div>
 <div style="max-width:420px">
@@ -363,7 +369,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},orders:()=>loadAdmOrders(''),returns:loadReturns,drops:loadDrops,workers:loadWorkers,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},orders:()=>loadAdmOrders(''),returns:loadReturns,drops:loadDrops,workers:loadWorkers,payouts:loadAdmPayouts,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -839,6 +845,21 @@ async function loadAdmOrders(status){
 async function chAdmSt(id,st){try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function saveTtn(id){var v=document.getElementById("ttn-"+id).value;try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});loadAdmOrders(admOrdFilter)}catch(e){}}
+
+// ── ADMIN PAYOUTS ────────────────────────────────────────────────
+let allPayouts=[];
+async function loadAdmPayouts(){
+  try{const r=await api("/api/payouts/all");allPayouts=r.requests;renderPayouts(allPayouts)}catch(e){}
+}
+function filterPayouts(){var q=(document.getElementById("pay-search").value||"").toLowerCase();renderPayouts(q?allPayouts.filter(function(p){return p.drop_name.toLowerCase().includes(q)||String(p.id).includes(q)}):allPayouts)}
+function renderPayouts(list){
+  document.getElementById("adm-payouts").innerHTML=list.length?list.map(function(p){
+    var isPaid=p.status==="paid";
+    var reqs=p.payment_type==="iban"?p.payment_iban:p.payment_card;
+    return '<div style="background:var(--card);border:1px solid '+(isPaid?'rgba(0,212,170,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:10px;overflow:hidden"><div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:15px;font-weight:700;color:var(--th)">'+esc(p.drop_name)+' <span style="font-size:11px;color:var(--td)">#'+p.dropshipper_id+'</span></div><div style="font-size:11px;color:var(--td);margin-top:2px">'+esc(reqs||"Реквізити не вказані")+(p.full_name?" · "+esc(p.full_name):"")+(p.phone?" · "+esc(p.phone):"")+'</div>'+(p.comment?'<div style="font-size:11px;color:var(--t);margin-top:2px">💬 '+esc(p.comment)+'</div>':'')+'<div style="font-size:10px;color:var(--td);margin-top:2px">Створено: '+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(isPaid?'var(--acc)':'var(--red)')+'">'+p.total_amount.toFixed(0)+'₴</div><div style="margin-top:4px">'+(isPaid?'<span style="color:var(--acc);font-size:12px;font-weight:600">✅ Виплачено</span>':'<button class="btn btn-p" onclick="markPaid('+p.id+')" style="font-size:11px">💸 Виплачено</button>')+'</div></div></div>'+(p.items.length?'<div style="padding:4px 14px 8px;font-size:10px;color:var(--td)">'+p.items.map(function(i){return '<span style="margin-right:8px">#'+i.order_id+' '+esc(i.client_name)+' <b style="color:'+(i.is_return?'var(--red)':'var(--acc)')+'">'+( i.is_return?'':'+' )+i.amount.toFixed(0)+'₴</b></span>'}).join("")+'</div>':'')+'</div>'
+  }).join(""):'<div class="empty"><span class="ic">💰</span>Немає запитів на виплату</div>';
+}
+async function markPaid(id){if(!confirm("Підтвердити виплату?"))return;try{await api("/api/payouts/"+id+"/paid",{method:"PUT"});loadAdmPayouts()}catch(e){}}
 
 // ── Returns (склад повернень) ────────────────────────────────────
 async function loadReturns(){

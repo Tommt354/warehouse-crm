@@ -105,7 +105,7 @@
 
 <div class="page" id="pg-orders">
 <button class="btn-new" onclick="openNewOrder()">＋ Подати замовлення</button>
-<div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit" onchange="loadOrders()"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit" onchange="loadOrders()"></div>
+<div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';loadOrders()">✕</button></div>
 <div style="margin-bottom:8px"><input id="dr-ttn" placeholder="🔍 Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadOrders()"></div>
 <div class="stabs" id="ord-stabs"></div>
 <div id="ord-list"></div>
@@ -123,17 +123,29 @@
 <div class="sg" style="margin-bottom:14px">
   <div class="sc"><div class="sv" style="color:var(--acc)" id="pay-total">0₴</div><div class="sl">до виплати</div></div>
   <div class="sc"><div class="sv" style="color:var(--th)" id="pay-count">0</div><div class="sl">отриманих</div></div>
+  <div class="sc"><div class="sv" style="color:var(--red)" id="pay-returns">0₴</div><div class="sl">повернення</div></div>
 </div>
-<div id="pay-list"></div>
+<div id="pay-active-block"></div>
+<div style="margin-bottom:10px"><div class="fld"><label>Коментар до запиту</label><input id="pay-comment" placeholder="Коментар (необов'язково)"></div>
+<button class="btn-new" style="font-size:13px;padding:10px" onclick="submitPayoutRequest()">💰 Подати запит на виплату</button></div>
+<div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Не виплачені замовлення:</div>
+<div id="pay-unpaid"></div>
+<div style="font-size:13px;font-weight:600;color:var(--th);margin:12px 0 8px">Історія виплат:</div>
+<div id="pay-history"></div>
 </div>
 
 <div class="page" id="pg-settings">
 <div style="max-width:400px">
-<div class="fld"><label>Ім'я</label><input id="set-name"></div>
+<div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px">💳 Реквізити для виплат</div>
+<div class="fld"><label>Тип оплати</label><select id="set-ptype" onchange="togglePayType()" style="width:100%;padding:9px 10px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"><option value="card">Карта</option><option value="iban">IBAN</option></select></div>
+<div id="set-card-wrap" class="fld"><label>Номер карти</label><input id="set-card" placeholder="XXXX XXXX XXXX XXXX"></div>
+<div id="set-iban-wrap" class="fld" style="display:none"><label>IBAN</label><input id="set-iban" placeholder="UA..."></div>
+<div class="fld"><label>ЄДРПОУ</label><input id="set-edrpou"></div>
+<div class="fld"><label>ПІБ</label><input id="set-fullname"></div>
+<div class="fld"><label>Призначення платежу</label><input id="set-purpose"></div>
 <div class="fld"><label>Телефон</label><input id="set-phone"></div>
 <div class="fld"><label>Telegram</label><input id="set-tg"></div>
-<div class="fld"><label>Реквізити для виплат</label><input id="set-payout" placeholder="Номер карти / IBAN"></div>
-<button class="btn btn-p" onclick="saveSettings()" style="margin-top:6px">💾 Зберегти</button>
+<button class="btn-new" style="font-size:13px;padding:10px" onclick="saveProfile()">💾 Зберегти</button>
 <div id="set-msg" style="margin-top:6px"></div>
 </div>
 </div>
@@ -299,7 +311,9 @@ function renderOItems(){
 }
 
 var dropCityRef="",dropSettleRef="",receiptPhoto="",lastCities=[];
-function togglePrepaid(){var p=document.getElementById("no-prepaid").checked;document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";calcPay()}
+function togglePrepaid(){var p=document.getElementById("no-prepaid").checked;document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";
+  if(p){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
+  calcPay()}
 
 var cityTimer;
 function searchNpCity(q){clearTimeout(cityTimer);if(q.length<2){document.getElementById("no-city-dd").innerHTML="";return}
@@ -373,16 +387,43 @@ async function loadCatalog(){
 
 // ── PAYOUTS ──────────────────────────────────────────────────────
 async function loadPayouts(){
-  var r=await api("/api/orders?status=delivered");
-  var orders=r.orders;var total=orders.reduce(function(s,o){return s+o.payout_amount},0);
-  document.getElementById("pay-total").textContent=total.toFixed(0)+"₴";
-  document.getElementById("pay-count").textContent=orders.length;
-  document.getElementById("pay-list").innerHTML=orders.length?orders.map(function(o){return '<div class="pay-card"><div><div style="font-size:13px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.created_at?o.created_at.slice(0,10):"")+'</div></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(0)+'₴</div><div style="font-size:10px;color:var(--td)">Наложка: '+o.cod_amount+'₴</div></div></div>'}).join(""):'<div class="empty"><span class="ic">💰</span>Немає отриманих замовлень</div>';
+  try{
+    var r=await api("/api/payouts/my");
+    var unpaidTotal=r.unpaid.reduce(function(s,o){return s+o.payout_amount},0);
+    var retTotal=r.returns.reduce(function(s,o){return s+o.payout_amount},0);
+    document.getElementById("pay-total").textContent=unpaidTotal.toFixed(0)+"₴";
+    document.getElementById("pay-count").textContent=r.unpaid.length;
+    document.getElementById("pay-returns").textContent=retTotal>0?"-"+retTotal.toFixed(0)+"₴":"0₴";
+    // Active request
+    if(r.active){
+      document.getElementById("pay-active-block").innerHTML='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:10px;padding:12px;margin-bottom:10px"><div style="font-size:13px;font-weight:600;color:var(--warn);margin-bottom:6px">📋 Активний запит #'+r.active.id+' · <span style="font-family:JetBrains Mono,monospace">'+r.active.total_amount.toFixed(0)+'₴</span></div><div style="font-size:11px;color:var(--td)">'+r.activeItems.length+' замовлень · Створено: '+(r.active.created_at?.slice(0,16)||"")+'</div>'+(r.active.comment?'<div style="font-size:11px;color:var(--t);margin-top:4px">💬 '+esc(r.active.comment)+'</div>':'')+'</div>';
+    }else{document.getElementById("pay-active-block").innerHTML=""}
+    // Unpaid orders
+    document.getElementById("pay-unpaid").innerHTML=r.unpaid.length?r.unpaid.map(function(o){return '<div class="pay-card"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.ttn||"без ТТН")+'</div></div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(0)+'₴</div></div>'}).join("")+(r.returns.length?'<div style="font-size:12px;font-weight:600;color:var(--red);margin:8px 0 4px">Повернення:</div>'+r.returns.map(function(o){return '<div class="pay-card" style="border-color:rgba(255,107,107,.2)"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--red)">Повернення</div></div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--red);font-weight:700">-'+o.payout_amount.toFixed(0)+'₴</div></div>'}).join(""):''):'<div style="color:var(--td);font-size:11px">Немає замовлень для виплати</div>';
+    // History
+    document.getElementById("pay-history").innerHTML=r.history.length?r.history.map(function(p){return '<div class="pay-card" style="border-color:'+(p.status==="paid"?"rgba(0,212,170,.2)":"rgba(255,107,107,.2)")+'"><div><div style="font-size:12px;font-weight:600;color:var(--th)">Запит #'+p.id+'</div><div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+(p.comment?'<div style="font-size:10px;color:var(--t)">💬 '+esc(p.comment)+'</div>':'')+'</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+p.total_amount.toFixed(0)+'₴</div><div style="font-size:10px;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+(p.status==="paid"?"✅ Виплачено":"⏳ Не виплачено")+'</div></div></div>'}).join(""):'<div style="color:var(--td);font-size:11px">Немає історії</div>';
+  }catch(e){}
+}
+async function submitPayoutRequest(){
+  try{var r=await api("/api/payouts/request",{method:"POST",body:JSON.stringify({comment:document.getElementById("pay-comment").value})});document.getElementById("pay-comment").value="";loadPayouts()}catch(e){}
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────────
-async function loadSettings(){document.getElementById("set-name").value=ME.name||"";document.getElementById("set-phone").value=ME.phone||"";document.getElementById("set-tg").value=ME.telegram||"";document.getElementById("set-payout").value=ME.payout_details||""}
-async function saveSettings(){try{/* Settings saved via user profile - not implemented in this version */document.getElementById("set-msg").innerHTML='<div class="msg" style="background:var(--accbg);color:var(--acc)">✅ Збережено</div>';setTimeout(function(){document.getElementById("set-msg").innerHTML=""},2000)}catch(e){}}
+function togglePayType(){var t=document.getElementById("set-ptype").value;document.getElementById("set-card-wrap").style.display=t==="card"?"":"none";document.getElementById("set-iban-wrap").style.display=t==="iban"?"":"none"}
+async function loadSettings(){
+  document.getElementById("set-ptype").value=ME.payment_type||"card";togglePayType();
+  document.getElementById("set-card").value=ME.payment_card||"";
+  document.getElementById("set-iban").value=ME.payment_iban||"";
+  document.getElementById("set-edrpou").value=ME.edrpou||"";
+  document.getElementById("set-fullname").value=ME.full_name||"";
+  document.getElementById("set-purpose").value=ME.payment_purpose||"";
+  document.getElementById("set-phone").value=ME.phone||"";
+  document.getElementById("set-tg").value=ME.telegram||"";
+}
+async function saveProfile(){
+  try{await api("/api/auth/profile",{method:"PUT",body:JSON.stringify({payment_type:document.getElementById("set-ptype").value,payment_card:document.getElementById("set-card").value,payment_iban:document.getElementById("set-iban").value,edrpou:document.getElementById("set-edrpou").value,full_name:document.getElementById("set-fullname").value,payment_purpose:document.getElementById("set-purpose").value,phone:document.getElementById("set-phone").value,telegram:document.getElementById("set-tg").value})});
+  document.getElementById("set-msg").innerHTML='<div style="color:var(--acc);font-size:12px">✅ Збережено</div>';ME=(await api("/api/auth/me")).user;setTimeout(function(){document.getElementById("set-msg").innerHTML=""},2000)}catch(e){}
+}
 
 init();
 </script>
