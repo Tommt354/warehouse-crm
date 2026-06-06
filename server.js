@@ -897,14 +897,25 @@ app.post("/api/order-items/:id/swap-size", authMiddleware, (req, res) => {
   const { new_size_id } = req.body;
   const item = db.prepare("SELECT oi.*,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
-  const stock = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(item.base_product_id, new_size_id);
-  // Save original size if not already saved
-  if (!item.original_size_id) {
-    db.prepare("UPDATE order_items SET original_size_id=?,size_id=? WHERE id=?").run(item.size_id, new_size_id, item.id);
-  } else {
-    db.prepare("UPDATE order_items SET size_id=? WHERE id=?").run(new_size_id, item.id);
-  }
-  res.json({ ok: true, new_stock: stock?.quantity || 0 });
+  
+  db.transaction(() => {
+    // Return old size to stock (+1 per quantity)
+    db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, item.size_id);
+    // Take new size from stock (-1 per quantity)
+    db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, new_size_id);
+    // Save original size if not already saved
+    if (!item.original_size_id) {
+      db.prepare("UPDATE order_items SET original_size_id=?,size_id=? WHERE id=?").run(item.size_id, new_size_id, item.id);
+    } else {
+      db.prepare("UPDATE order_items SET size_id=? WHERE id=?").run(new_size_id, item.id);
+    }
+    // Log
+    const oldName = db.prepare("SELECT name FROM sizes WHERE id=?").get(item.size_id)?.name||"";
+    const newName = db.prepare("SELECT name FROM sizes WHERE id=?").get(new_size_id)?.name||"";
+    db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('swap',?,?,?,?,?)").run(item.base_product_id, item.size_id, item.quantity, oldName+" → "+newName+" (замовлення #"+item.order_id+")", req.user.id);
+  })();
+  
+  res.json({ ok: true });
 });
 
 // Get available sizes for a variation
