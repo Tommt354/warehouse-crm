@@ -276,15 +276,18 @@ async function loadOrders(){
 
 function renderOC(o){
   var items=o._items||[];
-  var ph=items.map(function(i){var p=i.var_photo||i.print_photo||i.bp_photo;return p?'<img style="width:120px;height:120px;border-radius:10px;object-fit:cover;border:1px solid var(--brd)" src="'+p+'">':'<div style="width:120px;height:120px;border-radius:10px;background:var(--bg);border:1px solid var(--brd)"></div>'}).join("");
-  var nm=items.map(function(i){return esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.original_size_name||i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')}).join('<br>');
-  var h='<div class="oc" onclick="viewOrder('+o.id+')"><div style="padding:12px 14px">';
-  h+='<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><span style="font-size:16px;font-weight:700;color:var(--th)">#'+o.id+'</span> <span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th)">'+o.cod_amount+'₴</div><div style="font-size:13px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(0)+'₴</div></div></div>';
-  if(o.ttn)h+='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 10px;margin-bottom:8px" onclick="event.stopPropagation()"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:3px">📦 '+esc(o.np_status_text)+'</div>':'')+'</div>';
-  else if(!o.is_prepaid&&o.status==="new")h+='<div id="ttn-wait-'+o.id+'" style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0"></div><span style="font-size:11px;color:var(--warn)">Формування накладної...</span></div>';
-  h+='<div style="display:flex;gap:10px;margin-bottom:6px"><div style="display:flex;gap:4px;flex-shrink:0">'+ph+'</div><div style="font-size:11px;color:var(--t);line-height:1.6">'+nm+'</div></div>';
-  h+='<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
-  h+='<div style="font-size:10px;color:var(--td);margin-top:2px">'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div></div>';
+  var ph=items[0]?(items[0].var_photo||items[0].print_photo||items[0].bp_photo):"";
+  var nm=items.map(function(i){return esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.original_size_name||i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')}).join(', ');
+  var chB=o.drop_channel==='hot'?'<span style="font-size:7px;padding:1px 4px;border-radius:3px;background:rgba(255,167,38,.12);color:#ffa726">HOT</span>':'<span style="font-size:7px;padding:1px 4px;border-radius:3px;background:rgba(0,212,170,.12);color:#00d4aa">ADS</span>';
+  var h='<div class="oc" onclick="viewOrder('+o.id+')" style="max-width:480px">';
+  h+='<div style="display:flex;gap:10px;padding:10px 12px">';
+  h+=(ph?'<img src="'+ph+'" style="width:65px;height:65px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:65px;height:65px;border-radius:8px;background:var(--bg);flex-shrink:0"></div>');
+  h+='<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:start"><div style="font-size:13px;font-weight:700;color:var(--th);line-height:1.3">'+nm+'</div><div style="flex-shrink:0;text-align:right;margin-left:6px"><div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:var(--acc)">+'+o.payout_amount.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td)">'+o.cod_amount+'₴ нал</div></div></div>';
+  h+='<div style="margin-top:2px"><span style="font-size:10px;color:var(--td)">#'+o.id+'</span> <span class="tag '+(SCL[o.status]||"")+'" style="font-size:8px;padding:1px 5px">'+(SL[o.status]||o.status)+'</span> '+chB+'</div>';
+  h+='<div style="font-size:9px;color:var(--td);margin-top:1px">'+esc(o.client_name)+' · '+(o.created_at?o.created_at.slice(5,16):"")+'</div></div></div>';
+  if(o.ttn)h+='<div style="border-top:1px solid var(--brd);padding:5px 12px;display:flex;justify-content:space-between;align-items:center" onclick="event.stopPropagation()"><span style="font-family:JetBrains Mono,monospace;font-size:11px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<span style="font-size:8px;color:'+ttnColor(o)+'">'+esc(o.np_status_text).slice(0,30)+'</span>':'')+'</div>';
+  else if(!o.is_prepaid&&o.status==="new")h+='<div style="border-top:1px solid var(--brd);padding:5px 12px;display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:9px;color:var(--warn)">Формування ТТН...</span></div>';
+  h+='</div>';
   return h;
 }
 
