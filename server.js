@@ -1666,3 +1666,4 @@ setInterval(autoTrackNP,15*60*1000);
 setTimeout(autoTrackNP,30000); // First check 30s after start
 
 app.listen(PORT, () => console.log(`✅ CRM on http://localhost:${PORT}`));
+// Сб  6 черв. 2026 19:17:47 EEST
