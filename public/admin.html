@@ -210,7 +210,34 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="acts"><button class="btn btn-p" onclick="openUM('dropshipper')">+ Додати</button></div><div id="drop-list"></div></div>
 
 <div class="page" id="pg-workers"><div class="pt">👷 Працівники</div>
-<div class="acts"><button class="btn btn-p" onclick="openUM('warehouse')">+ Додати</button></div><div id="worker-list"></div></div>
+<div class="acts" style="margin-bottom:10px"><button class="btn btn-p" onclick="openAddWorker()">+ Додати працівника</button></div>
+<div id="workers-list"></div>
+</div>
+
+<!-- Add worker modal -->
+<div class="modal-bg" id="wk-modal"><div class="modal" style="max-width:450px"><h3 id="wk-title">+ Працівник</h3>
+<div class="fld"><label>Ім'я</label><input id="wk-name"></div>
+<div class="fld"><label>Роль</label><select id="wk-role" onchange="toggleWkRole()" style="width:100%;padding:9px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff">
+  <option value="packer">👷 Головний пакувальник</option>
+  <option value="finalizer">📦 Пакувальниця</option>
+  <option value="seamstress">🧵 Швея</option>
+  <option value="printer">🖨 Принтувальник</option>
+</select></div>
+<div id="wk-auth-wrap">
+<div class="fld-row"><div class="fld"><label>Логін</label><input id="wk-login"></div><div class="fld"><label>Пароль</label><input id="wk-pass" type="password"></div></div>
+</div>
+<div class="fld"><label>Ставка за день ₴</label><input id="wk-daily" type="number" value="0"></div>
+<div class="fld"><label>Виробіток за 1 річ ₴</label><input id="wk-rate" type="number" value="0"></div>
+<div id="wk-return-wrap" class="fld"><label>Виробіток за 1 річ з повернення ₴</label><input id="wk-ret-rate" type="number" value="0"></div>
+<div id="wk-err" class="msg msg-err" style="display:none"></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveWorker()">💾 Зберегти</button><button class="btn" onclick="closeM('wk-modal')">Скасувати</button></div>
+</div></div>
+
+<!-- Worker detail modal -->
+<div class="modal-bg" id="wk-detail-modal"><div class="modal" style="max-width:550px"><h3 id="wkd-title">Працівник</h3>
+<div id="wkd-body"></div>
+<div style="margin-top:10px"><button class="btn" onclick="closeM('wk-detail-modal')">Закрити</button></div>
+</div></div>
 
 <div class="page" id="pg-payouts"><div class="pt">💰 Виплати</div>
 <div style="margin-bottom:10px"><input id="pay-search" placeholder="🔍 Пошук по дропшиперу..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="filterPayouts()"></div>
@@ -1024,7 +1051,35 @@ async function retItem(id,el){try{await api("/api/order-items/"+id+"/return-to-s
 // ── Users ────────────────────────────────────────────────────────
 const WL={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};
 async function loadDrops(){const{users:u}=await api("/api/users?role=dropshipper");document.getElementById("drop-list").innerHTML=!u.length?'<div class="empty"><span class="ic">🛒</span>Немає</div>':`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Стан</th><th></th></tr>${u.map(x=>`<tr><td style="color:var(--th)">${esc(x.name)}</td><td class="mono">${esc(x.username)}</td><td>${x.discount_percent?x.discount_percent+"%":""}${x.discount_fixed?" "+x.discount_fixed+"₴":""}</td><td>${x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>'}</td><td><button class="btn btn-sm btn-a" onclick="editU(${x.id},'dropshipper')">✏️</button></td></tr>`).join("")}</table>`}
-async function loadWorkers(){const{users:u}=await api("/api/users?role=warehouse");document.getElementById("worker-list").innerHTML=!u.length?'<div class="empty"><span class="ic">👷</span>Немає</div>':`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Роль</th><th>Ставка</th><th></th></tr>${u.map(x=>`<tr><td style="color:var(--th)">${esc(x.name)}</td><td class="mono">${esc(x.username)}</td><td>${WL[x.worker_role]||"—"}</td><td>${x.worker_rate?x.worker_rate+"₴":""}</td><td><button class="btn btn-sm btn-a" onclick="editU(${x.id},'warehouse')">✏️</button></td></tr>`).join("")}</table>`}
+var ROLES={packer:"👷 Пакувальник",finalizer:"📦 Пакувальниця",seamstress:"🧵 Швея",printer:"🖨 Принтувальник"};
+async function loadWorkers(){
+  try{var r=await api("/api/workers");
+  document.getElementById("workers-list").innerHTML=r.workers.length?r.workers.map(function(w){
+    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openWorkerDetail('+w.id+')"><div><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(w.name)+' <span style="font-size:10px;color:var(--td)">'+(ROLES[w.role]||w.role)+'</span></div><div style="font-size:10px;color:var(--td);margin-top:2px">Ставка: '+w.daily_rate+'₴/день · Виробіток: '+w.per_item_rate+'₴/річ'+(w.role==="packer"?" · З поверн: "+w.per_return_item_rate+"₴":"")+'</div></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(w.balance>0?"var(--acc)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td)">до виплати</div></div></div>'
+  }).join(""):'<div class="empty"><span class="ic">👷</span>Немає працівників</div>'}catch(e){}
+}
+function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-auth-wrap").style.display=(r==="packer"||r==="finalizer")?"":"none";document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none"}
+function openAddWorker(){document.getElementById("wk-title").textContent="+ Працівник";["wk-name","wk-login","wk-pass"].forEach(function(id){document.getElementById(id).value=""});document.getElementById("wk-daily").value="0";document.getElementById("wk-rate").value="0";document.getElementById("wk-ret-rate").value="0";document.getElementById("wk-role").value="packer";toggleWkRole();document.getElementById("wk-err").style.display="none";openM("wk-modal")}
+async function saveWorker(){
+  var err=document.getElementById("wk-err");err.style.display="none";
+  try{await api("/api/workers",{method:"POST",body:JSON.stringify({name:document.getElementById("wk-name").value,role:document.getElementById("wk-role").value,daily_rate:document.getElementById("wk-daily").value,per_item_rate:document.getElementById("wk-rate").value,per_return_item_rate:document.getElementById("wk-ret-rate").value,username:document.getElementById("wk-login").value,password:document.getElementById("wk-pass").value})});
+  closeM("wk-modal");loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}
+}
+async function openWorkerDetail(id){
+  try{var r=await api("/api/workers/"+id+"/detail");var w=r.worker;
+  var html='<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--td)">'+(ROLES[w.role]||w.role)+'</div>';
+  html+='<div style="display:flex;gap:10px;margin-top:6px"><div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--acc)">'+w.total_earned.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ЗАРОБЛЕНО</div></div>';
+  html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--td)">'+w.total_paid.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ВИПЛАЧЕНО</div></div>';
+  html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:'+(w.balance>0?"var(--warn)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ДО ВИПЛАТИ</div></div></div></div>';
+  if(w.balance>0)html+='<button class="btn btn-p" onclick="payWorker('+w.id+')" style="width:100%;margin-bottom:10px">💸 Виплатити '+w.balance.toFixed(0)+'₴</button>';
+  // Payroll history
+  html+='<div style="font-size:12px;font-weight:600;color:var(--th);margin-bottom:6px">Нарахування:</div>';
+  html+=w.payroll.length?'<table class="tbl"><tr><th>Дата</th><th>Замовлення</th><th>Тип</th><th>Сума</th></tr>'+w.payroll.map(function(p){return '<tr><td style="font-size:9px">'+(p.created_at?.slice(0,16)||"")+'</td><td>'+(p.order_id?"#"+p.order_id:"—")+'</td><td style="font-size:10px;color:var(--td)">'+esc(p.note||p.type)+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+p.amount.toFixed(0)+'₴</td></tr>'}).join("")+'</table>':'<div style="color:var(--td);font-size:11px">Немає</div>';
+  // Payouts history
+  if(w.payouts.length){html+='<div style="font-size:12px;font-weight:600;color:var(--th);margin:10px 0 6px">Виплати:</div><table class="tbl"><tr><th>Дата</th><th>Сума</th></tr>'+w.payouts.map(function(p){return '<tr><td style="font-size:9px">'+(p.created_at?.slice(0,16)||"")+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--th);font-weight:700">'+p.amount.toFixed(0)+'₴</td></tr>'}).join("")+'</table>'}
+  document.getElementById("wkd-title").textContent=w.name;document.getElementById("wkd-body").innerHTML=html;openM("wk-detail-modal")}catch(e){}
+}
+async function payWorker(id){if(!confirm("Виплатити?"))return;try{await api("/api/workers/"+id+"/pay",{method:"POST"});closeM("wk-detail-modal");loadWorkers()}catch(e){}}
 function openUM(role){editUID=null;editUR=role;document.getElementById("um-t").textContent=role==="dropshipper"?"Новий дроп":"Новий працівник";["um-user","um-pass","um-name","um-phone","um-tg"].forEach(id=>document.getElementById(id).value="");document.getElementById("um-user").disabled=false;document.getElementById("um-drop").style.display=role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=role==="warehouse"?"block":"none";document.getElementById("um-del").style.display="none";document.getElementById("um-err").style.display="none";openM("user-modal")}
 async function editU(id,role){const{user:u}=await api("/api/users/"+id);editUID=id;editUR=role||u.role;document.getElementById("um-t").textContent=u.name;document.getElementById("um-user").value=u.username;document.getElementById("um-user").disabled=true;document.getElementById("um-pass").value="";document.getElementById("um-name").value=u.name;document.getElementById("um-phone").value=u.phone;document.getElementById("um-tg").value=u.telegram;document.getElementById("um-drop").style.display=u.role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=u.role==="warehouse"?"block":"none";if(u.role==="dropshipper"){document.getElementById("um-dp").value=u.discount_percent;document.getElementById("um-df").value=u.discount_fixed}if(u.role==="warehouse"){document.getElementById("um-wr").value=u.worker_role;document.getElementById("um-wrt").value=u.worker_rate}document.getElementById("um-del").style.display="block";document.getElementById("um-err").style.display="none";openM("user-modal")}
 async function saveUser(){const err=document.getElementById("um-err");err.style.display="none";const d={username:document.getElementById("um-user").value,password:document.getElementById("um-pass").value,role:editUR,name:document.getElementById("um-name").value,phone:document.getElementById("um-phone").value,telegram:document.getElementById("um-tg").value,discount_percent:parseFloat(document.getElementById("um-dp")?.value)||0,discount_fixed:parseFloat(document.getElementById("um-df")?.value)||0,worker_role:document.getElementById("um-wr")?.value||"",worker_rate:parseFloat(document.getElementById("um-wrt")?.value)||0,active:1};try{if(editUID)await api("/api/users/"+editUID,{method:"PUT",body:JSON.stringify(d)});else await api("/api/users",{method:"POST",body:JSON.stringify(d)});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}}
