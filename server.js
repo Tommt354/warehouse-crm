@@ -1007,7 +1007,7 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
     if (retTtn && cost === 0) {
       const r2 = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: retTtn }] });
       const st2 = r2.data?.[0];
-      if (st2) cost = parseFloat(st2.CostOnSite) || parseFloat(st2.DocumentCost) || parseFloat(st2.StoragePrice) || 0;
+      if (st2) cost = parseFloat(st2.DocumentCost) || parseFloat(st2.CostOnSite) || parseFloat(st2.StoragePrice) || 0;
     }
     if (cost > 0) db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost, o.id);
     res.json({ ok: true, return_ttn: retTtn, return_cost: cost, raw: st1 });
@@ -1701,7 +1701,7 @@ async function autoTrackNP(){
               const rr=await npApi(apiKey,"TrackingDocument","getStatusDocuments",{Documents:[{DocumentNumber:retTtn}]});
               const rst=rr.data?.[0];
               if(rst){
-                const cost=parseFloat(rst.CostOnSite)||parseFloat(rst.DocumentCost)||parseFloat(rst.StoragePrice)||parseFloat(rst.RedeliverySum)||0;
+                const cost=parseFloat(rst.DocumentCost)||parseFloat(rst.CostOnSite)||parseFloat(rst.StoragePrice)||parseFloat(rst.RedeliverySum)||0;
                 if(cost>0)db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost,o.id);
               }
             }catch(e){}
