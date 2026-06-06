@@ -391,41 +391,21 @@ addCol("orders","is_prepaid","INTEGER DEFAULT 0");
 addCol("orders","receipt_photo","TEXT DEFAULT ''");
 addCol("orders","declared_value","REAL DEFAULT 0");
 
-// Migration: add 'finalizer' to users role constraint
+// Migration: remove role CHECK constraint to allow finalizer
 try {
-  const hasCheck = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
-  if (hasCheck && hasCheck.sql && !hasCheck.sql.includes("finalizer")) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS users_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('admin','dropshipper','warehouse','finalizer')),
-        name TEXT DEFAULT '',
-        phone TEXT DEFAULT '',
-        email TEXT DEFAULT '',
-        telegram TEXT DEFAULT '',
-        discount_percent REAL DEFAULT 0,
-        discount_fixed REAL DEFAULT 0,
-        worker_role TEXT DEFAULT '',
-        worker_rate REAL DEFAULT 0,
-        payout_details TEXT DEFAULT '',
-        active INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        payment_type TEXT DEFAULT 'card',
-        payment_card TEXT DEFAULT '',
-        payment_iban TEXT DEFAULT '',
-        edrpou TEXT DEFAULT '',
-        full_name TEXT DEFAULT '',
-        payment_purpose TEXT DEFAULT '',
-        phone2 TEXT DEFAULT ''
-      );
-      INSERT INTO users_new(id,username,password_hash,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,payout_details,active,created_at)
-        SELECT id,username,password_hash,role,name,COALESCE(phone,''),COALESCE(email,''),COALESCE(telegram,''),COALESCE(discount_percent,0),COALESCE(discount_fixed,0),COALESCE(worker_role,''),COALESCE(worker_rate,0),COALESCE(payout_details,''),COALESCE(active,1),created_at FROM users;
-      DROP TABLE users;
-      ALTER TABLE users_new RENAME TO users;
-    `);
-    console.log("✅ Migration: users table updated with finalizer role");
+  const tblInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+  if (tblInfo && tblInfo.sql && tblInfo.sql.includes("CHECK") && !tblInfo.sql.includes("finalizer")) {
+    db.exec("DROP TABLE IF EXISTS users_new");
+    // Get columns from existing table
+    const cols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+    const colList = cols.join(",");
+    // Create new table without CHECK
+    const newSql = tblInfo.sql.replace("users", "users_new").replace(/CHECK\s*\([^)]*\)\s*,?/gi, "");
+    db.exec(newSql);
+    db.exec("INSERT INTO users_new(" + colList + ") SELECT " + colList + " FROM users");
+    db.exec("DROP TABLE users");
+    db.exec("ALTER TABLE users_new RENAME TO users");
+    console.log("✅ Migration: users CHECK constraint removed");
   }
 } catch(e) { console.log("Migration note:", e.message); }
 
