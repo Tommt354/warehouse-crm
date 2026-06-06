@@ -20,7 +20,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('admin','dropshipper','warehouse','finalizer')),
+    role TEXT NOT NULL CHECK(role IN ('admin','dropshipper','warehouse')),
     name TEXT NOT NULL DEFAULT '',
     phone TEXT DEFAULT '',
     email TEXT DEFAULT '',
@@ -390,24 +390,6 @@ addCol("orders","np_status_text","TEXT DEFAULT ''");
 addCol("orders","is_prepaid","INTEGER DEFAULT 0");
 addCol("orders","receipt_photo","TEXT DEFAULT ''");
 addCol("orders","declared_value","REAL DEFAULT 0");
-
-// Migration: remove role CHECK constraint to allow finalizer
-try {
-  const tblInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
-  if (tblInfo && tblInfo.sql && tblInfo.sql.includes("CHECK") && !tblInfo.sql.includes("finalizer")) {
-    db.exec("DROP TABLE IF EXISTS users_new");
-    // Get columns from existing table
-    const cols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
-    const colList = cols.join(",");
-    // Create new table without CHECK
-    const newSql = tblInfo.sql.replace("users", "users_new").replace(/CHECK\s*\([^)]*\)\s*,?/gi, "");
-    db.exec(newSql);
-    db.exec("INSERT INTO users_new(" + colList + ") SELECT " + colList + " FROM users");
-    db.exec("DROP TABLE users");
-    db.exec("ALTER TABLE users_new RENAME TO users");
-    console.log("✅ Migration: users CHECK constraint removed");
-  }
-} catch(e) { console.log("Migration note:", e.message); }
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){

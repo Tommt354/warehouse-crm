@@ -1332,7 +1332,7 @@ app.post("/api/workers", authMiddleware, requireRole("admin"), (req, res) => {
   let userId = null;
   // Create user account for packer and finalizer
   if ((role === "packer" || role === "finalizer") && username && password) {
-    const uRole = role === "packer" ? "warehouse" : "finalizer";
+    const uRole = "warehouse";
     const existing = db.prepare("SELECT id FROM users WHERE username=?").get(username);
     if (existing) return res.status(400).json({ error: "Логін вже зайнятий" });
     try {
@@ -1628,12 +1628,12 @@ app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), (req, res)
 function pageAuth(req,res,next){const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");req.user=u;next()}
 function pageRole(...r){return(req,res,next)=>{if(!r.includes(req.user.role))return res.redirect("/login");next()}}
 app.get("/login",(req,res)=>res.sendFile(path.join(__dirname,"public","login.html")));
-app.get("/",(req,res)=>{const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");res.redirect({admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse",finalizer:"/finalizer"}[u.role]||"/login")});
+app.get("/",(req,res)=>{const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");if(u.role==="warehouse"){const wr=db.prepare("SELECT worker_role FROM users WHERE id=?").get(u.id);res.redirect(wr?.worker_role==="finalizer"?"/finalizer":"/warehouse")}else{res.redirect({admin:"/admin",dropshipper:"/drop"}[u.role]||"/login")}});
 app.get("/admin",pageAuth,pageRole("admin"),(req,res)=>res.sendFile(path.join(__dirname,"public","admin.html")));
 app.get("/admin/*",pageAuth,pageRole("admin"),(req,res)=>res.sendFile(path.join(__dirname,"public","admin.html")));
 app.get("/drop",pageAuth,pageRole("dropshipper"),(req,res)=>res.sendFile(path.join(__dirname,"public","drop.html")));
 app.get("/warehouse",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","warehouse.html")));
-app.get("/finalizer",pageAuth,pageRole("finalizer"),(req,res)=>res.sendFile(path.join(__dirname,"public","finalizer.html")));
+app.get("/finalizer",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","finalizer.html")));
 app.get("*",(req,res)=>{if(req.path.startsWith("/api/"))return res.status(404).json({error:"Not found"});res.redirect("/login")});
 
 // Auto-track NP statuses every 15 minutes
