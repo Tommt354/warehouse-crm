@@ -736,7 +736,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     }
 
     const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel,is_prepaid,receipt_photo,declared_value)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel, req.body.is_prepaid?1:0, req.body.receipt_photo||"", parseFloat(req.body.declared_value)||0);
+      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel, req.body.is_prepaid?1:0, req.body.receipt_photo||"", parseFloat(req.body.declared_value)||cod);
 
     const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id)VALUES(?,?,?,?,?,?,?)");
     orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id));

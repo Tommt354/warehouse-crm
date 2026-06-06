@@ -423,6 +423,7 @@ async function init(){try{ME=(await api("/api/auth/me")).user;document.getElemen
   if(navBtn)navBtn.click();else loadDash();
 }catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
+function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#22c55e';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Помилка");return d}
 function closeM(id){document.getElementById(id).classList.remove("on")}
@@ -885,7 +886,7 @@ async function loadAdmOrders(status){
     html+='<div style="text-align:right"><div style="font-size:10px;color:var(--blue)">'+esc(o.drop_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
     // TTN block
     html+='<div style="padding:8px 14px;display:flex;gap:6px;align-items:center">';
-    if(o.ttn)html+='<div style="flex:1;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:var(--td);margin-top:2px">📦 '+esc(o.np_status_text)+'</div>':'')+'</div>';
+    if(o.ttn)html+='<div style="flex:1;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">📦 '+esc(o.np_status_text)+'</div>':'')+'</div>';
     html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><button class="btn btn-sm" onclick="saveTtn('+o.id+')">💾</button>';
     if(!o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+')">📦 Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="window.open(\'https://my.novaposhta.ua/orders/printMarkings/orders[]/\'+document.getElementById(\'ttn-\'+'+o.id+').value+\'/type/pdf\',\'_blank\')">🖨</button>';
@@ -977,7 +978,7 @@ async function loadAdmReturns(){
       return '<div style="background:var(--card);border:1px solid '+(allDone?'rgba(0,212,170,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:8px;overflow:hidden">'+
       '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(allDone?' <span style="font-size:10px;color:var(--acc)">✅ На складі</span>':'')+'</div>'+
       '<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · '+esc(o.drop_name)+'</div>'+
-      (o.ttn?'<div style="font-size:11px;color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:var(--td)">📦 '+esc(o.np_status_text)+'</div>':'')+
+      (o.ttn?'<div style="font-size:11px;color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:'+ttnColor(o)+'">📦 '+esc(o.np_status_text)+'</div>':'')+
       '</div><div style="font-size:10px;color:var(--td)">'+(o.updated_at?.slice(0,16)||"")+'</div></div>'+
       '<div style="padding:4px 14px 10px">'+o.items.map(function(it){var ph=it.var_photo||it.print_photo||it.bp_photo;
         return '<div style="display:flex;gap:8px;padding:4px 0;align-items:center;border-top:1px solid var(--brd);">'+(ph?'<img src="'+ph+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+
