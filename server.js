@@ -861,6 +861,12 @@ app.get("/api/orders", authMiddleware, (req, res) => {
     o.items_count = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 0;
     const readyCount = db.prepare("SELECT COUNT(*) as c FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE oi.order_id=? AND m.is_ready_product=1").get(o.id).c;
     o.has_ready_items = readyCount > 0;
+    // Include items for card display
+    try {
+      o._items = db.prepare(`SELECT oi.quantity,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,s.name as size_name,oi.original_size_id,os.name as original_size_name
+        FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id LEFT JOIN sizes os ON oi.original_size_id=os.id
+        WHERE oi.order_id=?`).all(o.id);
+    } catch(e) { o._items = []; }
   });
 
   // Filter by ready if requested
