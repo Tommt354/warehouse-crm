@@ -212,7 +212,7 @@ var SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipp
 var SCL={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роботі"},{k:"packed",l:"Готові"},{k:"shipped",l:"Відправлені"},{k:"delivering",l:"Доставка"},{k:"delivered",l:"Отримані"},{k:"refused",l:"Відмови"},{k:"cancelled",l:"Скасовані"}];
 
-async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash()}catch(e){location.href="/login"}}
+async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash()}catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();if(!r.ok)throw new Error(d.error||"Err");return d}
