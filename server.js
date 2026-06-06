@@ -1567,7 +1567,7 @@ app.post("/api/payouts/request", authMiddleware, (req, res) => {
   const returns = db.prepare(`SELECT o.* FROM orders o WHERE o.dropshipper_id=? AND o.status IN ('refused','return_transit') AND o.id NOT IN (SELECT order_id FROM payout_items) AND o.is_prepaid=0`).all(uid);
   const ins = db.prepare("INSERT OR IGNORE INTO payout_items(payout_request_id,order_id,amount,is_return)VALUES(?,?,?,?)");
   unpaid.forEach(o => ins.run(pr.id, o.id, o.payout_amount, 0));
-  returns.forEach(o => ins.run(pr.id, o.id, -(o.payout_amount || 0), 1));
+  returns.forEach(o => ins.run(pr.id, o.id, -(o.return_cost || 0), 1));
   // Recalc total
   const total = db.prepare("SELECT SUM(amount) as s FROM payout_items WHERE payout_request_id=?").get(pr.id).s || 0;
   db.prepare("UPDATE payout_requests SET total_amount=? WHERE id=?").run(total, pr.id);
@@ -1657,6 +1657,23 @@ async function autoTrackNP(){
         if(code===17||code===102||code===103)ns="refused";
         if(code===106)ns="return_transit";
         if(ns&&ns!==o.status)db.prepare("UPDATE orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(ns,o.id);
+        // Handle returns - get return TTN and cost
+        if((ns==="refused"||ns==="return_transit"||o.status==="refused"||o.status==="return_transit") && st.LastCreatedOnTheBasisNumber){
+          const retTtn=st.LastCreatedOnTheBasisNumber;
+          const existing=db.prepare("SELECT return_ttn FROM orders WHERE id=?").get(o.id);
+          if(!existing?.return_ttn){
+            db.prepare("UPDATE orders SET return_ttn=? WHERE id=?").run(retTtn,o.id);
+            // Get return shipping cost from return TTN
+            try{
+              const rr=await npApi(apiKey,"TrackingDocument","getStatusDocuments",{Documents:[{DocumentNumber:retTtn}]});
+              const rst=rr.data?.[0];
+              if(rst){
+                const cost=parseFloat(rst.CostOnSite)||parseFloat(rst.DocumentCost)||0;
+                if(cost>0)db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost,o.id);
+              }
+            }catch(e){}
+          }
+        }
       }catch(e){}
     }
     console.log(`🔄 NP auto-track: checked ${orders.length} orders`);
@@ -1666,4 +1683,3 @@ setInterval(autoTrackNP,15*60*1000);
 setTimeout(autoTrackNP,30000); // First check 30s after start
 
 app.listen(PORT, () => console.log(`✅ CRM on http://localhost:${PORT}`));
-// Сб  6 черв. 2026 19:17:47 EEST

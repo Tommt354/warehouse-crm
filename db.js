@@ -387,6 +387,8 @@ addCol("kits","drop_channel","TEXT DEFAULT 'hot'");
 addCol("orders","drop_channel","TEXT DEFAULT ''");
 addCol("order_items","original_size_id","INTEGER DEFAULT NULL");
 addCol("orders","np_status_text","TEXT DEFAULT ''");
+addCol("orders","return_ttn","TEXT DEFAULT ''");
+addCol("orders","return_cost","REAL DEFAULT 0");
 addCol("orders","is_prepaid","INTEGER DEFAULT 0");
 addCol("orders","receipt_photo","TEXT DEFAULT ''");
 addCol("orders","declared_value","REAL DEFAULT 0");
