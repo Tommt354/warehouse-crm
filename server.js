@@ -1326,13 +1326,41 @@ app.put("/api/payouts/:id/paid", authMiddleware, requireRole("admin"), (req, res
   res.json({ ok: true });
 });
 app.get("/api/dashboard", authMiddleware, (req, res) => {
+  const { period } = req.query; // today, yesterday, week, month, all
+  let dateFilter = "";
+  if (period === "today") dateFilter = "AND date(created_at)=date('now','localtime')";
+  else if (period === "yesterday") dateFilter = "AND date(created_at)=date('now','localtime','-1 day')";
+  else if (period === "week") dateFilter = "AND created_at>=datetime('now','localtime','-7 days')";
+  else if (period === "month") dateFilter = "AND created_at>=datetime('now','localtime','-30 days')";
+
   if (req.user.role === "admin") {
     res.json({ dropshippers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='dropshipper' AND active=1").get().c, warehouse_workers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='warehouse' AND active=1").get().c, models: db.prepare("SELECT COUNT(*) as c FROM models WHERE active=1").get().c, base_products: db.prepare("SELECT COUNT(*) as c FROM base_products WHERE active=1").get().c, variations: db.prepare("SELECT COUNT(*) as c FROM variations WHERE active=1").get().c, orders_today: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime')").get().c, orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='new'").get().c });
   } else if (req.user.role === "dropshipper") {
-    res.json({ my_orders_total: db.prepare("SELECT COUNT(*) as c FROM orders WHERE dropshipper_id=?").get(req.user.id).c, my_orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE dropshipper_id=? AND status='new'").get(req.user.id).c, my_payout: db.prepare("SELECT COALESCE(SUM(payout_amount),0) as s FROM orders WHERE dropshipper_id=? AND status='delivered'").get(req.user.id).s });
+    const uid = req.user.id;
+    res.json({
+      my_orders_total: db.prepare("SELECT COUNT(*) as c FROM orders WHERE dropshipper_id=? "+dateFilter).get(uid).c,
+      my_orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE dropshipper_id=? AND status='new' "+dateFilter).get(uid).c,
+      my_orders_delivered: db.prepare("SELECT COUNT(*) as c FROM orders WHERE dropshipper_id=? AND status='delivered' "+dateFilter).get(uid).c,
+      my_orders_refused: db.prepare("SELECT COUNT(*) as c FROM orders WHERE dropshipper_id=? AND status='refused' "+dateFilter).get(uid).c,
+      my_cod_total: db.prepare("SELECT COALESCE(SUM(cod_amount),0) as s FROM orders WHERE dropshipper_id=? "+dateFilter).get(uid).s,
+      my_payout: db.prepare("SELECT COALESCE(SUM(payout_amount),0) as s FROM orders WHERE dropshipper_id=? AND status='delivered' "+dateFilter).get(uid).s,
+      my_drop_total: db.prepare("SELECT COALESCE(SUM(total_drop_price),0) as s FROM orders WHERE dropshipper_id=? "+dateFilter).get(uid).s
+    });
   } else {
     res.json({ orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='new'").get().c, orders_in_progress: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='in_progress'").get().c, orders_packed: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='packed'").get().c });
   }
+});
+
+// Edit order (admin)
+app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), (req, res) => {
+  const { client_name, client_phone, client_city, client_warehouse, cod_amount, declared_value, note } = req.body;
+  const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
+  if (!o) return res.status(404).json({ error: "Not found" });
+  const cod = parseFloat(cod_amount) ?? o.cod_amount;
+  const payout = o.is_prepaid ? 0 : Math.round((cod - o.total_drop_price) * 100) / 100;
+  db.prepare("UPDATE orders SET client_name=?,client_phone=?,client_city=?,client_warehouse=?,cod_amount=?,declared_value=?,note=?,payout_amount=?,updated_at=datetime('now','localtime') WHERE id=?")
+    .run(client_name||o.client_name, client_phone||o.client_phone, client_city||o.client_city, client_warehouse||o.client_warehouse, cod, parseFloat(declared_value)||o.declared_value, note??o.note, payout, o.id);
+  res.json({ ok: true });
 });
 
 // ── PAGES ────────────────────────────────────────────────────────

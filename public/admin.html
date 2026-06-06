@@ -348,6 +348,16 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveSwapSize()">🔄 Замінити</button><button class="btn" onclick="closeM('swap-modal')">Скасувати</button></div>
 </div></div>
 
+<!-- Edit order modal -->
+<div class="modal-bg" id="eo-modal"><div class="modal" style="max-width:500px"><h3>✏️ Редагувати замовлення #<span id="eo-id"></span></h3>
+<div class="fld"><label>ПІБ клієнта</label><input id="eo-name"></div>
+<div class="fld"><label>Телефон</label><input id="eo-phone"></div>
+<div class="fld-row"><div class="fld"><label>Місто</label><input id="eo-city"></div><div class="fld"><label>Відділення</label><input id="eo-wh"></div></div>
+<div class="fld-row"><div class="fld"><label>Наложка ₴</label><input id="eo-cod" type="number"></div><div class="fld"><label>Оціночна вартість ₴</label><input id="eo-dval" type="number"></div></div>
+<div class="fld"><label>Примітка</label><input id="eo-note"></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveEditOrder()">💾 Зберегти</button><button class="btn" onclick="closeM('eo-modal')">Скасувати</button></div>
+</div></div>
+
 <script>
 let ME,CC={colors:[],sizes:[],prints:[],patches:[],cats:[]};
 let curDir="colors",editDirId=null,editCatId=null,catPhoto="";
@@ -838,12 +848,27 @@ async function loadAdmOrders(status){
     html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
+    html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">✏️ Редагувати</button>';
     html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">✕ Скасувати</button></div></div></div>';
   }
   el.innerHTML=html;
 }
 async function chAdmSt(id,st){try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){}}
+
+let editOrderId=null;
+async function openEditOrder(id){
+  editOrderId=id;document.getElementById("eo-id").textContent=id;
+  try{var r=await api("/api/orders/"+id);var o=r.order;
+  document.getElementById("eo-name").value=o.client_name;document.getElementById("eo-phone").value=o.client_phone;
+  document.getElementById("eo-city").value=o.client_city;document.getElementById("eo-wh").value=o.client_warehouse;
+  document.getElementById("eo-cod").value=o.cod_amount;document.getElementById("eo-dval").value=o.declared_value||0;
+  document.getElementById("eo-note").value=o.note||"";openM("eo-modal")}catch(e){}
+}
+async function saveEditOrder(){
+  try{await api("/api/orders/"+editOrderId+"/edit",{method:"PUT",body:JSON.stringify({client_name:document.getElementById("eo-name").value,client_phone:document.getElementById("eo-phone").value,client_city:document.getElementById("eo-city").value,client_warehouse:document.getElementById("eo-wh").value,cod_amount:document.getElementById("eo-cod").value,declared_value:document.getElementById("eo-dval").value,note:document.getElementById("eo-note").value})});
+  closeM("eo-modal");loadAdmOrders(admOrdFilter)}catch(e){}
+}
 async function saveTtn(id){var v=document.getElementById("ttn-"+id).value;try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});loadAdmOrders(admOrdFilter)}catch(e){}}
 
 // ── ADMIN PAYOUTS ────────────────────────────────────────────────

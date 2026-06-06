@@ -93,10 +93,23 @@
 </div>
 
 <div class="page on" id="pg-dash">
+<div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
+  <button class="stab on" id="dp-today" onclick="dashPeriod='today';loadDash()">Сьогодні</button>
+  <button class="stab" id="dp-yesterday" onclick="dashPeriod='yesterday';loadDash()">Вчора</button>
+  <button class="stab" id="dp-week" onclick="dashPeriod='week';loadDash()">Тиждень</button>
+  <button class="stab" id="dp-month" onclick="dashPeriod='month';loadDash()">Місяць</button>
+  <button class="stab" id="dp-all" onclick="dashPeriod='';loadDash()">Весь час</button>
+</div>
 <div class="sg">
-  <div class="sc"><div class="sv" style="color:var(--acc)" id="st-total">0</div><div class="sl">замовлень</div></div>
+  <div class="sc"><div class="sv" style="color:var(--th)" id="st-total">0</div><div class="sl">замовлень</div></div>
   <div class="sc"><div class="sv" style="color:var(--warn)" id="st-new">0</div><div class="sl">нових</div></div>
-  <div class="sc"><div class="sv" style="color:var(--acc)" id="st-pay">0₴</div><div class="sl">до виплати</div></div>
+  <div class="sc"><div class="sv" style="color:#22c55e" id="st-delivered">0</div><div class="sl">отриманих</div></div>
+  <div class="sc"><div class="sv" style="color:var(--red)" id="st-refused">0</div><div class="sl">відмов</div></div>
+</div>
+<div class="sg">
+  <div class="sc"><div class="sv" style="color:var(--th)" id="st-cod">0₴</div><div class="sl">наложка</div></div>
+  <div class="sc"><div class="sv" style="color:var(--acc)" id="st-pay">0₴</div><div class="sl">прибуток</div></div>
+  <div class="sc"><div class="sv" style="color:var(--td)" id="st-drop">0₴</div><div class="sl">дроп-ціна</div></div>
 </div>
 <button class="btn-new" onclick="goNav('orders');openNewOrder()">＋ Подати замовлення</button>
 <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Останні замовлення:</div>
@@ -161,8 +174,8 @@
 <button class="btn" onclick="openCatPicker()" style="width:100%;margin-bottom:10px;border-color:rgba(0,212,170,.2);color:var(--acc)">📦 Додати товар з каталогу</button>
 <div class="fld"><label>ПІБ клієнта</label><input id="no-name"></div>
 <div class="fld"><label>Телефон</label><input id="no-phone" placeholder="+380..."></div>
-<div class="fld"><label>Місто</label><input id="no-city" placeholder="Почніть вводити..." oninput="searchNpCity(this.value)"><div id="no-city-dd" style="max-height:150px;overflow-y:auto"></div></div>
-<div class="fld"><label>Відділення НП</label><input id="no-wh" placeholder="Номер або назва..." oninput="searchNpWh(this.value)"><div id="no-wh-dd" style="max-height:150px;overflow-y:auto"></div></div>
+<div class="fld"><label>Місто</label><input id="no-city" placeholder="Натисніть або введіть..." oninput="searchNpCity(this.value)" onfocus="if(!this.value)searchNpCity('Київ')"><div id="no-city-dd" style="max-height:150px;overflow-y:auto"></div></div>
+<div class="fld"><label>Відділення НП</label><input id="no-wh" placeholder="Натисніть або введіть №..." oninput="searchNpWh(this.value)" onfocus="if(!this.value&&dropCityRef)searchNpWh('')"><div id="no-wh-dd" style="max-height:150px;overflow-y:auto"></div></div>
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px"><input type="checkbox" id="no-prepaid" onchange="togglePrepaid()" style="width:18px;height:18px;accent-color:var(--acc)"><label style="font-size:12px;color:var(--th);margin:0;cursor:pointer" onclick="document.getElementById('no-prepaid').click()">Повна оплата (без наложки)</label></div>
 <div id="no-cod-wrap"><div class="fld"><label>Наложка ₴</label><input id="no-cod" type="number" oninput="calcPay()"></div></div>
 <div id="no-prepaid-wrap" style="display:none">
@@ -186,7 +199,7 @@
 </div></div>
 
 <script>
-var ME,allV=[],allSz=[],oItems=[],dropCh="hot",ordStatus="",ordPage=0,catP=null,cpCatP=null;
+var ME,allV=[],allSz=[],oItems=[],dropCh="hot",ordStatus="",ordPage=0,catP=null,cpCatP=null,dashPeriod="today";
 var SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 var SCL={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роботі"},{k:"packed",l:"Готові"},{k:"shipped",l:"Відправлені"},{k:"delivering",l:"Доставка"},{k:"delivered",l:"Отримані"},{k:"refused",l:"Відмови"},{k:"cancelled",l:"Скасовані"}];
@@ -208,10 +221,15 @@ function goNav(p){
 
 // ── DASHBOARD ────────────────────────────────────────────────────
 async function loadDash(){
-  var d=await api("/api/dashboard");
+  document.querySelectorAll("[id^=dp-]").forEach(function(b){b.classList.toggle("on",b.id==="dp-"+(dashPeriod||"all"))});
+  var d=await api("/api/dashboard"+(dashPeriod?"?period="+dashPeriod:""));
   document.getElementById("st-total").textContent=d.my_orders_total||0;
   document.getElementById("st-new").textContent=d.my_orders_new||0;
+  document.getElementById("st-delivered").textContent=d.my_orders_delivered||0;
+  document.getElementById("st-refused").textContent=d.my_orders_refused||0;
+  document.getElementById("st-cod").textContent=(d.my_cod_total||0).toFixed(0)+"₴";
   document.getElementById("st-pay").textContent=(d.my_payout||0).toFixed(0)+"₴";
+  document.getElementById("st-drop").textContent=(d.my_drop_total||0).toFixed(0)+"₴";
   var r=await api("/api/orders?limit=5");
   document.getElementById("dash-recent").innerHTML=r.orders.length?r.orders.map(function(o){return renderOC(o)}).join(""):'<div class="empty"><span class="ic">📋</span>Немає замовлень</div>';
 }
