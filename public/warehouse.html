@@ -25,6 +25,7 @@
 .ocard-meta{text-align:right;font-size:10px;color:var(--td)}.ocard-ttn{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--warn);margin-top:1px}
 .oitem{display:flex;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center}
 .oitem.item-missing{background:rgba(255,107,107,.08);border-left:4px solid var(--red)}
+.oitem.item-from-ret{background:rgba(255,167,38,.06);border-left:4px solid var(--warn)}
 .oitem-img{width:120px;height:120px;border-radius:10px;overflow:hidden;background:var(--bg);flex-shrink:0}
 .oitem-img img{width:100%;height:100%;object-fit:cover}
 .oitem-info{flex:1}
@@ -135,6 +136,13 @@
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveWhSwap()">🔄 Замінити</button><button class="btn" onclick="clM('wh-swap-modal')">Скасувати</button></div>
 </div></div>
 
+<!-- Swap size modal -->
+<div class="modal-bg" id="swap-sz-modal"><div class="modal" style="max-width:400px"><h3>🔄 Замінити розмір</h3>
+<div id="swap-sz-name" style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px"></div>
+<div id="swap-sz-options" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+<div style="margin-top:12px"><button class="btn" onclick="clM('swap-sz-modal')">Скасувати</button></div>
+</div></div>
+
 <script>
 let ME,whStatus="",whReady="",whCh="",whProducts=[],whSizes=[];
 const SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
@@ -188,14 +196,14 @@ async function loadOrders(){
     if(o.ttn)html+='<div style="margin:0 14px 8px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 12px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span></div>';
     for(var ii=0;ii<od.items.length;ii++){
       var i=od.items[ii];var missing=isActive&&i.current_stock<=0;var hasRet=isActive&&i.return_available>0;var usedRet=isActive&&i.from_returns>0;
-      html+='<div class="oitem'+(missing?' item-missing':'')+'">';
+      html+='<div class="oitem'+(missing?' item-missing':'')+(usedRet?' item-from-ret':'')+'">';
       html+='<div class="oitem-img">'+((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'">':'<div style="width:120px;height:120px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td)">📷</div>')+'</div>';
       html+='<div class="oitem-info"><div class="oitem-name">'+esc(i.var_name)+'</div>';
       if(i.print_name)html+='<div class="oitem-print">🖼 '+esc(i.print_name)+'</div>';
       html+='<div><span class="oitem-size">'+esc(i.size_name)+'</span>';
       if(i.quantity>1)html+=' <span style="color:var(--td)">×'+i.quantity+'</span>';
       html+='</div>';
-      if(missing)html+='<div><span class="oitem-missing-badge">❌ Немає на складі (залишок: '+i.current_stock+')</span></div>';
+      if(missing)html+='<div><span class="oitem-missing-badge">❌ Немає на складі (залишок: '+i.current_stock+')</span></div><div style="margin-top:4px"><button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="openSwapSize('+i.id+',\''+esc(i.var_name).replace(/'/g,"")+'\')">🔄 Замінити розмір</button></div>';
       if(hasRet)html+='<div style="margin-top:4px"><span class="oitem-ret-badge">⚠️ Є повернення ('+i.return_available+')</span> <button class="btn btn-sm btn-w" onclick="useRet('+i.id+')">📦 З повернень</button></div>';
       if(usedRet)html+='<div style="margin-top:4px"><span class="oitem-ret-ok">✅ З повернень: '+i.from_returns+'</span></div>';
       html+='</div></div>';
@@ -206,7 +214,10 @@ async function loadOrders(){
     html+='<select onchange="chSt('+o.id+',this.value)" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
-    if(osi&&osi.next)html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\')">'+osi.nl+'</button>';
+    if(osi&&osi.next){
+      if(osi.next==="packed"&&hasOOS)html+='<button class="btn btn-sm" disabled style="opacity:.4;cursor:not-allowed">⚠️ Замініть розміри</button>';
+      else html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\')">'+osi.nl+'</button>';
+    }
     if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="createTTN('+o.id+')">📦 Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="printTTN('+o.id+')">🖨 Друк ТТН</button>';
     
@@ -217,6 +228,21 @@ async function loadOrders(){
 async function chSt(id,st){await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadOrders()}
 async function canOrd(id){if(!confirm("Скасувати?"))return;await api("/api/orders/"+id+"/cancel",{method:"POST"});loadOrders()}
 async function useRet(id){try{await api("/api/order-items/"+id+"/use-return",{method:"POST",body:JSON.stringify({})});loadOrders()}catch(e){}}
+
+async function openSwapSize(itemId,name){
+  document.getElementById("swap-sz-name").textContent=name;
+  try{
+    var r=await api("/api/order-items/"+itemId+"/available-sizes");
+    document.getElementById("swap-sz-options").innerHTML=r.sizes.map(function(s){
+      var isCurrent=s.id===r.current_size_id;
+      return '<button style="padding:10px 16px;font-size:14px;font-weight:700;border-radius:8px;border:2px solid '+(isCurrent?'var(--td)':s.stock>0?'var(--acc)':'var(--brd)')+';background:'+(isCurrent?'var(--bg)':s.stock>0?'var(--accbg)':'var(--card)')+';color:'+(isCurrent?'var(--td)':s.stock>0?'var(--acc)':'var(--red)')+';cursor:'+(isCurrent||s.stock<=0?'default':'pointer')+';font-family:JetBrains Mono,monospace" '+(isCurrent||s.stock<=0?'disabled':'')+' onclick="doSwapSize('+itemId+','+s.id+')"><div>'+s.name+'</div><div style="font-size:10px;font-weight:400">'+s.stock+' шт</div></button>';
+    }).join("");
+    opM("swap-sz-modal");
+  }catch(e){}
+}
+async function doSwapSize(itemId,newSizeId){
+  try{await api("/api/order-items/"+itemId+"/swap-size",{method:"POST",body:JSON.stringify({new_size_id:newSizeId})});clM("swap-sz-modal");loadOrders()}catch(e){}
+}
 
 async function createTTN(id){
   try{var r=await api("/api/nova-poshta/create-ttn/"+id,{method:"POST"});loadOrders()}catch(e){
