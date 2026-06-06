@@ -227,7 +227,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld-row"><div class="fld"><label>Логін</label><input id="wk-login"></div><div class="fld"><label>Пароль</label><input id="wk-pass" type="password"></div></div>
 </div>
 <div class="fld"><label>Ставка за день ₴</label><input id="wk-daily" type="number" value="0"></div>
-<div class="fld"><label>Виробіток за 1 річ ₴</label><input id="wk-rate" type="number" value="0"></div>
+<div class="fld" id="wk-rate-wrap"><label id="wk-rate-label">Виробіток за 1 видану річ ₴</label><input id="wk-rate" type="number" value="0"></div>
 <div id="wk-return-wrap" class="fld"><label>Виробіток за 1 річ з повернення ₴</label><input id="wk-ret-rate" type="number" value="0"></div>
 <div id="wk-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveWorker()">💾 Зберегти</button><button class="btn" onclick="closeM('wk-modal')">Скасувати</button></div>
@@ -586,7 +586,11 @@ async function saveModel(){
   const err=document.getElementById("mm-err");err.style.display="none";
   const isReady=document.getElementById("mm-ready").classList.contains("on");
   const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches]};
-  try{const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();alert(`✅ ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}catch(e){err.textContent=e.message;err.style.display="block"}
+  try{
+    const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});
+    if(modelOps.length&&r.model_id)try{await api("/api/product-worker-ops/"+r.model_id,{method:"POST",body:JSON.stringify({ops:modelOps})})}catch(e){}
+    closeM("model-modal");editModelId=null;loadModels();
+  }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
 // ── Stock base with categories ────────────────────────────────────
@@ -1067,7 +1071,7 @@ async function loadWorkers(){
     return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openWorkerDetail('+w.id+')"><div><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(w.name)+' <span style="font-size:10px;color:var(--td)">'+(ROLES[w.role]||w.role)+'</span></div><div style="font-size:10px;color:var(--td);margin-top:2px">Ставка: '+w.daily_rate+'₴/день · Виробіток: '+w.per_item_rate+'₴/річ'+(w.role==="packer"?" · З поверн: "+w.per_return_item_rate+"₴":"")+'</div></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(w.balance>0?"var(--acc)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td)">до виплати</div></div></div>'
   }).join(""):'<div class="empty"><span class="ic">👷</span>Немає працівників</div>'}catch(e){}
 }
-function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-auth-wrap").style.display=(r==="packer"||r==="finalizer")?"":"none";document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none"}
+function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-auth-wrap").style.display=(r==="packer"||r==="finalizer")?"":"none";document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none";var lbl=document.getElementById("wk-rate-label");if(r==="seamstress")lbl.textContent="Оплата за 1 нашивку ₴";else if(r==="printer")lbl.textContent="Оплата за 1 принт ₴";else if(r==="packer")lbl.textContent="Виробіток за 1 видану річ ₴";else lbl.textContent="Виробіток за 1 річ ₴"}
 function openAddWorker(){document.getElementById("wk-title").textContent="+ Працівник";["wk-name","wk-login","wk-pass"].forEach(function(id){document.getElementById(id).value=""});document.getElementById("wk-daily").value="0";document.getElementById("wk-rate").value="0";document.getElementById("wk-ret-rate").value="0";document.getElementById("wk-role").value="packer";toggleWkRole();document.getElementById("wk-err").style.display="none";openM("wk-modal")}
 async function saveWorker(){
   var err=document.getElementById("wk-err");err.style.display="none";
