@@ -892,9 +892,6 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
   res.json({ order: o });
 });
 
-// Use return instead of base for an order item
-app.post("/api/order-items/:id/use-return", authMiddleware, (req, res) => {
-
 // Swap size in order item
 app.post("/api/order-items/:id/swap-size", authMiddleware, (req, res) => {
   const { new_size_id } = req.body;
@@ -914,6 +911,9 @@ app.get("/api/order-items/:id/available-sizes", authMiddleware, (req, res) => {
     WHERE sb.base_product_id=? ORDER BY s.sort_order`).all(item.base_product_id);
   res.json({ sizes, current_size_id: item.size_id });
 });
+
+// Use return instead of base for an order item
+app.post("/api/order-items/:id/use-return", authMiddleware, (req, res) => {
   const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   if (!item.print_id) return res.status(400).json({ error: "Готовий товар не має повернень" });
