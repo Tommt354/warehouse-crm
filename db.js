@@ -253,6 +253,18 @@ db.exec(`
     FOREIGN KEY(order_id) REFERENCES orders(id)
   );
 
+  CREATE TABLE IF NOT EXISTS stock_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    base_product_id INTEGER,
+    variation_id INTEGER,
+    size_id INTEGER,
+    quantity INTEGER DEFAULT 0,
+    note TEXT DEFAULT '',
+    user_id INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
   -- Комплекти (віртуальні товари для дропшиперів)
   CREATE TABLE IF NOT EXISTS kits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

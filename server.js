@@ -367,7 +367,7 @@ app.post("/api/models/:id/add-color", authMiddleware, requireRole("admin"), (req
 app.get("/api/base-products", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
   const isReady = req.query.is_ready;
-  let q = `SELECT bp.*,m.name as model_name,m.is_ready_product,m.category_id,c.name as color_name,c.hex_code,cat.name as category_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN categories cat ON m.category_id=cat.id WHERE bp.active=1`;
+  let q = `SELECT bp.*,m.name as model_name,m.is_ready_product,m.drop_channel,m.category_id,c.name as color_name,c.hex_code,cat.name as category_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN categories cat ON m.category_id=cat.id WHERE bp.active=1`;
   const params = [];
   if (cat) { q += " AND m.category_id=?"; params.push(parseInt(cat)); }
   if (isReady === "1") { q += " AND m.is_ready_product=1"; }
@@ -535,6 +535,7 @@ app.post("/api/stock/incoming-bulk", authMiddleware, (req, res) => {
       if (qty > 0) {
         db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id,item.size_id,qty,note||"",req.user.id);
         db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty,base_product_id,item.size_id);
+        db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('incoming',?,?,?,?,?)").run(base_product_id,item.size_id,qty,note||"",req.user.id);
       }
     }
   })();
@@ -549,6 +550,7 @@ app.post("/api/stock/write-off", authMiddleware, (req, res) => {
   if (qty <= 0) return res.status(400).json({ error: "Кількість має бути більше 0" });
   db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, size_id);
   db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, size_id, -qty, "Списання: "+(note||""), req.user.id);
+  db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?)").run(base_product_id,size_id,qty,"Списання: "+(note||""),req.user.id);
   res.json({ ok: true });
 });
 
@@ -564,8 +566,20 @@ app.post("/api/stock/swap-size", authMiddleware, (req, res) => {
     db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, to_size_id);
     db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, from_size_id, -qty, "Заміна розміру", req.user.id);
     db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, to_size_id, qty, "Заміна розміру", req.user.id);
+    const fromName = db.prepare("SELECT name FROM sizes WHERE id=?").get(from_size_id)?.name||"";
+    const toName = db.prepare("SELECT name FROM sizes WHERE id=?").get(to_size_id)?.name||"";
+    db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('swap',?,?,?,?,?)").run(base_product_id,from_size_id,qty,fromName+" → "+toName,req.user.id);
   })();
   res.json({ ok: true });
+});
+
+// Stock log API
+app.get("/api/stock-log", authMiddleware, (req, res) => {
+  const logs = db.prepare(`SELECT sl.*,bp.name as product_name,s.name as size_name,u.name as user_name 
+    FROM stock_log sl LEFT JOIN base_products bp ON sl.base_product_id=bp.id 
+    LEFT JOIN sizes s ON sl.size_id=s.id LEFT JOIN users u ON sl.user_id=u.id 
+    ORDER BY sl.created_at DESC LIMIT 200`).all();
+  res.json({ logs });
 });
 
 app.get("/api/kits", authMiddleware, (req, res) => {
