@@ -1237,7 +1237,7 @@ app.post("/api/nova-poshta/track-all", authMiddleware, async (req, res) => {
     const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
     if (!apiKey) return res.status(400).json({ error: "Немає API ключа" });
 
-    const orders = db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status IN ('shipped','delivering')").all();
+    const orders = db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status NOT IN ('cancelled')").all();
     let updated = 0;
 
     for (const o of orders) {
@@ -1245,6 +1245,9 @@ app.post("/api/nova-poshta/track-all", authMiddleware, async (req, res) => {
         const r = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: o.ttn }] });
         const st = r.data?.[0];
         if (!st) continue;
+
+        // Save NP status text
+        db.prepare("UPDATE orders SET np_status_text=? WHERE id=?").run(st.Status || "", o.id);
 
         const code = parseInt(st.StatusCode);
         let newStatus = null;
@@ -1433,12 +1436,13 @@ async function autoTrackNP(){
   try{
     const apiKey=db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
     if(!apiKey)return;
-    const orders=db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status IN ('shipped','delivering')").all();
+    const orders=db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status NOT IN ('cancelled')").all();
     if(!orders.length)return;
     for(const o of orders){
       try{
         const r=await npApi(apiKey,"TrackingDocument","getStatusDocuments",{Documents:[{DocumentNumber:o.ttn}]});
         const st=r.data?.[0];if(!st)continue;
+        db.prepare("UPDATE orders SET np_status_text=? WHERE id=?").run(st.Status||"",o.id);
         const code=parseInt(st.StatusCode);
         let ns=null;
         if(code>=7&&code<=8)ns="delivering";

@@ -278,7 +278,8 @@ function renderOC(o){
   var nm=items.map(function(i){return esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.original_size_name||i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')}).join('<br>');
   var h='<div class="oc" onclick="viewOrder('+o.id+')"><div style="padding:12px 14px">';
   h+='<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><span style="font-size:16px;font-weight:700;color:var(--th)">#'+o.id+'</span> <span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th)">'+o.cod_amount+'₴</div><div style="font-size:13px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(0)+'₴</div></div></div>';
-  if(o.ttn)h+='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 10px;margin-bottom:8px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span></div>';
+  if(o.ttn)h+='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 10px;margin-bottom:8px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--warn);letter-spacing:.5px">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:var(--td);margin-top:3px">📦 '+esc(o.np_status_text)+'</div>':'')+'</div>';
+  else if(!o.is_prepaid&&o.status==="new")h+='<div id="ttn-wait-'+o.id+'" style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0"></div><span style="font-size:11px;color:var(--warn)">Формування накладної...</span></div>';
   h+='<div style="display:flex;gap:10px;margin-bottom:6px"><div style="display:flex;gap:4px;flex-shrink:0">'+ph+'</div><div style="font-size:11px;color:var(--t);line-height:1.6">'+nm+'</div></div>';
   h+='<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
   h+='<div style="font-size:10px;color:var(--td);margin-top:2px">'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div></div>';
@@ -440,19 +441,14 @@ async function submitOrder(){
       declared_value:isPre?(parseFloat(document.getElementById("no-dval").value)||0):0
     })});
     clM("no-modal");receiptPhoto="";dropCityRef="";dropSettleRef="";
-    loadDash();loadOrders();
+    loadDash();
+    setTimeout(function(){loadOrders()},500);
     if(!isPre){
-      var ttnBanner=document.createElement("div");
-      ttnBanner.id="ttn-pending";
-      ttnBanner.style.cssText="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:10px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:10px";
-      ttnBanner.innerHTML='<div style="width:20px;height:20px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0"></div><div><div style="font-size:13px;font-weight:600;color:var(--warn)">Формування накладної НП...</div><div style="font-size:10px;color:var(--td)">Замовлення #'+r.order_id+'</div></div>';
-      var ordList=document.getElementById("ord-list");
-      if(ordList)ordList.insertBefore(ttnBanner,ordList.firstChild);
       var pollId=r.order_id,pollN=0;
       var pt=setInterval(async function(){pollN++;
         try{var po=await fetch("/api/orders/"+pollId,{headers:{"Content-Type":"application/json"}});var pd=await po.json();
-        if((pd.order&&pd.order.ttn)||pollN>=12){clearInterval(pt);var b=document.getElementById("ttn-pending");if(b)b.remove();loadOrders()}}
-        catch(e){clearInterval(pt);var b=document.getElementById("ttn-pending");if(b)b.remove();loadOrders()}
+        if((pd.order&&pd.order.ttn)||pollN>=12){clearInterval(pt);loadOrders()}}
+        catch(e){clearInterval(pt);loadOrders()}
       },2000);
     }
   }catch(e){err.textContent=e.message;err.style.display="block"}
