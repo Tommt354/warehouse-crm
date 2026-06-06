@@ -919,7 +919,8 @@ async function loadAdmOrders(status){
     html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
-    html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">✏️ Редагувати</button>';
+    html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">✏️</button>';
+    if(o.status==="refused"||o.status==="return_transit")html+='<button class="btn btn-sm" onclick="fetchRetCost('+o.id+')" style="border-color:rgba(255,107,107,.3);color:var(--red)">💰 Сума поверн.</button>';
     html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">✕ Скасувати</button></div></div></div>';
   }
   el.innerHTML=html;
@@ -939,6 +940,12 @@ async function openEditOrder(id){
 async function saveEditOrder(){
   try{await api("/api/orders/"+editOrderId+"/edit",{method:"PUT",body:JSON.stringify({client_name:document.getElementById("eo-name").value,client_phone:document.getElementById("eo-phone").value,client_city:document.getElementById("eo-city").value,client_warehouse:document.getElementById("eo-wh").value,cod_amount:document.getElementById("eo-cod").value,declared_value:document.getElementById("eo-dval").value,note:document.getElementById("eo-note").value})});
   closeM("eo-modal");loadAdmOrders(admOrdFilter)}catch(e){}
+}
+async function fetchRetCost(id){
+  try{var r=await api("/api/orders/"+id+"/fetch-return-cost",{method:"POST"});
+  var msg="Зворотня ТТН: "+(r.return_ttn||"не знайдена")+"\nСума повернення: "+r.return_cost+"₴";
+  if(r.raw){msg+="\n\nДані НП:\nCostOnSite: "+(r.raw.CostOnSite||0)+"\nDocumentCost: "+(r.raw.DocumentCost||0)+"\nRedeliverySum: "+(r.raw.RedeliverySum||0)+"\nStoragePrice: "+(r.raw.StoragePrice||0)+"\nAfterpaymentOnGoodsCost: "+(r.raw.AfterpaymentOnGoodsCost||0)+"\nActualDeliveryDate: "+(r.raw.ActualDeliveryDate||"")+"\nStatusCode: "+(r.raw.StatusCode||"")}
+  alert(msg);loadAdmOrders(admOrdFilter)}catch(e){alert("Помилка: "+e.message)}
 }
 async function saveTtn(id){var v=document.getElementById("ttn-"+id).value;try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});loadAdmOrders(admOrdFilter)}catch(e){}}
 
