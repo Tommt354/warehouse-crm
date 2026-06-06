@@ -1081,11 +1081,25 @@ async function openWorkerDetail(id){
   html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--td)">'+w.total_paid.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ВИПЛАЧЕНО</div></div>';
   html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:'+(w.balance>0?"var(--warn)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ДО ВИПЛАТИ</div></div></div></div>';
   if(w.balance>0)html+='<button class="btn btn-p" onclick="payWorker('+w.id+')" style="width:100%;margin-bottom:10px">💸 Виплатити '+w.balance.toFixed(0)+'₴</button>';
-  // Payroll history
-  html+='<div style="font-size:12px;font-weight:600;color:var(--th);margin-bottom:6px">Нарахування:</div>';
-  html+=w.payroll.length?'<table class="tbl"><tr><th>Дата</th><th>Замовлення</th><th>Тип</th><th>Сума</th></tr>'+w.payroll.map(function(p){return '<tr><td style="font-size:9px">'+(p.created_at?.slice(0,16)||"")+'</td><td>'+(p.order_id?"#"+p.order_id:"—")+'</td><td style="font-size:10px;color:var(--td)">'+esc(p.note||p.type)+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+p.amount.toFixed(0)+'₴</td></tr>'}).join("")+'</table>':'<div style="color:var(--td);font-size:11px">Немає</div>';
-  // Payouts history
-  if(w.payouts.length){html+='<div style="font-size:12px;font-weight:600;color:var(--th);margin:10px 0 6px">Виплати:</div><table class="tbl"><tr><th>Дата</th><th>Сума</th></tr>'+w.payouts.map(function(p){return '<tr><td style="font-size:9px">'+(p.created_at?.slice(0,16)||"")+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--th);font-weight:700">'+p.amount.toFixed(0)+'₴</td></tr>'}).join("")+'</table>'}
+  else html+='<button class="btn" style="width:100%;margin-bottom:10px;opacity:.4;cursor:default" disabled>💸 Нічого виплачувати (0₴)</button>';
+  // Payout history
+  html+='<div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:6px">Історія виплат ('+w.payouts.length+'):</div>';
+  if(w.payouts.length){html+=w.payouts.map(function(p,idx){
+    // Find payroll entries for this payout period
+    var prevDate=w.payouts[idx+1]?w.payouts[idx+1].created_at:"1970-01-01";
+    var periodItems=w.payroll.filter(function(pr){return pr.created_at>=prevDate&&pr.created_at<=p.created_at});
+    return '<div style="background:var(--bg);border:1px solid rgba(0,212,170,.15);border-radius:10px;margin-bottom:6px;overflow:hidden">'+
+    '<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
+    '<div><div style="font-size:12px;font-weight:600;color:var(--th)">Виплата #'+(w.payouts.length-idx)+'</div><div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+'</div></div>'+
+    '<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+p.amount.toFixed(0)+'₴</div></div>'+
+    '<div style="display:none;border-top:1px solid var(--brd);padding:8px 12px">'+
+    (periodItems.length?periodItems.map(function(pr){return '<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--td)">'+(pr.created_at?.slice(5,16)||"")+' '+(pr.order_id?"#"+pr.order_id:"")+'</div><div style="color:var(--t)">'+esc(pr.note||pr.type)+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:600">+'+pr.amount.toFixed(0)+'₴</div></div>'}).join(""):'<div style="font-size:10px;color:var(--td)">Деталі недоступні</div>')+
+    '</div></div>'
+  }).join("")}else{html+='<div style="color:var(--td);font-size:11px">Ще не було виплат</div>'}
+  // Current earnings (not yet paid)
+  var unpaidItems=w.payroll.filter(function(pr){return !w.payouts.length||pr.created_at>(w.payouts[0]?.created_at||"")});
+  if(unpaidItems.length){html+='<div style="font-size:13px;font-weight:600;color:var(--warn);margin:10px 0 6px">Поточні нарахування (не виплачено):</div>';
+  html+='<table class="tbl"><tr><th>Дата</th><th>Замовлення</th><th>Тип</th><th>Сума</th></tr>'+unpaidItems.map(function(p){return '<tr><td style="font-size:9px">'+(p.created_at?.slice(0,16)||"")+'</td><td>'+(p.order_id?"#"+p.order_id:"—")+'</td><td style="font-size:10px;color:var(--td)">'+esc(p.note||p.type)+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+p.amount.toFixed(0)+'₴</td></tr>'}).join("")+'</table>'}
   document.getElementById("wkd-title").textContent=w.name;document.getElementById("wkd-body").innerHTML=html;openM("wk-detail-modal")}catch(e){}
 }
 async function payWorker(id){if(!confirm("Виплатити?"))return;try{await api("/api/workers/"+id+"/pay",{method:"POST"});closeM("wk-detail-modal");loadWorkers()}catch(e){}}
