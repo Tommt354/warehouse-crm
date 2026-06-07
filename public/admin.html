@@ -898,7 +898,7 @@ async function loadAdmOrders(status){
     // TTN block
     html+='<div style="padding:8px 14px;display:flex;gap:6px;align-items:center">';
     if(o.ttn)html+='<div style="flex:1;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">📦 '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">↩ '+esc(o.return_ttn)+'</div>':'')+'</div>';
-    html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><button class="btn btn-sm" onclick="saveTtn('+o.id+')">💾</button>';
+    html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." readonly style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;opacity:.7"><button id="ttn-edit-'+o.id+'" class="btn btn-sm" onclick="editTtn('+o.id+')" style="font-size:10px">✏️</button><button id="ttn-save-'+o.id+'" class="btn btn-sm btn-p" onclick="saveTtn('+o.id+')" style="font-size:10px;display:none">💾</button>';
     if(!o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+')">📦 Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="window.open(\'https://my.novaposhta.ua/orders/printMarkings/orders[]/\'+document.getElementById(\'ttn-\'+'+o.id+').value+\'/type/pdf\',\'_blank\')">🖨</button>';
     html+='</div>';
@@ -915,7 +915,10 @@ async function loadAdmOrders(status){
     }
     if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:12px;color:var(--warn);padding:6px 10px;background:rgba(255,167,38,.06);border-radius:6px;border:1px solid rgba(255,167,38,.1)">📝 '+esc(o.note)+'</div></div>';
     html+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.1);flex-wrap:wrap;gap:6px">';
-    html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
+    if(o.status==='refused'||o.status==='return_transit')
+      html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--red)">Збиток: -'+(o.return_cost||0).toFixed(0)+'₴</span></div>';
+    else
+      html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
     html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
@@ -947,7 +950,8 @@ async function fetchRetCost(id){
   if(r.raw){msg+="\n\nДані НП:\nCostOnSite: "+(r.raw.CostOnSite||0)+"\nDocumentCost: "+(r.raw.DocumentCost||0)+"\nRedeliverySum: "+(r.raw.RedeliverySum||0)+"\nStoragePrice: "+(r.raw.StoragePrice||0)+"\nAfterpaymentOnGoodsCost: "+(r.raw.AfterpaymentOnGoodsCost||0)+"\nActualDeliveryDate: "+(r.raw.ActualDeliveryDate||"")+"\nStatusCode: "+(r.raw.StatusCode||"")}
   alert(msg);loadAdmOrders(admOrdFilter)}catch(e){alert("Помилка: "+e.message)}
 }
-async function saveTtn(id){var v=document.getElementById("ttn-"+id).value;try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});loadAdmOrders(admOrdFilter)}catch(e){}}
+function editTtn(id){var inp=document.getElementById("ttn-"+id);inp.readOnly=false;inp.style.opacity="1";inp.focus();document.getElementById("ttn-edit-"+id).style.display="none";document.getElementById("ttn-save-"+id).style.display=""}
+async function saveTtn(id){var inp=document.getElementById("ttn-"+id);var v=inp.value;var btn=document.getElementById("ttn-save-"+id);btn.innerHTML='<div style="display:inline-block;width:10px;height:10px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div>';try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});btn.innerHTML="✅";btn.style.color="var(--acc)";inp.readOnly=true;inp.style.opacity=".7";setTimeout(function(){loadAdmOrders(admOrdFilter)},1000)}catch(e){btn.innerHTML="❌"}}
 
 // ── ADMIN PAYOUTS ────────────────────────────────────────────────
 let allPayouts=[];

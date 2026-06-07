@@ -121,7 +121,7 @@
 <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';loadOrders()">✕</button></div>
 <div style="margin-bottom:8px"><input id="dr-ttn" placeholder="🔍 Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadOrders()"></div>
 <div class="stabs" id="ord-stabs"></div>
-<div id="ord-list"></div>
+<div style="margin-bottom:8px;text-align:right"><button id="np-track-btn" class="btn" onclick="trackNP()" style="font-size:11px;padding:6px 12px">🔄 Оновити статуси НП</button></div><div id="ord-list"></div>
 <div class="pagi" id="ord-pagi"></div>
 </div>
 
@@ -233,7 +233,7 @@ function goNav(p){
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────
-async function loadDash(){
+async function loadDash(){document.getElementById("dash-recent").innerHTML='<div class="inline-load" style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   document.querySelectorAll("[id^=dp-]").forEach(function(b){b.classList.toggle("on",b.id==="dp-"+(dashPeriod||"all"))});
   var d=await api("/api/dashboard"+(dashPeriod?"?period="+dashPeriod:""));
   document.getElementById("st-total").textContent=d.my_orders_total||0;
@@ -251,7 +251,7 @@ async function loadDash(){
 function renderOrdTabs(){
   document.getElementById("ord-stabs").innerHTML=OSTS.map(function(s){return '<div class="stab'+(s.k===ordStatus?' on':'')+'" onclick="ordStatus=\''+s.k+'\';ordPage=0;loadOrders()">'+s.l+'</div>'}).join("");
 }
-async function loadOrders(){
+async function loadOrders(){document.getElementById("ord-list").innerHTML='<div class="inline-load" style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   renderOrdTabs();
   var df=document.getElementById("dr-df")?.value||"",dt=document.getElementById("dr-dt")?.value||"";
   var ttn=document.getElementById("dr-ttn")?.value||"";
@@ -341,6 +341,7 @@ async function loadCatPicker(){
   }).join("");
 }
 
+async function trackNP(){var b=document.getElementById("np-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></div>Оновлення...';try{await api("/api/nova-poshta/track-all",{method:"POST"});b.innerHTML='✅ Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML='🔄 Оновити статуси НП';b.style.color='';b.disabled=false;loadOrders()},1500)}catch(e){b.innerHTML='❌ Помилка';b.style.color='var(--red)';setTimeout(function(){b.innerHTML='🔄 Оновити статуси НП';b.style.color='';b.disabled=false},2000)}}
 function pickItem(vid,sid,name,price,sz,photo,isKit){
   oItems.push({varId:vid,sizeId:sid,name:name,price:price,sz:sz,photo:photo,qty:1,kitId:isKit?vid:null});
   renderOItems();calcPay();clM("cp-modal");

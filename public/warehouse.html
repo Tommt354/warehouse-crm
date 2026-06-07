@@ -190,7 +190,7 @@ function showMain(t){
 function renderStabs(){
   document.getElementById("wh-stabs").innerHTML=WHS.map(s=>'<div class="stab'+(s.key===whStatus?' on':'')+'" onclick="whStatus=\''+s.key+'\';renderStabs();loadOrders()">'+s.label+'</div>').join("");
 }
-async function loadOrders(){
+async function loadOrders(){document.getElementById("wh-orders").innerHTML='<div class="inline-load" style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   renderStabs();
   document.querySelectorAll("[id^=rf-]").forEach(function(b){b.classList.toggle("on",b.id===("rf-"+(whReady||"all")))});
   document.querySelectorAll("[id^=wc-]").forEach(function(b){b.classList.toggle("on",b.id==="wc-"+whCh)});
@@ -272,9 +272,7 @@ async function createTTN(id){
 async function printTTN(id){
   try{var r=await api("/api/nova-poshta/print/"+id);if(r.url)window.open(r.url,"_blank")}catch(e){}
 }
-async function trackAll(){
-  try{var r=await api("/api/nova-poshta/track-all",{method:"POST"});loadOrders()}catch(e){}
-}
+async function trackAll(){var b=event.target;b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></div>Оновлення...';try{await api("/api/nova-poshta/track-all",{method:"POST"});b.innerHTML='✅ Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML='🔄 Оновити статуси НП';b.style.color='';b.disabled=false;loadOrders()},1500)}catch(e){b.innerHTML='❌';setTimeout(function(){b.innerHTML='🔄 Оновити статуси НП';b.style.color='';b.disabled=false},2000)}}
 
 // ── SHIFTS ────────────────────────────────────────────────────────
 var currentShift=null,shiftSelected=[];
