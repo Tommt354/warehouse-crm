@@ -1551,6 +1551,46 @@ app.get("/api/returns", authMiddleware, (req, res) => {
   res.json({ orders });
 });
 
+// Detailed stats for dropshipper
+app.get("/api/stats/detailed", authMiddleware, (req, res) => {
+  const { date_from, date_to, dropshipper_id } = req.query;
+  const uid = dropshipper_id || (req.user.role === "dropshipper" ? req.user.id : null);
+  if (!uid) return res.status(400).json({ error: "dropshipper_id required" });
+  
+  const df = date_from || new Date(Date.now() - 30*86400000).toISOString().slice(0,10);
+  const dt = date_to || new Date().toISOString().slice(0,10);
+  const w = "o.dropshipper_id=? AND date(o.created_at) BETWEEN ? AND ?";
+  const p = [uid, df, dt];
+
+  const total = db.prepare("SELECT COUNT(*) as c FROM orders o WHERE "+w).get(...p).c;
+  const success = db.prepare("SELECT COUNT(*) as c FROM orders o WHERE "+w+" AND o.status='delivered'").get(...p).c;
+  const failed = db.prepare("SELECT COUNT(*) as c FROM orders o WHERE "+w+" AND o.status IN ('refused','return_transit','cancelled')").get(...p).c;
+  const profit = db.prepare("SELECT COALESCE(SUM(o.payout_amount),0) as s FROM orders o WHERE "+w+" AND o.status='delivered'").get(...p).s;
+  const codTotal = db.prepare("SELECT COALESCE(SUM(o.cod_amount),0) as s FROM orders o WHERE "+w).get(...p).s;
+  const dropTotal = db.prepare("SELECT COALESCE(SUM(o.total_drop_price),0) as s FROM orders o WHERE "+w).get(...p).s;
+  const returnCost = db.prepare("SELECT COALESCE(SUM(o.return_cost),0) as s FROM orders o WHERE "+w+" AND o.status IN ('refused','return_transit')").get(...p).s;
+  const paid = db.prepare("SELECT COALESCE(SUM(pi.amount),0) as s FROM payout_items pi JOIN payout_requests pr ON pi.payout_request_id=pr.id WHERE pr.dropshipper_id=? AND pr.status='paid'").get(uid).s;
+  const orderSum = db.prepare("SELECT COALESCE(SUM(o.cod_amount),0) as s FROM orders o WHERE "+w+" AND o.status='delivered'").get(...p).s;
+
+  // Daily data for charts
+  const daily = db.prepare(`SELECT date(o.created_at) as day,
+    COUNT(*) as orders,
+    SUM(CASE WHEN o.status='delivered' THEN o.payout_amount ELSE 0 END) as profit,
+    SUM(CASE WHEN o.status IN ('refused','return_transit') THEN o.return_cost ELSE 0 END) as loss,
+    SUM(CASE WHEN o.status='delivered' THEN 1 ELSE 0 END) as success_count,
+    SUM(CASE WHEN o.status IN ('refused','return_transit','cancelled') THEN 1 ELSE 0 END) as fail_count
+    FROM orders o WHERE o.dropshipper_id=? AND date(o.created_at) BETWEEN ? AND ?
+    GROUP BY day ORDER BY day`).all(uid, df, dt);
+
+  res.json({
+    total, success, failed, profit, codTotal, dropTotal, returnCost, paid, orderSum,
+    avgProfit: success > 0 ? profit / success : 0,
+    successRate: total > 0 ? (success / total * 100) : 0,
+    unpaid: profit - returnCost - paid,
+    daily, date_from: df, date_to: dt
+  });
+});
+
 // ── DASHBOARD ────────────────────────────────────────────────────
 
 // Update user profile

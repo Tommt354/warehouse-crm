@@ -85,7 +85,7 @@
 <div class="wrap">
 <div class="hdr"><div><h1>🛒 Кабінет</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
 <div class="nav">
-  <a class="on" data-p="dash">📊 Головна</a>
+  <a class="on" data-p="dash">📊 Статистика</a>
   <a data-p="orders">📋 Замовлення</a>
   <a data-p="catalog">📦 Каталог</a>
   <a data-p="payouts">💰 Виплати</a>
@@ -93,27 +93,24 @@
 </div>
 
 <div class="page on" id="pg-dash">
-<div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
-  <button class="stab on" id="dp-today" onclick="dashPeriod='today';loadDash()">Сьогодні</button>
-  <button class="stab" id="dp-yesterday" onclick="dashPeriod='yesterday';loadDash()">Вчора</button>
-  <button class="stab" id="dp-week" onclick="dashPeriod='week';loadDash()">Тиждень</button>
-  <button class="stab" id="dp-month" onclick="dashPeriod='month';loadDash()">Місяць</button>
-  <button class="stab" id="dp-all" onclick="dashPeriod='';loadDash()">Весь час</button>
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+  <input type="date" id="stat-from" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">
+  <span style="color:var(--td)">—</span>
+  <input type="date" id="stat-to" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">
+  <button class="btn btn-sm" style="font-size:11px;border-color:var(--acc);color:var(--acc)" onclick="loadStats()">OK</button>
+  <div style="display:flex;gap:3px;margin-left:auto">
+    <button class="stab on" onclick="setStatPeriod(7)">7д</button>
+    <button class="stab" onclick="setStatPeriod(14)">14д</button>
+    <button class="stab" onclick="setStatPeriod(30)">30д</button>
+    <button class="stab" onclick="setStatPeriod(90)">90д</button>
+  </div>
 </div>
-<div class="sg">
-  <div class="sc"><div class="sv" style="color:var(--th)" id="st-total">0</div><div class="sl">замовлень</div></div>
-  <div class="sc"><div class="sv" style="color:var(--warn)" id="st-new">0</div><div class="sl">нових</div></div>
-  <div class="sc"><div class="sv" style="color:#22c55e" id="st-delivered">0</div><div class="sl">отриманих</div></div>
-  <div class="sc"><div class="sv" style="color:var(--red)" id="st-refused">0</div><div class="sl">відмов</div></div>
-</div>
-<div class="sg">
-  <div class="sc"><div class="sv" style="color:var(--th)" id="st-cod">0₴</div><div class="sl">наложка</div></div>
-  <div class="sc"><div class="sv" style="color:var(--acc)" id="st-pay">0₴</div><div class="sl">прибуток</div></div>
-  <div class="sc"><div class="sv" style="color:var(--td)" id="st-drop">0₴</div><div class="sl">дроп-ціна</div></div>
-</div>
+<div id="stat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px"></div>
+<div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:6px">Прибуток / Збиток по днях</div>
+<div id="chart-profit" style="overflow-x:auto;margin-bottom:14px"></div>
+<div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:6px">Кількість замовлень по днях</div>
+<div id="chart-orders" style="overflow-x:auto;margin-bottom:14px"></div>
 <button class="btn-new" onclick="goNav('orders');openNewOrder()">＋ Подати замовлення</button>
-<div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Останні замовлення:</div>
-<div id="dash-recent"></div>
 </div>
 
 <div class="page" id="pg-orders">
@@ -234,19 +231,47 @@ function goNav(p){
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────
-async function loadDash(){document.getElementById("dash-recent").innerHTML='<div class="inline-load" style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
-  document.querySelectorAll("[id^=dp-]").forEach(function(b){b.classList.toggle("on",b.id==="dp-"+(dashPeriod||"all"))});
-  var d=await api("/api/dashboard"+(dashPeriod?"?period="+dashPeriod:""));
-  document.getElementById("st-total").textContent=d.my_orders_total||0;
-  document.getElementById("st-new").textContent=d.my_orders_new||0;
-  document.getElementById("st-delivered").textContent=d.my_orders_delivered||0;
-  document.getElementById("st-refused").textContent=d.my_orders_refused||0;
-  document.getElementById("st-cod").textContent=(d.my_cod_total||0).toFixed(0)+"₴";
-  document.getElementById("st-pay").textContent=(d.my_payout||0).toFixed(0)+"₴";
-  document.getElementById("st-drop").textContent=(d.my_drop_total||0).toFixed(0)+"₴";
-  var r=await api("/api/orders?limit=5");
-  document.getElementById("dash-recent").innerHTML=r.orders.length?r.orders.map(function(o){return renderOC(o)}).join(""):'<div class="empty"><span class="ic">📋</span>Немає замовлень</div>';
+function setStatPeriod(days){var d=new Date();document.getElementById("stat-to").value=d.toISOString().slice(0,10);d.setDate(d.getDate()-days);document.getElementById("stat-from").value=d.toISOString().slice(0,10);loadStats()}
+async function loadStats(){
+  var df=document.getElementById("stat-from").value;var dt=document.getElementById("stat-to").value;
+  if(!df){var d=new Date();d.setDate(d.getDate()-30);df=d.toISOString().slice(0,10);document.getElementById("stat-from").value=df}
+  if(!dt){dt=new Date().toISOString().slice(0,10);document.getElementById("stat-to").value=dt}
+  document.getElementById("stat-grid").innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div></div>';
+  try{var r=await api("/api/stats/detailed?date_from="+df+"&date_to="+dt);
+  var items=[
+    {l:"Прибуток",v:r.profit.toFixed(2)+"₴",c:"var(--acc)"},
+    {l:"Кільк. замовлень",v:r.total,c:"var(--th)"},
+    {l:"Сер. прибуток",v:r.avgProfit.toFixed(2)+"₴",c:"var(--acc)"},
+    {l:"Сума замовлень",v:r.orderSum.toFixed(2)+"₴",c:"var(--th)"},
+    {l:"Успішно",v:r.success,c:"#22c55e"},
+    {l:"Повернення (збитки)",v:"-"+r.returnCost.toFixed(2)+"₴",c:"var(--red)"},
+    {l:"Не успішно",v:r.failed,c:"var(--red)"},
+    {l:"% успішних",v:r.successRate.toFixed(1)+"%",c:"var(--acc)"},
+    {l:"Виплачено",v:r.paid.toFixed(2)+"₴",c:"var(--td)"},
+    {l:"Не виплачено",v:(r.unpaid>0?r.unpaid.toFixed(2):"0")+"₴",c:"var(--warn)"},
+    {l:"Накл. платіж",v:r.codTotal.toFixed(2)+"₴",c:"var(--th)"},
+    {l:"Дроп ціна",v:r.dropTotal.toFixed(2)+"₴",c:"var(--td)"}
+  ];
+  document.getElementById("stat-grid").innerHTML=items.map(function(i){return '<div class="sc"><div class="sl">'+i.l+'</div><div class="sv" style="color:'+i.c+';font-size:16px">'+i.v+'</div></div>'}).join("");
+  if(r.daily.length){
+    var maxP=Math.max.apply(null,r.daily.map(function(d){return Math.max(d.profit,d.loss)}))||1;
+    var maxO=Math.max.apply(null,r.daily.map(function(d){return d.orders}))||1;
+    var bw=Math.max(16,Math.min(36,560/r.daily.length));var cw=r.daily.length*(bw+3)+30;
+    var ch='<svg viewBox="0 0 '+cw+' 200" style="width:'+cw+'px;height:200px">';
+    r.daily.forEach(function(d,i){var x=i*(bw+3)+15;var ph=d.profit/maxP*150;var lh=d.loss/maxP*150;
+      ch+='<rect x="'+x+'" y="'+(165-ph)+'" width="'+bw+'" height="'+ph+'" rx="2" fill="rgba(0,212,170,.45)"><title>'+d.day+': +'+d.profit.toFixed(0)+'₴</title></rect>';
+      if(d.loss>0)ch+='<rect x="'+x+'" y="165" width="'+bw+'" height="'+lh+'" rx="2" fill="rgba(255,107,107,.45)"><title>'+d.day+': -'+d.loss.toFixed(0)+'₴</title></rect>';
+      ch+='<text x="'+(x+bw/2)+'" y="190" fill="var(--td)" font-size="7" text-anchor="middle" font-family="Inter,sans-serif">'+d.day.slice(5)+'</text>';
+    });ch+='</svg>';document.getElementById("chart-profit").innerHTML=ch;
+    var co='<svg viewBox="0 0 '+cw+' 170" style="width:'+cw+'px;height:170px">';
+    r.daily.forEach(function(d,i){var x=i*(bw+3)+15;var h=d.orders/maxO*130;
+      co+='<rect x="'+x+'" y="'+(145-h)+'" width="'+bw+'" height="'+h+'" rx="2" fill="rgba(66,165,245,.5)"><title>'+d.day+': '+d.orders+'</title></rect>';
+      co+='<text x="'+(x+bw/2)+'" y="165" fill="var(--td)" font-size="7" text-anchor="middle" font-family="Inter,sans-serif">'+d.day.slice(5)+'</text>';
+    });co+='</svg>';document.getElementById("chart-orders").innerHTML=co;
+  }else{document.getElementById("chart-profit").innerHTML='<div style="color:var(--td);font-size:11px;padding:10px">Немає даних</div>';document.getElementById("chart-orders").innerHTML=''}
+  }catch(e){document.getElementById("stat-grid").innerHTML='<div style="color:var(--red);font-size:11px">Помилка завантаження</div>'}
 }
+async function loadDash(){loadStats()}
 
 // ── ORDERS ───────────────────────────────────────────────────────
 function renderOrdTabs(){
