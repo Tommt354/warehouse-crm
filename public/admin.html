@@ -196,6 +196,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
   <button class="btn" onclick="loadAdmOrders('refused')" id="ao-refused">Відмови</button>
   <button class="btn" onclick="loadAdmOrders('cancelled')" id="ao-cancelled">Скасовані</button>
 </div>
+<div style="text-align:right;margin-bottom:6px"><button id="adm-track-btn" class="btn btn-sm" onclick="admTrackNP()" style="border-color:rgba(66,165,245,.3);color:var(--blue);font-size:11px">🔄 Оновити статуси НП</button></div>
 <div id="adm-orders"></div>
 </div>
 
@@ -870,7 +871,8 @@ async function saveKit(){
 const OSL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
 const OSC={new:"tag-g",in_progress:"tag-b",packed:"tag-g",shipped:"tag-y",delivering:"tag-y",delivered:"tag-g",refused:"tag-r",cancelled:"tag-r"};
 let admOrdFilter="",admReady="",admCh="";
-async function loadAdmOrders(status){
+async function admTrackNP(){var b=document.getElementById("adm-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></div>Оновлення...';try{await fetch("/api/nova-poshta/track-all",{method:"POST",headers:{"Content-Type":"application/json"}});b.innerHTML='✅ Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML='🔄 Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false;loadAdmOrders(admOrdFilter)},1500)}catch(e){b.innerHTML='❌ Помилка';setTimeout(function(){b.innerHTML='🔄 Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false},2000)}}
+async function loadAdmOrders(status){document.getElementById("adm-orders").innerHTML='<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   admOrdFilter=status;
   document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");
   const btn=document.getElementById("ao-"+(status||"all"));if(btn)btn.className="btn btn-a";
