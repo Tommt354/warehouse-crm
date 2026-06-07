@@ -441,6 +441,14 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveSwapSize()">🔄 Замінити</button><button class="btn" onclick="closeM('swap-modal')">Скасувати</button></div>
 </div></div>
 
+<!-- Dropshipper stats modal -->
+<div class="modal-bg" id="drop-stats-modal"><div class="modal" style="max-width:650px"><h3 id="ds-title">📊 Статистика</h3>
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><input type="date" id="ds-from" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff"><span style="color:var(--td)">—</span><input type="date" id="ds-to" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadDropStats()">OK</button></div>
+<div id="ds-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:12px"></div>
+<div id="ds-chart" style="overflow-x:auto;margin-bottom:10px"></div>
+<div style="text-align:right"><button class="btn" onclick="closeM('drop-stats-modal')">Закрити</button></div>
+</div></div>
+
 <!-- Edit order modal -->
 <div class="modal-bg" id="eo-modal"><div class="modal" style="max-width:500px"><h3>✏️ Редагувати замовлення #<span id="eo-id"></span></h3>
 <div class="fld"><label>ПІБ клієнта</label><input id="eo-name"></div>
@@ -1059,7 +1067,7 @@ function renderPayouts(list){
     '<div style="margin-top:4px">'+(isPaid?'<span style="color:var(--acc);font-size:12px;font-weight:600">✅ Виплачено</span>':'<button class="btn btn-p" onclick="event.stopPropagation();markPaid('+p.id+')" style="font-size:11px">💸 Виплачено</button>')+'</div></div></div>'+
     '<div style="display:none;border-top:1px solid var(--brd)">'+
     (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">✅ Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
-    (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">❌ Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
+    (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">❌ Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">↩ '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
     '</div></div>';
   }).join(""):'<div class="empty"><span class="ic">💰</span>Немає запитів на виплату</div>';
 }
@@ -1175,7 +1183,27 @@ async function retItem(id,el){try{await api("/api/order-items/"+id+"/return-to-s
 
 // ── Users ────────────────────────────────────────────────────────
 const WL={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};
-async function loadDrops(){const{users:u}=await api("/api/users?role=dropshipper");document.getElementById("drop-list").innerHTML=!u.length?'<div class="empty"><span class="ic">🛒</span>Немає</div>':`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Стан</th><th></th></tr>${u.map(x=>`<tr><td style="color:var(--th)">${esc(x.name)}</td><td class="mono">${esc(x.username)}</td><td>${x.discount_percent?x.discount_percent+"%":""}${x.discount_fixed?" "+x.discount_fixed+"₴":""}</td><td>${x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>'}</td><td><button class="btn btn-sm btn-a" onclick="editU(${x.id},'dropshipper')">✏️</button></td></tr>`).join("")}</table>`}
+
+let dsDropId=null;
+async function viewDropStats(id,name){
+  dsDropId=id;document.getElementById("ds-title").textContent="📊 "+name;
+  var d=new Date();document.getElementById("ds-to").value=d.toISOString().slice(0,10);d.setDate(d.getDate()-30);document.getElementById("ds-from").value=d.toISOString().slice(0,10);
+  openM("drop-stats-modal");loadDropStats();
+}
+async function loadDropStats(){
+  if(!dsDropId)return;var df=document.getElementById("ds-from").value;var dt=document.getElementById("ds-to").value;
+  document.getElementById("ds-grid").innerHTML='<div style="grid-column:1/-1;text-align:center;padding:12px"><div style="display:inline-block;width:20px;height:20px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div></div>';
+  try{var r=await api("/api/stats/detailed?dropshipper_id="+dsDropId+"&date_from="+df+"&date_to="+dt);
+  var items=[{l:"Прибуток",v:r.profit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Замовлень",v:r.total,c:"var(--th)"},{l:"Сер. прибуток",v:r.avgProfit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Сума замовлень",v:r.orderSum.toFixed(2)+"₴",c:"var(--th)"},{l:"Успішно",v:r.success,c:"#22c55e"},{l:"Збитки",v:"-"+r.returnCost.toFixed(2)+"₴",c:"var(--red)"},{l:"Не успішно",v:r.failed,c:"var(--red)"},{l:"% успішних",v:r.successRate.toFixed(1)+"%",c:"var(--acc)"},{l:"Виплачено",v:r.paid.toFixed(2)+"₴",c:"var(--td)"},{l:"Не виплачено",v:(r.unpaid>0?r.unpaid.toFixed(2):"0")+"₴",c:"var(--warn)"},{l:"Накл. платіж",v:r.codTotal.toFixed(2)+"₴",c:"var(--th)"},{l:"Дроп ціна",v:r.dropTotal.toFixed(2)+"₴",c:"var(--td)"}];
+  document.getElementById("ds-grid").innerHTML=items.map(function(i){return '<div class="sc"><div class="sl">'+i.l+'</div><div class="sv" style="color:'+i.c+';font-size:14px">'+i.v+'</div></div>'}).join("");
+  if(r.daily.length){var maxP=Math.max.apply(null,r.daily.map(function(d){return Math.max(d.profit,d.loss)}))||1;var bw=Math.max(18,Math.min(36,500/r.daily.length));var cw=r.daily.length*(bw+3)+30;
+  var ch='<svg viewBox="0 0 '+cw+' 180" style="width:'+cw+'px;height:180px">';r.daily.forEach(function(d,i){var x=i*(bw+3)+15;var ph=d.profit/maxP*120;
+  ch+='<rect x="'+x+'" y="'+(140-ph)+'" width="'+bw+'" height="'+ph+'" rx="2" fill="rgba(0,212,170,.45)"/>';if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(135-ph)+'" fill="var(--acc)" font-size="7" text-anchor="middle">'+Math.round(d.profit)+'</text>';
+  ch+='<text x="'+(x+bw/2)+'" y="165" fill="var(--th)" font-size="8" text-anchor="middle" transform="rotate(-45,'+(x+bw/2)+',165)">'+d.day.slice(5)+'</text>';});ch+='</svg>';document.getElementById("ds-chart").innerHTML=ch;}else{document.getElementById("ds-chart").innerHTML=''}
+  }catch(e){document.getElementById("ds-grid").innerHTML='<div style="color:var(--red)">Помилка</div>'}
+}
+
+async function loadDrops(){const{users:u}=await api("/api/users?role=dropshipper");document.getElementById("drop-list").innerHTML=!u.length?'<div class="empty"><span class="ic">🛒</span>Немає</div>':`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Стан</th><th></th></tr>${u.map(x=>`<tr style="cursor:pointer" onclick="viewDropStats(${x.id},'${esc(x.name).replace(/'/g,"")}')"><td style="color:var(--th)">${esc(x.name)}</td><td class="mono">${esc(x.username)}</td><td>${x.discount_percent?x.discount_percent+"%":""}${x.discount_fixed?" "+x.discount_fixed+"₴":""}</td><td>${x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>'}</td><td><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editU(${x.id},'dropshipper')">✏️</button></td></tr>`).join("")}</table>`}
 var ROLES={packer:"👷 Пакувальник",finalizer:"📦 Пакувальниця",seamstress:"🧵 Швея",printer:"🖨 Принтувальник"};
 async function loadWorkers(){
   try{var r=await api("/api/workers");

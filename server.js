@@ -1691,11 +1691,11 @@ app.get("/api/payouts/my", authMiddleware, (req, res) => {
   // Active (pending) payout request
   const active = db.prepare(`SELECT * FROM payout_requests WHERE dropshipper_id=? AND status='pending' ORDER BY id DESC LIMIT 1`).get(uid);
   let activeItems = [];
-  if (active) activeItems = db.prepare(`SELECT pi.*,o.cod_amount,o.payout_amount,o.client_name,o.ttn,o.status as order_status FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(active.id);
+  if (active) activeItems = db.prepare(`SELECT pi.*,o.cod_amount,o.payout_amount,o.client_name,o.ttn,o.return_ttn,o.return_cost,o.status as order_status FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(active.id);
   // History with items
   const history = db.prepare(`SELECT * FROM payout_requests WHERE dropshipper_id=? ORDER BY id DESC`).all(uid);
   history.forEach(h => {
-    h.items = db.prepare(`SELECT pi.*,o.cod_amount,o.payout_amount,o.client_name,o.ttn,o.status as order_status,o.created_at as order_date FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(h.id);
+    h.items = db.prepare(`SELECT pi.*,o.cod_amount,o.payout_amount,o.client_name,o.ttn,o.return_ttn,o.return_cost,o.status as order_status,o.created_at as order_date FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(h.id);
   });
   res.json({ unpaid, returns, active, activeItems, history });
 });
@@ -1728,7 +1728,7 @@ app.post("/api/payouts/request", authMiddleware, (req, res) => {
 app.get("/api/payouts/all", authMiddleware, requireRole("admin"), (req, res) => {
   const requests = db.prepare(`SELECT pr.*,u.name as drop_name,u.payment_type,u.payment_card,u.payment_iban,u.full_name,u.phone FROM payout_requests pr JOIN users u ON pr.dropshipper_id=u.id ORDER BY CASE WHEN pr.status='pending' THEN 0 ELSE 1 END, pr.created_at DESC`).all();
   requests.forEach(r => {
-    r.items = db.prepare(`SELECT pi.*,o.cod_amount,o.client_name,o.ttn,o.status as order_status FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(r.id);
+    r.items = db.prepare(`SELECT pi.*,o.cod_amount,o.client_name,o.ttn,o.return_ttn,o.return_cost,o.status as order_status FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(r.id);
   });
   res.json({ requests });
 });
