@@ -651,10 +651,14 @@ app.post("/api/stock/swap-size", authMiddleware, (req, res) => {
 
 // Stock log API
 app.get("/api/stock-log", authMiddleware, (req, res) => {
-  const logs = db.prepare(`SELECT sl.*,bp.name as product_name,s.name as size_name,u.name as user_name 
+  const { type } = req.query;
+  let q = `SELECT sl.*,bp.name as product_name,s.name as size_name,u.name as user_name 
     FROM stock_log sl LEFT JOIN base_products bp ON sl.base_product_id=bp.id 
-    LEFT JOIN sizes s ON sl.size_id=s.id LEFT JOIN users u ON sl.user_id=u.id 
-    ORDER BY sl.created_at DESC LIMIT 200`).all();
+    LEFT JOIN sizes s ON sl.size_id=s.id LEFT JOIN users u ON sl.user_id=u.id`;
+  const params = [];
+  if (type) { q += " WHERE sl.type=?"; params.push(type); }
+  q += " ORDER BY sl.created_at DESC LIMIT 200";
+  const logs = db.prepare(q).all(...params);
   res.json({ logs });
 });
 
