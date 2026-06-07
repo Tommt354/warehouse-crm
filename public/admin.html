@@ -185,7 +185,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 
 <div class="page" id="pg-cuts"><div class="pt">✂️ Крій</div>
 <div class="acts" style="margin-bottom:8px"><button class="btn btn-p" onclick="openCutModal()">+ Додати крій</button><button class="btn" onclick="openWorkshopMgr()">🏭 Цехи</button><button class="btn" onclick="cutShowAll=!cutShowAll;loadCuts()" id="cut-show-all-btn">Показати всі</button></div>
-<div id="cuts-bread" style="margin-bottom:6px"></div>
+<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap" id="cut-ws-filter"></div>
 <div id="cuts-list"></div>
 </div>
 
@@ -898,13 +898,18 @@ const OSC={new:"tag-g",in_progress:"tag-b",packed:"tag-g",shipped:"tag-y",delive
 let admOrdFilter="",admReady="",admCh="";
 
 // ── CUTS (Крій) ──────────────────────────────────────────────────
-let cutShowAll=false;
+let cutShowAll=false,cutWsFilter=0;
 async function loadCuts(){
   try{var r=await api("/api/stock-cuts?show_all="+(cutShowAll?"1":"0"));
   var szs=r.sizes;
-  document.getElementById("cuts-list").innerHTML=r.products.length?r.products.map(function(p){
-    return '<div class="pcard"><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+'</div><div class="pcard-sub">'+esc(p.category_name||"")+'</div><div class="stock-row">'+szs.map(function(s){var cd=p.cuts[s.id];var q=cd?cd.total:0;return q>0?'<div class="stock-sz" title="'+cd.workshops.map(function(w){return w.name+": "+w.qty}).join(", ")+'"><b>'+s.name+'</b><br>'+q+'</div>':''}).join("")+'</div></div></div>'
-  }).join(""):'<div class="empty"><span class="ic">✂️</span>'+(cutShowAll?'Немає товарів':'Немає крою. Натисніть "Показати всі"')+'</div>'}catch(e){}
+  // Workshop filter buttons
+  document.getElementById("cut-ws-filter").innerHTML='<button class="btn btn-sm'+(cutWsFilter===0?' on':'')+'" onclick="cutWsFilter=0;loadCuts()">Всі цехи</button>'+r.workshops.map(function(w){return '<button class="btn btn-sm'+(cutWsFilter===w.id?' on':'')+'" onclick="cutWsFilter='+w.id+';loadCuts()">🏭 '+esc(w.name)+'</button>'}).join("");
+  // Filter products by workshop
+  var products=r.products;
+  if(cutWsFilter){products=products.map(function(p){var fp={};fp=Object.assign({},p);fp.cuts={};fp.total_cuts=0;for(var sid in p.cuts){var ws=p.cuts[sid].workshops.filter(function(w){return w.id===cutWsFilter});if(ws.length){fp.cuts[sid]={total:ws.reduce(function(s,w){return s+w.qty},0),workshops:ws};fp.total_cuts+=fp.cuts[sid].total}}return fp}).filter(function(p){return p.total_cuts>0})}
+  document.getElementById("cuts-list").innerHTML=products.length?products.map(function(p){
+    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px"><div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:6px">'+esc(p.name)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+szs.map(function(s){var cd=p.cuts[s.id];if(!cd||cd.total<=0)return"";var wsInfo=cd.workshops.map(function(w){return '<div style="font-size:9px;color:var(--td)">🏭 '+esc(w.name)+': '+w.qty+'</div>'}).join("");return '<div style="background:var(--bg);border-radius:8px;padding:6px 10px;text-align:center;min-width:60px"><div style="font-size:13px;font-weight:700;color:var(--th)">'+s.name+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+cd.total+'</div>'+wsInfo+'</div>'}).join("")+'</div></div>'
+  }).join(""):'<div class="empty"><span class="ic">✂️</span>'+(cutShowAll?'Немає товарів':'Немає крою')+'</div>'}catch(e){}
 }
 async function openCutModal(){
   var bps=await api("/api/base-products?all=1");
