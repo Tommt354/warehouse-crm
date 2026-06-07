@@ -528,9 +528,78 @@ app.get("/api/export/stock", authMiddleware, (req, res) => {
 });
 
 // ── STOCK INCOMING ───────────────────────────────────────────────
+// ── WORKSHOPS & CUTS ──────────────────────────────────────────────
+app.get("/api/workshops", authMiddleware, (req, res) => {
+  res.json({ workshops: db.prepare("SELECT * FROM workshops WHERE active=1 ORDER BY name").all() });
+});
+app.post("/api/workshops", authMiddleware, requireRole("admin"), (req, res) => {
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
+  const r = db.prepare("INSERT INTO workshops(name)VALUES(?)").run(name.trim());
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+app.put("/api/workshops/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("UPDATE workshops SET name=? WHERE id=?").run(req.body.name, req.params.id);
+  res.json({ ok: true });
+});
+app.delete("/api/workshops/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("UPDATE workshops SET active=0 WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Cut stock list
+app.get("/api/stock-cuts", authMiddleware, (req, res) => {
+  const { category_id } = req.query;
+  let q = `SELECT bp.*,m.name as model_name,m.no_workshop,m.category_id,c.name as color_name,cat.name as category_name 
+    FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN categories cat ON m.category_id=cat.id 
+    WHERE bp.active=1 AND m.no_workshop=0`;
+  const params = [];
+  if (category_id) { q += " AND m.category_id=?"; params.push(category_id); }
+  q += " ORDER BY bp.name";
+  const products = db.prepare(q).all(...params);
+  const szs = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
+  const workshops = db.prepare("SELECT * FROM workshops WHERE active=1").all();
+  products.forEach(p => {
+    p.cuts = {};
+    p.total_cuts = 0;
+    const cuts = db.prepare("SELECT sc.*,w.name as workshop_name FROM stock_cuts sc JOIN workshops w ON sc.workshop_id=w.id WHERE sc.base_product_id=? AND sc.quantity>0").all(p.id);
+    cuts.forEach(c => {
+      if (!p.cuts[c.size_id]) p.cuts[c.size_id] = { total: 0, workshops: [] };
+      p.cuts[c.size_id].total += c.quantity;
+      p.cuts[c.size_id].workshops.push({ id: c.workshop_id, name: c.workshop_name, qty: c.quantity });
+      p.total_cuts += c.quantity;
+    });
+  });
+  const filtered = req.query.show_all === "1" ? products : products.filter(p => p.total_cuts > 0);
+  res.json({ products: filtered, sizes: szs, workshops });
+});
+
+// Add cuts
+app.post("/api/stock-cuts/incoming", authMiddleware, (req, res) => {
+  const { base_product_id, workshop_id, items, note } = req.body;
+  if (!base_product_id || !workshop_id || !items?.length) return res.status(400).json({ error: "Всі поля обов'язкові" });
+  db.transaction(() => {
+    for (const item of items) {
+      const qty = parseInt(item.quantity);
+      if (qty > 0) {
+        db.prepare("INSERT INTO cut_incoming(base_product_id,size_id,workshop_id,quantity,note,created_by)VALUES(?,?,?,?,?,?)").run(base_product_id, item.size_id, workshop_id, qty, note||"", req.user.id);
+        const existing = db.prepare("SELECT id FROM stock_cuts WHERE base_product_id=? AND size_id=? AND workshop_id=?").get(base_product_id, item.size_id, workshop_id);
+        if (existing) db.prepare("UPDATE stock_cuts SET quantity=quantity+? WHERE id=?").run(qty, existing.id);
+        else db.prepare("INSERT INTO stock_cuts(base_product_id,size_id,workshop_id,quantity)VALUES(?,?,?,?)").run(base_product_id, item.size_id, workshop_id, qty);
+        db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('cut_in',?,?,?,?,?)").run(base_product_id, item.size_id, qty, "Крій з цеху", req.user.id);
+      }
+    }
+  })();
+  res.json({ ok: true });
+});
+
+// ── STOCK INCOMING (with workshop deduction from cuts) ───────────
 app.post("/api/stock/incoming-bulk", authMiddleware, (req, res) => {
-  const { base_product_id, items, note } = req.body;
+  const { base_product_id, items, note, workshop_id, no_workshop } = req.body;
   if (!base_product_id || !items?.length) return res.status(400).json({ error: "Немає даних" });
+  // Check if product requires workshop
+  const bp = db.prepare("SELECT m.no_workshop FROM base_products bp JOIN models m ON bp.model_id=m.id WHERE bp.id=?").get(base_product_id);
+  if (!no_workshop && !bp?.no_workshop && !workshop_id) return res.status(400).json({ error: "Оберіть цех або позначте 'не з цеху'" });
   db.transaction(() => {
     for (const item of items) {
       const qty = parseInt(item.quantity);
@@ -538,6 +607,11 @@ app.post("/api/stock/incoming-bulk", authMiddleware, (req, res) => {
         db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id,item.size_id,qty,note||"",req.user.id);
         db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty,base_product_id,item.size_id);
         db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('incoming',?,?,?,?,?)").run(base_product_id,item.size_id,qty,note||"",req.user.id);
+        // Deduct from cuts if workshop specified
+        if (workshop_id) {
+          db.prepare("UPDATE stock_cuts SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=? AND workshop_id=?").run(qty, base_product_id, item.size_id, workshop_id);
+          db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('cut_out',?,?,?,?,?)").run(base_product_id, item.size_id, qty, "Крій → база", req.user.id);
+        }
       }
     }
   })();

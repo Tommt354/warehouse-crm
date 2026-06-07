@@ -333,6 +333,36 @@ db.exec(`
     FOREIGN KEY(model_id) REFERENCES models(id)
   );
 
+  CREATE TABLE IF NOT EXISTS workshops (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
+  CREATE TABLE IF NOT EXISTS stock_cuts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    base_product_id INTEGER NOT NULL,
+    size_id INTEGER NOT NULL,
+    workshop_id INTEGER NOT NULL,
+    quantity INTEGER DEFAULT 0,
+    UNIQUE(base_product_id, size_id, workshop_id),
+    FOREIGN KEY(base_product_id) REFERENCES base_products(id),
+    FOREIGN KEY(size_id) REFERENCES sizes(id),
+    FOREIGN KEY(workshop_id) REFERENCES workshops(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS cut_incoming (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    base_product_id INTEGER NOT NULL,
+    size_id INTEGER NOT NULL,
+    workshop_id INTEGER NOT NULL,
+    quantity INTEGER DEFAULT 0,
+    note TEXT DEFAULT '',
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
   -- Комплекти (віртуальні товари для дропшиперів)
   CREATE TABLE IF NOT EXISTS kits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -382,6 +412,7 @@ addCol("users","telegram","TEXT DEFAULT ''");
 addCol("orders","np_ref","TEXT DEFAULT ''");
 addCol("orders","ttn_return","TEXT DEFAULT ''");
 addCol("models","drop_channel","TEXT DEFAULT 'hot'");
+addCol("models","no_workshop","INTEGER DEFAULT 0");
 addCol("order_items","drop_channel","TEXT DEFAULT ''");
 addCol("kits","drop_channel","TEXT DEFAULT 'hot'");
 addCol("orders","drop_channel","TEXT DEFAULT ''");
