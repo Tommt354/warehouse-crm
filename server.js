@@ -1659,7 +1659,7 @@ app.get("/api/stats/detailed", authMiddleware, (req, res) => {
   res.json({
     total, success, failed, profit, codTotal, dropTotal, returnCost, paid, orderSum,
     avgProfit: success > 0 ? profit / success : 0,
-    successRate: total > 0 ? (success / total * 100) : 0,
+    successRate: (success + failed) > 0 ? (success / (success + failed) * 100) : 0,
     unpaid: profit - returnCost - paid,
     daily, date_from: df, date_to: dt
   });

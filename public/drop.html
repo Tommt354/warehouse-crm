@@ -94,10 +94,10 @@
 
 <div class="page on" id="pg-dash">
 <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-  <input type="date" id="stat-from" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">
+  <input type="date" id="stat-from" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit">
   <span style="color:var(--td)">—</span>
-  <input type="date" id="stat-to" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">
-  <button class="btn btn-sm" style="font-size:11px;border-color:var(--acc);color:var(--acc)" onclick="loadStats()">OK</button>
+  <input type="date" id="stat-to" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit">
+  <button class="btn btn-sm" style="font-size:11px;background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadStats()">OK</button>
   <div style="display:flex;gap:3px;margin-left:auto">
     <button class="stab on" onclick="setStatPeriod(7)">7д</button>
     <button class="stab" onclick="setStatPeriod(14)">14д</button>
@@ -115,7 +115,7 @@
 
 <div class="page" id="pg-orders">
 <button class="btn-new" onclick="openNewOrder()">＋ Подати замовлення</button>
-<div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';loadOrders()">✕</button></div>
+<div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';loadOrders()">✕</button></div>
 <div style="margin-bottom:8px"><input id="dr-ttn" placeholder="🔍 Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadOrders()"></div>
 <div class="stabs" id="ord-stabs"></div>
 <div style="margin-bottom:8px;text-align:right"><button id="np-track-btn" class="btn" onclick="trackNP()" style="font-size:11px;padding:6px 12px">🔄 Оновити статуси НП</button></div><div id="ord-list"></div>
@@ -256,17 +256,20 @@ async function loadStats(){
   if(r.daily.length){
     var maxP=Math.max.apply(null,r.daily.map(function(d){return Math.max(d.profit,d.loss)}))||1;
     var maxO=Math.max.apply(null,r.daily.map(function(d){return d.orders}))||1;
-    var bw=Math.max(16,Math.min(36,560/r.daily.length));var cw=r.daily.length*(bw+3)+30;
-    var ch='<svg viewBox="0 0 '+cw+' 200" style="width:'+cw+'px;height:200px">';
-    r.daily.forEach(function(d,i){var x=i*(bw+3)+15;var ph=d.profit/maxP*150;var lh=d.loss/maxP*150;
-      ch+='<rect x="'+x+'" y="'+(165-ph)+'" width="'+bw+'" height="'+ph+'" rx="2" fill="rgba(0,212,170,.45)"><title>'+d.day+': +'+d.profit.toFixed(0)+'₴</title></rect>';
-      if(d.loss>0)ch+='<rect x="'+x+'" y="165" width="'+bw+'" height="'+lh+'" rx="2" fill="rgba(255,107,107,.45)"><title>'+d.day+': -'+d.loss.toFixed(0)+'₴</title></rect>';
-      ch+='<text x="'+(x+bw/2)+'" y="190" fill="var(--td)" font-size="7" text-anchor="middle" font-family="Inter,sans-serif">'+d.day.slice(5)+'</text>';
+    var bw=Math.max(20,Math.min(40,560/r.daily.length));var cw=r.daily.length*(bw+4)+40;
+    var ch='<svg viewBox="0 0 '+cw+' 230" style="width:'+cw+'px;height:230px">';
+    r.daily.forEach(function(d,i){var x=i*(bw+4)+20;var ph=d.profit/maxP*140;var lh=d.loss/maxP*140;
+      ch+='<rect x="'+x+'" y="'+(170-ph)+'" width="'+bw+'" height="'+ph+'" rx="2" fill="rgba(0,212,170,.45)"/>';
+      if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(165-ph)+'" fill="var(--acc)" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">'+Math.round(d.profit/1000)+'k</text>';
+      if(d.loss>0){ch+='<rect x="'+x+'" y="170" width="'+bw+'" height="'+lh+'" rx="2" fill="rgba(255,107,107,.45)"/>';
+      ch+='<text x="'+(x+bw/2)+'" y="'+(175+lh+10)+'" fill="var(--red)" font-size="7" text-anchor="middle">-'+Math.round(d.loss)+'</text>';}
+      ch+='<text x="'+(x+bw/2)+'" y="'+(d.loss>0?195+lh:195)+'" fill="var(--th)" font-size="9" text-anchor="middle" font-family="Inter,sans-serif" transform="rotate(-45,'+(x+bw/2)+','+(d.loss>0?195+lh:195)+')">'+d.day.slice(5)+'</text>';
     });ch+='</svg>';document.getElementById("chart-profit").innerHTML=ch;
-    var co='<svg viewBox="0 0 '+cw+' 170" style="width:'+cw+'px;height:170px">';
-    r.daily.forEach(function(d,i){var x=i*(bw+3)+15;var h=d.orders/maxO*130;
-      co+='<rect x="'+x+'" y="'+(145-h)+'" width="'+bw+'" height="'+h+'" rx="2" fill="rgba(66,165,245,.5)"><title>'+d.day+': '+d.orders+'</title></rect>';
-      co+='<text x="'+(x+bw/2)+'" y="165" fill="var(--td)" font-size="7" text-anchor="middle" font-family="Inter,sans-serif">'+d.day.slice(5)+'</text>';
+    var co='<svg viewBox="0 0 '+cw+' 200" style="width:'+cw+'px;height:200px">';
+    r.daily.forEach(function(d,i){var x=i*(bw+4)+20;var h=d.orders/maxO*130;
+      co+='<rect x="'+x+'" y="'+(155-h)+'" width="'+bw+'" height="'+h+'" rx="2" fill="rgba(66,165,245,.5)"/>';
+      co+='<text x="'+(x+bw/2)+'" y="'+(150-h)+'" fill="var(--blue)" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace" font-weight="600">'+d.orders+'</text>';
+      co+='<text x="'+(x+bw/2)+'" y="175" fill="var(--th)" font-size="9" text-anchor="middle" font-family="Inter,sans-serif" transform="rotate(-45,'+(x+bw/2)+',175)">'+d.day.slice(5)+'</text>';
     });co+='</svg>';document.getElementById("chart-orders").innerHTML=co;
   }else{document.getElementById("chart-profit").innerHTML='<div style="color:var(--td);font-size:11px;padding:10px">Немає даних</div>';document.getElementById("chart-orders").innerHTML=''}
   }catch(e){document.getElementById("stat-grid").innerHTML='<div style="color:var(--red);font-size:11px">Помилка завантаження</div>'}
