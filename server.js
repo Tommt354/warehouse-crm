@@ -999,8 +999,7 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
     const r1 = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: o.ttn }] });
     const st1 = r1.data?.[0];
     let retTtn = o.return_ttn || st1?.LastCreatedOnTheBasisNumber || "";
-    let cost = 0;
-    if (st1?.RedeliverySum) cost = parseFloat(st1.RedeliverySum);
+    let cost = parseFloat(st1?.DocumentCost) || parseFloat(st1?.RedeliverySum) || 0;
     // Save return TTN if found
     if (retTtn && !o.return_ttn) db.prepare("UPDATE orders SET return_ttn=? WHERE id=?").run(retTtn, o.id);
     // Track return TTN for cost
@@ -1694,21 +1693,11 @@ async function autoTrackNP(){
         if((ns==="refused"||ns==="return_transit"||o.status==="refused"||o.status==="return_transit") && st.LastCreatedOnTheBasisNumber){
           const retTtn=st.LastCreatedOnTheBasisNumber;
           db.prepare("UPDATE orders SET return_ttn=? WHERE id=? AND (return_ttn IS NULL OR return_ttn='')").run(retTtn,o.id);
-          // Get return shipping cost from return TTN
+          // Get return cost - use DocumentCost from original TTN
           const existingCost=db.prepare("SELECT return_cost FROM orders WHERE id=?").get(o.id);
           if(!existingCost?.return_cost || existingCost.return_cost===0){
-            try{
-              const rr=await npApi(apiKey,"TrackingDocument","getStatusDocuments",{Documents:[{DocumentNumber:retTtn}]});
-              const rst=rr.data?.[0];
-              if(rst){
-                const cost=parseFloat(rst.DocumentCost)||parseFloat(rst.CostOnSite)||parseFloat(rst.StoragePrice)||parseFloat(rst.RedeliverySum)||0;
-                if(cost>0)db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost,o.id);
-              }
-            }catch(e){}
-            // Also try from original TTN fields
-            if(st.RedeliverySum && parseFloat(st.RedeliverySum)>0){
-              db.prepare("UPDATE orders SET return_cost=? WHERE id=? AND (return_cost=0 OR return_cost IS NULL)").run(parseFloat(st.RedeliverySum),o.id);
-            }
+            const cost=parseFloat(st.DocumentCost)||parseFloat(st.RedeliverySum)||0;
+            if(cost>0)db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost,o.id);
           }
         }
       }catch(e){}
