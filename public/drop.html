@@ -256,20 +256,20 @@ async function loadStats(){
   if(r.daily.length){
     var maxP=Math.max.apply(null,r.daily.map(function(d){return Math.max(d.profit,d.loss)}))||1;
     var maxO=Math.max.apply(null,r.daily.map(function(d){return d.orders}))||1;
-    var bw=Math.max(20,Math.min(40,560/r.daily.length));var cw=r.daily.length*(bw+4)+40;
-    var ch='<svg viewBox="0 0 '+cw+' 230" style="width:'+cw+'px;height:230px">';
-    r.daily.forEach(function(d,i){var x=i*(bw+4)+20;var ph=d.profit/maxP*140;var lh=d.loss/maxP*140;
-      ch+='<rect x="'+x+'" y="'+(170-ph)+'" width="'+bw+'" height="'+ph+'" rx="2" fill="rgba(0,212,170,.45)"/>';
-      if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(165-ph)+'" fill="var(--acc)" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">'+Math.round(d.profit/1000)+'k</text>';
-      if(d.loss>0){ch+='<rect x="'+x+'" y="170" width="'+bw+'" height="'+lh+'" rx="2" fill="rgba(255,107,107,.45)"/>';
-      ch+='<text x="'+(x+bw/2)+'" y="'+(175+lh+10)+'" fill="var(--red)" font-size="7" text-anchor="middle">-'+Math.round(d.loss)+'</text>';}
-      ch+='<text x="'+(x+bw/2)+'" y="'+(d.loss>0?195+lh:195)+'" fill="var(--th)" font-size="9" text-anchor="middle" font-family="Inter,sans-serif" transform="rotate(-45,'+(x+bw/2)+','+(d.loss>0?195+lh:195)+')">'+d.day.slice(5)+'</text>';
+    var bw=Math.max(30,Math.min(55,560/r.daily.length));var gap=6;var cw=r.daily.length*(bw+gap)+60;
+    var ch='<svg viewBox="0 0 '+cw+' 300" style="width:'+cw+'px;height:300px">';
+    r.daily.forEach(function(d,i){var x=i*(bw+gap)+30;var ph=d.profit/maxP*150;var lh=d.loss/maxP*60;
+      ch+='<rect x="'+x+'" y="'+(180-ph)+'" width="'+bw+'" height="'+ph+'" rx="3" fill="rgba(0,212,170,.5)"/>';
+      if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(175-ph-4)+'" fill="#00d4aa" font-size="13" font-weight="700" text-anchor="middle" font-family="JetBrains Mono,monospace">'+(d.profit>=1000?Math.round(d.profit/1000)+'k':Math.round(d.profit))+'</text>';
+      if(d.loss>0){ch+='<rect x="'+x+'" y="180" width="'+bw+'" height="'+lh+'" rx="3" fill="rgba(255,107,107,.5)"/>';
+      ch+='<text x="'+(x+bw/2)+'" y="'+(180+lh+16)+'" fill="#ff6b6b" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono,monospace">-'+Math.round(d.loss)+'</text>';}
+      ch+='<text x="'+(x+bw/2)+'" y="280" fill="#f0f2f5" font-size="12" font-weight="500" text-anchor="middle" font-family="Inter,sans-serif">'+d.day.slice(5)+'</text>';
     });ch+='</svg>';document.getElementById("chart-profit").innerHTML=ch;
-    var co='<svg viewBox="0 0 '+cw+' 200" style="width:'+cw+'px;height:200px">';
-    r.daily.forEach(function(d,i){var x=i*(bw+4)+20;var h=d.orders/maxO*130;
-      co+='<rect x="'+x+'" y="'+(155-h)+'" width="'+bw+'" height="'+h+'" rx="2" fill="rgba(66,165,245,.5)"/>';
-      co+='<text x="'+(x+bw/2)+'" y="'+(150-h)+'" fill="var(--blue)" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace" font-weight="600">'+d.orders+'</text>';
-      co+='<text x="'+(x+bw/2)+'" y="175" fill="var(--th)" font-size="9" text-anchor="middle" font-family="Inter,sans-serif" transform="rotate(-45,'+(x+bw/2)+',175)">'+d.day.slice(5)+'</text>';
+    var co='<svg viewBox="0 0 '+cw+' 240" style="width:'+cw+'px;height:240px">';
+    r.daily.forEach(function(d,i){var x=i*(bw+gap)+30;var h=d.orders/maxO*150;
+      co+='<rect x="'+x+'" y="'+(180-h)+'" width="'+bw+'" height="'+h+'" rx="3" fill="rgba(66,165,245,.55)"/>';
+      co+='<text x="'+(x+bw/2)+'" y="'+(175-h-4)+'" fill="#42a5f5" font-size="14" font-weight="700" text-anchor="middle" font-family="JetBrains Mono,monospace">'+d.orders+'</text>';
+      co+='<text x="'+(x+bw/2)+'" y="210" fill="#f0f2f5" font-size="12" font-weight="500" text-anchor="middle" font-family="Inter,sans-serif">'+d.day.slice(5)+'</text>';
     });co+='</svg>';document.getElementById("chart-orders").innerHTML=co;
   }else{document.getElementById("chart-profit").innerHTML='<div style="color:var(--td);font-size:11px;padding:10px">Немає даних</div>';document.getElementById("chart-orders").innerHTML=''}
   }catch(e){document.getElementById("stat-grid").innerHTML='<div style="color:var(--red);font-size:11px">Помилка завантаження</div>'}
