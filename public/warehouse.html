@@ -117,6 +117,8 @@
 <div class="modal-bg" id="wh-inc-modal"><div class="modal"><h3>📥 Прихід товару</h3>
 <div class="fld"><label>Категорія</label><select id="whi-cat" onchange="filterWhBp('whi')"><option value="">— Всі —</option></select></div>
 <div class="fld"><label>Товар</label><select id="whi-bp" onchange="loadWhIncSz()"></select></div>
+<div class="fld"><label>Цех</label><select id="whi-ws" style="width:100%;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"></select>
+<label style="margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="whi-no-ws" onchange="document.getElementById('whi-ws').disabled=this.checked;document.getElementById('whi-ws').style.opacity=this.checked?'.3':'1'" style="width:16px;height:16px;accent-color:var(--acc)"><span style="font-size:11px;color:var(--td)">Не з цеху</span></label></div>
 <div id="whi-sizes"></div>
 <div class="fld"><label>Примітка</label><input id="whi-note"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveWhInc()">💾 Оприбуткувати</button><button class="btn" onclick="clM('wh-inc-modal')">Скасувати</button></div>
@@ -400,6 +402,9 @@ function filterWhBp(prefix){
 async function openWhInc(){
   var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
   try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
+  var ws=await api("/api/workshops");
+  document.getElementById("whi-ws").innerHTML=ws.workshops.map(function(w){return '<option value="'+w.id+'">'+esc(w.name)+'</option>'}).join("");
+  document.getElementById("whi-no-ws").checked=false;document.getElementById("whi-ws").disabled=false;document.getElementById("whi-ws").style.opacity="1";
   populateCatSelect("whi");filterWhBp("whi");
   loadWhIncSz();opM("wh-inc-modal");
 }
@@ -411,10 +416,12 @@ function loadWhIncSz(){
 }
 async function saveWhInc(){
   var id=parseInt(document.getElementById("whi-bp").value);
+  var noWs=document.getElementById("whi-no-ws").checked;
+  var wsId=noWs?null:parseInt(document.getElementById("whi-ws").value);
   var items=Array.from(document.querySelectorAll("#whi-sizes input[data-sid]")).map(function(el){return{size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0}}).filter(function(i){return i.quantity>0});
   if(!items.length){alert("Кількість");return}
-  await api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:id,items:items,note:document.getElementById("whi-note").value})});
-  clM("wh-inc-modal");loadWhStock();
+  try{await api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:id,items:items,note:document.getElementById("whi-note").value,workshop_id:wsId,no_workshop:noWs})});
+  clM("wh-inc-modal");loadWhStock()}catch(e){alert(e.message)}
 }
 
 // Write-off
