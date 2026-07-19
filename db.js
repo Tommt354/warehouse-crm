@@ -2,6 +2,9 @@ const Database = require("better-sqlite3");
 const path = require("path");
 const bcrypt = require("bcryptjs");
 const fs = require("fs");
+const crypto = require("crypto");
+
+function genPassword() { return crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, ""); }
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, "crm.db");
 if (process.env.RESET_DB === "1" && fs.existsSync(dbPath)) {
@@ -426,23 +429,25 @@ addCol("orders","declared_value","REAL DEFAULT 0");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){
-  db.prepare("INSERT INTO users(username,password_hash,role,name)VALUES(?,?,'admin','Адміністратор')").run("admin",bcrypt.hashSync("admin123",10));
-  console.log("✅ admin / admin123");
+  const pw = process.env.ADMIN_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name)VALUES(?,?,'admin','Адміністратор')").run("admin",bcrypt.hashSync(pw,10));
+  console.log("✅ Створено admin, логін: admin, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
 }
 if(!db.prepare("SELECT id FROM users WHERE role='dropshipper' LIMIT 1").get()){
-  db.prepare("INSERT INTO users(username,password_hash,role,name)VALUES(?,?,'dropshipper','Тест Дроп')").run("drop1",bcrypt.hashSync("drop1234",10));
-  console.log("✅ drop1 / drop1234");
+  const pw = process.env.DROPSHIPPER_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name)VALUES(?,?,'dropshipper','Тест Дроп')").run("drop1",bcrypt.hashSync(pw,10));
+  console.log("✅ Створено drop1, логін: drop1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
 }
 if(!db.prepare("SELECT id FROM users WHERE role='warehouse' LIMIT 1").get()){
-  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse','Пакувальник 1','packer',5)").run("pack1",bcrypt.hashSync("pack1234",10));
-  console.log("✅ pack1 / pack1234");
+  const pw = process.env.WAREHOUSE_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse','Пакувальник 1','packer',5)").run("pack1",bcrypt.hashSync(pw,10));
+  console.log("✅ Створено pack1, логін: pack1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
 }
 if(!db.prepare("SELECT id FROM sizes LIMIT 1").get()){
   const s=db.prepare("INSERT INTO sizes(name,sort_order)VALUES(?,?)");
   ["XXS","XS","S","M","L","XL","2XL","3XL"].forEach((n,i)=>s.run(n,i));
 }
 const ups=db.prepare("INSERT OR IGNORE INTO settings(key,value)VALUES(?,?)");
-({stock_warning_threshold:"3",company_name:"Warehouse CRM",np_api_key:process.env.NP_API_KEY||""}).
-  constructor.entries&&Object.entries({stock_warning_threshold:"3",company_name:"Warehouse CRM",np_api_key:process.env.NP_API_KEY||"",sender_city:"",sender_warehouse:"",sender_phone:"",sender_name:""}).forEach(([k,v])=>ups.run(k,v));
+Object.entries({stock_warning_threshold:"3",company_name:"ADS DROP",np_api_key:process.env.NP_API_KEY||"",sender_city:"",sender_warehouse:"",sender_phone:"",sender_name:""}).forEach(([k,v])=>ups.run(k,v));
 
 module.exports=db;

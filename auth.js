@@ -1,5 +1,11 @@
 const jwt = require("jsonwebtoken");
-const SECRET = process.env.JWT_SECRET || "warehouse-crm-secret-" + Date.now();
+const crypto = require("crypto");
+
+let SECRET = process.env.JWT_SECRET;
+if (!SECRET) {
+  SECRET = crypto.randomBytes(32).toString("hex");
+  console.warn("⚠️  JWT_SECRET не задано в env — згенеровано тимчасовий секрет на цей запуск. Токени стануть недійсними після рестарту сервера. Задайте JWT_SECRET у .env для стабільних сесій.");
+}
 
 function createToken(user) {
   return jwt.sign({ id: user.id, username: user.username, role: user.role, name: user.name }, SECRET, { expiresIn: "7d" });

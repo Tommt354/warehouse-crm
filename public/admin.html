@@ -2,190 +2,114 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>CRM — Адмін</title>
+<title>ADS DROP — Адмін</title>
+<link rel="icon" type="image/png" href="/public/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/public/theme.css">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
-:root{--bg:#0a0e17;--card:#111827;--input:#0d1220;--brd:#1e2740;--brd2:#2a3a5c;--t:#c8cdd5;--td:#5a6378;--th:#f0f2f5;--acc:#00d4aa;--accbg:rgba(0,212,170,.06);--red:#ff6b6b;--redbg:rgba(255,107,107,.06);--warn:#ffa726;--warnbg:rgba(255,167,38,.06);--blue:#42a5f5;--r:12px}
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min-height:100vh}
-.app{display:flex;min-height:100vh}
-.side{width:190px;background:var(--card);border-right:1px solid var(--brd);padding:14px 0;display:flex;flex-direction:column;position:fixed;height:100vh;z-index:10;overflow-y:auto}
-.side-logo{padding:0 12px 14px;border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:8px}
-.side-logo h2{font-size:13px;color:var(--th);font-weight:700}
-.side-nav{flex:1;padding:6px 0}
-.nav-g{font-size:9px;color:var(--td);text-transform:uppercase;letter-spacing:.8px;padding:10px 12px 3px;font-weight:600}
-.side-nav a{display:flex;align-items:center;gap:7px;padding:7px 12px;color:var(--td);text-decoration:none;font-size:11.5px;font-weight:500;transition:.15s;cursor:pointer}
-.side-nav a:hover{color:var(--t);background:rgba(255,255,255,.02)}
-.side-nav a.on{color:var(--acc);background:var(--accbg);border-right:2px solid var(--acc)}
-.side-bottom{padding:8px 12px;border-top:1px solid var(--brd)}
-.side-user{font-size:10px;color:var(--td);margin-bottom:5px}.side-user b{color:var(--th);display:block}
-.btn-out{background:none;border:1px solid var(--brd);border-radius:6px;color:var(--td);padding:5px 10px;font-size:10px;font-family:inherit;cursor:pointer;width:100%}
-.btn-out:hover{border-color:var(--red);color:var(--red)}
-.main{margin-left:190px;flex:1;padding:18px 22px 40px}
-.page{display:none}.page.on{display:block}
-.pt{font-size:17px;font-weight:700;color:var(--th);margin-bottom:14px}
-.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:18px}
-.sc{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:12px;text-align:center}
-.sc .sv{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;line-height:1}
-.sc .sl{font-size:8px;color:var(--td);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
-.tbl{width:100%;border-collapse:collapse;font-size:11px}
-.tbl th{text-align:left;color:var(--td);font-weight:600;padding:7px 8px;border-bottom:2px solid var(--brd);font-size:9px;text-transform:uppercase;letter-spacing:.3px}
-.tbl td{padding:7px 8px;border-bottom:1px solid var(--brd)}
-.tbl tr:hover td{background:rgba(255,255,255,.015)}
-.mono{font-family:'JetBrains Mono',monospace;font-size:10px}
-.btn{padding:6px 12px;font-size:11px;font-family:inherit;font-weight:500;border:1px solid var(--brd);border-radius:7px;cursor:pointer;transition:.15s;background:var(--card);color:var(--t)}
-.btn:hover{border-color:var(--brd2)}.btn:disabled{opacity:.4}
-.btn-a{border-color:rgba(0,212,170,.2);color:var(--acc)}.btn-a:hover{background:var(--accbg)}
-.btn-d{border-color:rgba(255,107,107,.15);color:var(--red)}
-.btn-p{background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600}.btn-p:hover{opacity:.9}
-.btn-sm{padding:3px 7px;font-size:9px}
-.acts{display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
-.modal-bg.on{display:flex}
-.modal{background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:20px;width:92%;max-width:560px;max-height:85vh;overflow-y:auto}
-.modal h3{font-size:15px;font-weight:700;color:var(--th);margin-bottom:14px}
-.fld{margin-bottom:10px}
-.fld label{display:block;font-size:9px;color:var(--td);margin-bottom:3px;font-weight:500;text-transform:uppercase;letter-spacing:.3px}
-.fld input,.fld select,.fld textarea{width:100%;padding:8px 10px;font-size:12px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff;outline:0;transition:.2s}
-.fld input:focus,.fld select:focus{border-color:var(--acc)}
-.fld small{font-size:9px;color:var(--td);margin-top:1px;display:block}
-.fld-row{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.tag{display:inline-block;font-size:8px;font-weight:600;padding:2px 6px;border-radius:4px}
-.tag-g{background:var(--accbg);color:var(--acc)}.tag-r{background:var(--redbg);color:var(--red)}
-.stab{padding:6px 12px;font-size:11px;font-weight:600;background:var(--card);border:1px solid var(--brd);border-radius:8px;color:var(--td);cursor:pointer;font-family:inherit}.stab:hover{border-color:var(--brd2);color:var(--t)}.stab.on{color:var(--acc);border-color:rgba(0,212,170,.3);background:var(--accbg)}
-.tag-b{background:rgba(66,165,245,.06);color:var(--blue)}.tag-y{background:var(--warnbg);color:var(--warn)}
-.msg{padding:8px 12px;border-radius:7px;font-size:11px;margin-bottom:10px}
-.msg-ok{background:var(--accbg);color:var(--acc)}.msg-err{background:var(--redbg);color:var(--red)}
-.empty{text-align:center;padding:28px;color:var(--td);font-size:12px}.empty .ic{font-size:32px;display:block;margin-bottom:5px}
-/* Search */
-.search-bar{width:100%;max-width:300px;padding:7px 10px;font-size:12px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff;outline:0;margin-right:auto}
-.search-bar:focus{border-color:var(--acc)}
-/* Cards grid */
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
-.crd{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;transition:.15s;cursor:pointer}
-.crd:hover{border-color:var(--brd2)}
-.crd-img{width:100%;height:120px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td);font-size:10px;overflow:hidden}
-.crd-img img{width:100%;height:100%;object-fit:cover}
-.crd-body{padding:8px 10px}
-.crd-name{font-size:11px;font-weight:600;color:var(--th)}
-.crd-sub{font-size:9px;color:var(--td);margin-top:2px}
-.crd-acts{display:flex;gap:4px;margin-top:6px;justify-content:flex-end}
-/* Breadcrumb */
-.bread{display:flex;align-items:center;gap:4px;font-size:11px;margin-bottom:12px;flex-wrap:wrap}
-.bread a{color:var(--acc);text-decoration:none;cursor:pointer}.bread a:hover{text-decoration:underline}
-.bread span{color:var(--td)}
-/* Stock card */
-.pcard{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden}
-.pcard-img{width:100%;height:130px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--td);font-size:10px;overflow:hidden;cursor:pointer;position:relative}
-.pcard-img img{width:100%;height:100%;object-fit:cover}
-.pcard-body{padding:8px 10px}
-.pcard-name{font-size:11px;font-weight:600;color:var(--th);margin-bottom:3px}
-.pcard-sub{font-size:9px;color:var(--td);margin-bottom:5px}
-.pcard-prices{display:flex;gap:4px;margin-bottom:5px}
-.pp{font-size:9px;padding:1px 5px;border-radius:3px}
-.stock-row{display:flex;gap:2px;flex-wrap:wrap}
-.stock-sz{font-size:9px;padding:2px 5px;border-radius:3px;background:var(--bg);color:var(--t);border:1px solid var(--brd);font-family:'JetBrains Mono',monospace;text-align:center;min-width:32px}
-.stock-sz.zero{color:var(--red);border-color:rgba(255,107,107,.2)}.stock-sz.low{color:var(--warn);border-color:rgba(255,167,38,.2)}
-/* Popup select */
+/* Page-specific overrides */
 .popup-sel{position:relative}
-.popup-sel-input{width:100%;padding:7px 10px;font-size:11px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff;outline:0;cursor:pointer}
-.popup-sel-input:focus{border-color:var(--acc)}
-.popup-dd{display:none;position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--brd2);border-radius:7px;max-height:200px;overflow-y:auto;z-index:50;margin-top:2px}
+.popup-sel-input{width:100%;padding:8px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);outline:0;cursor:pointer;transition:all var(--duration-fast)}
+.popup-sel-input:focus{border-color:var(--accent)}
+.popup-dd{display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border-default);border-radius:var(--radius-md);max-height:200px;overflow-y:auto;z-index:50;margin-top:4px}
 .popup-dd.open{display:block}
-.popup-dd-item{padding:6px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.popup-dd-item{padding:8px 12px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background var(--duration-fast)}
 .popup-dd-item:hover{background:rgba(255,255,255,.03)}
-.popup-dd-item.sel{color:var(--acc);background:var(--accbg)}
-.cdot{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid var(--brd)}
-.sel-tags{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
-.sel-tag{font-size:9px;padding:2px 7px;border-radius:10px;background:var(--accbg);color:var(--acc);border:1px solid rgba(0,212,170,.2);cursor:pointer}
-.sel-tag:hover{background:var(--redbg);color:var(--red);border-color:rgba(255,107,107,.2)}
-/* Switch */
-.sw{display:flex;align-items:center;gap:7px;margin-bottom:10px}
-.sw label{font-size:11px;color:var(--t)}
-.swb{width:36px;height:20px;background:var(--brd);border-radius:10px;position:relative;cursor:pointer;transition:.2s}
-.swb.on{background:var(--acc)}.swb::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:.2s}.swb.on::after{left:18px}
-/* Worker row */
-.wrow{display:flex;gap:6px;align-items:center;margin-bottom:4px;padding:4px 6px;background:var(--bg);border-radius:6px;font-size:11px}
-.wrow .wname{flex:1;color:var(--th)}.wrow input{width:70px;padding:4px 6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff;text-align:center}
-.wrow .wdel{background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;padding:2px 4px}
-@media(max-width:768px){.side{display:none}.main{margin-left:0}.cards{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
+.popup-dd-item.sel{color:var(--accent);background:var(--accent-soft)}
+.cdot{display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border-default)}
+.sel-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.sel-tag{font-size:10px;padding:3px 8px;border-radius:12px;background:var(--accent-soft);color:var(--accent);border:1px solid rgba(16,185,129,.2);cursor:pointer;transition:all var(--duration-fast)}
+.sel-tag:hover{background:var(--error-soft);color:var(--error);border-color:rgba(239,68,68,.2)}
+.sw{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.sw label{font-size:12px;color:var(--text-primary)}
+.swb{width:40px;height:22px;background:var(--border-default);border-radius:11px;position:relative;cursor:pointer;transition:background var(--duration-fast)}
+.swb.on{background:var(--accent)}
+.swb::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:left var(--duration-fast)}
+.swb.on::after{left:20px}
+.wrow{display:flex;gap:8px;align-items:center;margin-bottom:6px;padding:8px 10px;background:var(--bg-deep);border-radius:var(--radius-md);font-size:12px}
+.wrow .wname{flex:1;color:var(--text-primary)}
+.wrow input{width:80px;padding:6px 8px;font-size:12px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-sm);color:var(--text-primary);text-align:center}
+.wrow .wdel{background:none;border:none;color:var(--error);cursor:pointer;font-size:14px;padding:4px}
 </style>
+<script src="/public/icons.js"></script>
 </head>
 <body>
 <div class="app">
 <div class="side">
-  <div class="side-logo"><svg width="22" height="22" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1a1a2e"/><rect x="6" y="8" width="3" height="16" rx="1" fill="#00d4aa"/><rect x="11" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="15" y="8" width="4" height="16" rx="1" fill="#00d4aa"/><rect x="21" y="8" width="2" height="16" rx="1" fill="#00d4aa"/><rect x="25" y="8" width="1" height="16" rx=".5" fill="#00d4aa"/></svg><h2>CRM</h2></div>
+  <div class="side-logo"><img src="/public/logo-white.png" alt="ADS DROP" style="height:24px;width:auto"></div>
   <div class="side-nav">
-    <a class="on" data-p="dash">📊 Дашборд</a>
+    <a class="on" data-p="dash"><i data-icon="layoutDashboard" data-size="15"></i> Дашборд</a>
     <div class="nav-g">Каталог</div>
-    <a data-p="dirs">📖 Довідники</a>
-    <a data-p="models">🏷 Моделі</a>
+    <a data-p="dirs"><i data-icon="bookOpen" data-size="15"></i> Довідники</a>
+    <a data-p="models"><i data-icon="tag" data-size="15"></i> Моделі</a>
     <div class="nav-g">Склад</div>
-    <a data-p="sbase">📦 Склад база</a>
-    <a data-p="sdrop">🛒 Склад дроп</a>
-    <a data-p="cuts">✂️ Крій</a>
-    <a data-p="orders">📋 Замовлення</a>
-    <a data-p="returns">📦 Повернення</a>
+    <a data-p="sbase"><i data-icon="package" data-size="15"></i> Склад база</a>
+    <a data-p="sdrop"><i data-icon="shoppingCart" data-size="15"></i> Склад дроп</a>
+    <a data-p="cuts"><i data-icon="scissors" data-size="15"></i> Крій</a>
+    <a data-p="orders"><i data-icon="clipboardList" data-size="15"></i> Замовлення</a>
+    <a data-p="returns"><i data-icon="packageOpen" data-size="15"></i> Повернення</a>
     <div class="nav-g">Користувачі</div>
-    <a data-p="drops">🛒 Дропшипери</a>
-    <a data-p="workers">👷 Працівники</a>
+    <a data-p="drops"><i data-icon="users" data-size="15"></i> Дропшипери</a>
+    <a data-p="workers"><i data-icon="hardHat" data-size="15"></i> Працівники</a>
     <div class="nav-g">Система</div>
-    <a data-p="payouts">💰 Виплати</a>
-    <a data-p="adm-returns">↩ Повернення</a>
-    <a data-p="stocklog">📊 Рух товару</a>
-    <a data-p="settings">⚙️ Налаштування</a>
+    <a data-p="payouts"><i data-icon="wallet" data-size="15"></i> Виплати</a>
+    <a data-p="adm-returns"><i data-icon="undo2" data-size="15"></i> Повернення</a>
+    <a data-p="stocklog"><i data-icon="barChart3" data-size="15"></i> Рух товару</a>
+    <a data-p="settings"><i data-icon="settings" data-size="15"></i> Налаштування</a>
   </div>
   <div class="side-bottom"><div class="side-user"><b id="u-name">—</b></div><button class="btn-out" onclick="logout()">Вийти</button></div>
 </div>
 <div class="main">
 
-<div class="page on" id="pg-dash"><div class="pt">📊 Дашборд</div><div class="sg" id="dash-s"></div></div>
+<div class="page on" id="pg-dash"><div class="pt"><i data-icon="layoutDashboard" data-size="17"></i> Дашборд</div><div class="sg" id="dash-s"></div></div>
 
-<div class="page" id="pg-dirs"><div class="pt">📖 Довідники</div>
+<div class="page" id="pg-dirs"><div class="pt"><i data-icon="bookOpen" data-size="17"></i> Довідники</div>
 <div class="acts">
-  <button class="btn" onclick="showDir('colors')" id="dt-colors">🎨 Кольори</button>
-  <button class="btn" onclick="showDir('sizes')" id="dt-sizes">📏 Розміри</button>
-  <button class="btn" onclick="showDir('prints')" id="dt-prints">🖼 Принти</button>
-  <button class="btn" onclick="showDir('patches')" id="dt-patches">🏷 Нашивки</button>
+  <button class="btn" onclick="showDir('colors')" id="dt-colors"><i data-icon="palette" data-size="15"></i> Кольори</button>
+  <button class="btn" onclick="showDir('sizes')" id="dt-sizes"><i data-icon="ruler" data-size="15"></i> Розміри</button>
+  <button class="btn" onclick="showDir('prints')" id="dt-prints"><i data-icon="image" data-size="15"></i> Принти</button>
+  <button class="btn" onclick="showDir('patches')" id="dt-patches"><i data-icon="tag" data-size="15"></i> Нашивки</button>
 </div>
 <div class="acts"><input class="search-bar" id="dir-search" placeholder="Пошук..." oninput="loadDir()"><button class="btn btn-p" onclick="addDirItem()">+ Додати</button></div>
 <div id="dir-list"></div>
 </div>
 
-<div class="page" id="pg-models"><div class="pt">🏷 Моделі</div>
+<div class="page" id="pg-models"><div class="pt"><i data-icon="tag" data-size="17"></i> Моделі</div>
 <div class="acts"><button class="btn btn-p" onclick="openNewModel()">+ Нова модель</button></div>
 <div id="model-list"></div>
 </div>
 
-<div class="page" id="pg-sbase"><div class="pt">📦 Склад база</div>
+<div class="page" id="pg-sbase"><div class="pt"><i data-icon="package" data-size="17"></i> Склад база</div>
 <div id="sbase-bread"></div>
 <div class="acts">
-  <div class="acts" style="margin-bottom:4px"><button class="btn on" id="sr-all" onclick="sbReady='';sbCatP=null;loadSBase()">Всі</button><button class="btn" id="sr-0" onclick="sbReady='0';sbCatP=null;loadSBase()">🖨 Не готові</button><button class="btn" id="sr-1" onclick="sbReady='1';sbCatP=null;loadSBase()">✅ Готові</button></div>
+  <div class="acts" style="margin-bottom:4px"><button class="btn on" id="sr-all" onclick="sbReady='';sbCatP=null;loadSBase()">Всі</button><button class="btn" id="sr-0" onclick="sbReady='0';sbCatP=null;loadSBase()"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="sr-1" onclick="sbReady='1';sbCatP=null;loadSBase()"><i data-icon="check" data-size="15"></i> Готові</button></div>
   <button class="btn btn-p" onclick="addCatIn('base')">+ Категорія</button>
-  <button class="btn btn-a" onclick="openInc()">📥 Прихід</button>
-  <button class="btn btn-d" onclick="openWriteOff()">📤 Списати</button>
-  <button class="btn btn-w" onclick="openSwapSize()">🔄 Заміна розміру</button>
-  <a class="btn" href="/api/export/stock" style="text-decoration:none">📊 CSV</a>
+  <button class="btn btn-a" onclick="openInc()"><i data-icon="download" data-size="15"></i> Прихід</button>
+  <button class="btn btn-d" onclick="openWriteOff()"><i data-icon="upload" data-size="15"></i> Списати</button>
+  <button class="btn btn-w" onclick="openSwapSize()"><i data-icon="refreshCw" data-size="15"></i> Заміна розміру</button>
+  <a class="btn" href="/api/export/stock" style="text-decoration:none"><i data-icon="barChart3" data-size="15"></i> CSV</a>
   <input class="search-bar" placeholder="Пошук..." oninput="searchSBase(this.value)">
 </div>
 <div class="cards" id="sbase-cats"></div>
 <div class="cards" id="sbase-list" style="margin-top:10px"></div>
 </div>
 
-<div class="page" id="pg-sdrop"><div class="pt">🛒 Склад дроп</div>
-<div class="acts" style="margin-bottom:4px"><button class="btn on" id="dc-all" onclick="sdChannel='';sdCatP=null;loadSDrop()">Всі</button><button class="btn" id="dc-hot" onclick="sdChannel='hot';sdCatP=null;loadSDrop()">🔥 HOT</button><button class="btn" id="dc-ads" onclick="sdChannel='ads';sdCatP=null;loadSDrop()">📢 ADS</button></div>
+<div class="page" id="pg-sdrop"><div class="pt"><i data-icon="shoppingCart" data-size="17"></i> Склад дроп</div>
+<div class="acts" style="margin-bottom:4px"><button class="btn on" id="dc-all" onclick="sdChannel='';sdCatP=null;loadSDrop()">Всі</button><button class="btn" id="dc-hot" onclick="sdChannel='hot';sdCatP=null;loadSDrop()"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="dc-ads" onclick="sdChannel='ads';sdCatP=null;loadSDrop()"><i data-icon="megaphone" data-size="15"></i> ADS</button></div>
 <div id="sdrop-bread"></div>
 <div class="acts">
   <button class="btn btn-p" onclick="addCatIn('drop')">+ Категорія</button>
-  <button class="btn btn-a" onclick="openKitModal()">🎁 Сформувати комплект</button>
+  <button class="btn btn-a" onclick="openKitModal()"><i data-icon="gift" data-size="15"></i> Сформувати комплект</button>
   <input class="search-bar" placeholder="Пошук варіацій..." oninput="searchSDrop(this.value)">
 </div>
 <div class="cards" id="sdrop-cats"></div>
 <div class="cards" id="sdrop-list" style="margin-top:10px"></div>
 </div>
 
-<div class="page" id="pg-cuts"><div class="pt">✂️ Крій</div>
-<div class="acts" style="margin-bottom:8px"><button class="btn btn-p" onclick="openCutModal()">+ Додати крій</button><button class="btn" onclick="openWorkshopMgr()">🏭 Цехи</button><button class="btn" onclick="cutShowAll=!cutShowAll;loadCuts()" id="cut-show-all-btn">Показати всі</button></div>
+<div class="page" id="pg-cuts"><div class="pt"><i data-icon="scissors" data-size="17"></i> Крій</div>
+<div class="acts" style="margin-bottom:8px"><button class="btn btn-p" onclick="openCutModal()">+ Додати крій</button><button class="btn" onclick="openWorkshopMgr()"><i data-icon="factory" data-size="15"></i> Цехи</button><button class="btn" onclick="cutShowAll=!cutShowAll;loadCuts()" id="cut-show-all-btn">Показати всі</button></div>
 <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap" id="cut-ws-filter"></div>
 <div id="cuts-list"></div>
 </div>
@@ -196,20 +120,20 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld"><label>Цех</label><select id="cut-ws" style="width:100%;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"></select></div>
 <div id="cut-sizes"></div>
 <div class="fld"><label>Примітка</label><input id="cut-note"></div>
-<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveCut()">💾 Зберегти</button><button class="btn" onclick="closeM('cut-modal')">Скасувати</button></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveCut()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('cut-modal')">Скасувати</button></div>
 </div></div>
 
 <!-- Workshop manager modal -->
-<div class="modal-bg" id="ws-modal"><div class="modal" style="max-width:400px"><h3>🏭 Цехи</h3>
+<div class="modal-bg" id="ws-modal"><div class="modal" style="max-width:400px"><h3><i data-icon="factory" data-size="16"></i> Цехи</h3>
 <div id="ws-list"></div>
 <div style="display:flex;gap:4px;margin-top:8px"><input id="ws-name" placeholder="Назва цеху" style="flex:1;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"><button class="btn btn-p" onclick="addWorkshop()">+</button></div>
 <div style="margin-top:10px"><button class="btn" onclick="closeM('ws-modal')">Закрити</button></div>
 </div></div>
 
-<div class="page" id="pg-orders"><div class="pt">📋 Замовлення</div>
-<div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';loadAdmOrders(admOrdFilter)">🖨 Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';loadAdmOrders(admOrdFilter)">✅ Готові товари</button></div>
-<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';loadAdmOrders(admOrdFilter)">🔥 HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';loadAdmOrders(admOrdFilter)">📢 ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';loadAdmOrders(admOrdFilter)">✕</button></div>
-<div style="margin-bottom:6px"><input id="adm-ttn" placeholder="🔍 Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadAdmOrders(admOrdFilter)"></div>
+<div class="page" id="pg-orders"><div class="pt"><i data-icon="clipboardList" data-size="17"></i> Замовлення</div>
+<div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';loadAdmOrders(admOrdFilter)"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';loadAdmOrders(admOrdFilter)"><i data-icon="check" data-size="15"></i> Готові товари</button></div>
+<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button></div>
+<div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadAdmOrders(admOrdFilter)"></div>
 <div class="acts" style="flex-wrap:wrap;gap:4px">
   <button class="btn" onclick="loadAdmOrders('')" id="ao-all">Всі</button>
   <button class="btn" onclick="loadAdmOrders('new')" id="ao-new">Нові</button>
@@ -220,21 +144,21 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
   <button class="btn" onclick="loadAdmOrders('refused')" id="ao-refused">Відмови</button>
   <button class="btn" onclick="loadAdmOrders('cancelled')" id="ao-cancelled">Скасовані</button>
 </div>
-<div style="text-align:right;margin-bottom:6px"><button id="adm-track-btn" class="btn btn-sm" onclick="admTrackNP()" style="border-color:rgba(66,165,245,.3);color:var(--blue);font-size:11px">🔄 Оновити статуси НП</button></div>
+<div style="text-align:right;margin-bottom:6px"><button id="adm-track-btn" class="btn btn-sm" onclick="admTrackNP()" style="border-color:rgba(66,165,245,.3);color:var(--blue);font-size:11px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button></div>
 <div id="adm-orders"></div>
 </div>
 
-<div class="page" id="pg-returns"><div class="pt">📦 Склад повернень</div>
+<div class="page" id="pg-returns"><div class="pt"><i data-icon="packageOpen" data-size="17"></i> Склад повернень</div>
 <div style="margin-bottom:14px"><input class="search-bar" id="ret-scan" placeholder="Скануйте ТТН для реєстрації повернення..." style="max-width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace"></div>
 <div id="ret-scan-result" style="margin-bottom:14px"></div>
 <div class="pt" style="font-size:14px;margin-top:10px">Наявні повернення:</div>
 <div id="ret-stock-list"></div>
 </div>
 
-<div class="page" id="pg-drops"><div class="pt">🛒 Дропшипери</div>
+<div class="page" id="pg-drops"><div class="pt"><i data-icon="users" data-size="17"></i> Дропшипери</div>
 <div class="acts"><button class="btn btn-p" onclick="openUM('dropshipper')">+ Додати</button></div><div id="drop-list"></div></div>
 
-<div class="page" id="pg-workers"><div class="pt">👷 Працівники</div>
+<div class="page" id="pg-workers"><div class="pt"><i data-icon="hardHat" data-size="17"></i> Працівники</div>
 <div class="acts" style="margin-bottom:10px"><button class="btn btn-p" onclick="openAddWorker()">+ Додати працівника</button></div>
 <div id="workers-list"></div>
 </div>
@@ -243,10 +167,10 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="modal-bg" id="wk-modal"><div class="modal" style="max-width:450px"><h3 id="wk-title">+ Працівник</h3>
 <div class="fld"><label>Ім'я</label><input id="wk-name"></div>
 <div class="fld"><label>Роль</label><select id="wk-role" onchange="toggleWkRole()" style="width:100%;padding:9px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff">
-  <option value="packer">👷 Головний пакувальник</option>
-  <option value="finalizer">📦 Пакувальниця</option>
-  <option value="seamstress">🧵 Швея</option>
-  <option value="printer">🖨 Принтувальник</option>
+  <option value="packer">Головний пакувальник</option>
+  <option value="finalizer">Пакувальниця</option>
+  <option value="seamstress">Швея</option>
+  <option value="printer">Принтувальник</option>
 </select></div>
 <div id="wk-auth-wrap">
 <div class="fld-row"><div class="fld"><label>Логін</label><input id="wk-login"></div><div class="fld"><label>Пароль</label><input id="wk-pass" type="password"></div></div>
@@ -255,7 +179,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld" id="wk-rate-wrap"><label id="wk-rate-label">Виробіток за 1 видану річ ₴</label><input id="wk-rate" type="number" value="0"></div>
 <div id="wk-return-wrap" class="fld"><label>Виробіток за 1 річ з повернення ₴</label><input id="wk-ret-rate" type="number" value="0"></div>
 <div id="wk-err" class="msg msg-err" style="display:none"></div>
-<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveWorker()">💾 Зберегти</button><button class="btn" onclick="closeM('wk-modal')">Скасувати</button></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveWorker()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('wk-modal')">Скасувати</button></div>
 </div></div>
 
 <!-- Worker detail modal -->
@@ -264,12 +188,12 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div style="margin-top:10px"><button class="btn" onclick="closeM('wk-detail-modal')">Закрити</button></div>
 </div></div>
 
-<div class="page" id="pg-payouts"><div class="pt">💰 Виплати</div>
-<div style="margin-bottom:10px"><input id="pay-search" placeholder="🔍 Пошук по дропшиперу..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="filterPayouts()"></div>
+<div class="page" id="pg-payouts"><div class="pt"><i data-icon="wallet" data-size="17"></i> Виплати</div>
+<div style="margin-bottom:10px"><input id="pay-search" placeholder="Пошук по дропшиперу..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="filterPayouts()"></div>
 <div id="adm-payouts"></div>
 </div>
 
-<div class="page" id="pg-adm-returns"><div class="pt">↩ Повернення</div>
+<div class="page" id="pg-adm-returns"><div class="pt"><i data-icon="undo2" data-size="17"></i> Повернення</div>
 <div class="sg" style="margin-bottom:10px">
   <div class="sc"><div class="sv" style="color:var(--red)" id="ret-total">0</div><div class="sl">повернень</div></div>
   <div class="sc"><div class="sv" style="color:var(--warn)" id="ret-transit">0</div><div class="sl">в дорозі</div></div>
@@ -277,33 +201,33 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 </div>
 <div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
   <button class="stab on" onclick="retFilter='all';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">Всі</button>
-  <button class="stab" onclick="retFilter='transit';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">🚚 В дорозі</button>
-  <button class="stab" onclick="retFilter='arrived';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">📦 На пошті</button>
-  <button class="stab" onclick="retFilter='stocked';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">✅ На складі</button>
-  <button class="stab" onclick="retFilter='pending';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">⏳ Не оброблено</button>
+  <button class="stab" onclick="retFilter='transit';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="truck" data-size="13"></i> В дорозі</button>
+  <button class="stab" onclick="retFilter='arrived';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="package" data-size="13"></i> На пошті</button>
+  <button class="stab" onclick="retFilter='stocked';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="check" data-size="13"></i> На складі</button>
+  <button class="stab" onclick="retFilter='pending';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="refreshCw" data-size="13"></i> Не оброблено</button>
 </div>
-<input class="search-bar" id="ret-scan-adm" placeholder="🔍 Скануйте ТТН повернення або пошук..." style="max-width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace;margin-bottom:10px">
+<input class="search-bar" id="ret-scan-adm" placeholder="Скануйте ТТН повернення або пошук..." style="max-width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace;margin-bottom:10px">
 <div id="ret-scan-result"></div>
 <div id="adm-returns-list"></div>
 </div>
 
-<div class="page" id="pg-stocklog"><div class="pt">📊 Рух товару</div>
+<div class="page" id="pg-stocklog"><div class="pt"><i data-icon="barChart3" data-size="17"></i> Рух товару</div>
 <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">
   <button class="stab on" onclick="slFilter='';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">Всі</button>
-  <button class="stab" onclick="slFilter='incoming';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">📥 Прихід</button>
-  <button class="stab" onclick="slFilter='writeoff';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">📤 Списання</button>
-  <button class="stab" onclick="slFilter='swap';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">🔄 Заміна</button>
-  <button class="stab" onclick="slFilter='cut_in';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">✂️ Крій +</button>
-  <button class="stab" onclick="slFilter='cut_out';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">✂️ Крій →</button>
+  <button class="stab" onclick="slFilter='incoming';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="download" data-size="13"></i> Прихід</button>
+  <button class="stab" onclick="slFilter='writeoff';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="upload" data-size="13"></i> Списання</button>
+  <button class="stab" onclick="slFilter='swap';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="refreshCw" data-size="13"></i> Заміна</button>
+  <button class="stab" onclick="slFilter='cut_in';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="scissors" data-size="13"></i> Крій +</button>
+  <button class="stab" onclick="slFilter='cut_out';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="scissors" data-size="13"></i> Крій →</button>
 </div>
 <div id="stocklog-list"></div>
 </div>
 
-<div class="page" id="pg-settings"><div class="pt">⚙️ Налаштування</div>
+<div class="page" id="pg-settings"><div class="pt"><i data-icon="settings" data-size="17"></i> Налаштування</div>
 <div style="max-width:420px">
   <div class="fld"><label>Назва компанії</label><input id="s-company_name"></div>
   <div class="fld"><label>Поріг залишку</label><input id="s-stock_warning_threshold" type="number"></div>
-  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)"><div class="pt" style="font-size:14px">📦 Нова Пошта</div></div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)"><div class="pt" style="font-size:14px"><i data-icon="truck" data-size="15"></i> Нова Пошта</div></div>
   <div class="fld"><label>API Ключ</label><input id="s-np_api_key" placeholder="Отримайте в кабінеті НП"></div>
   <div style="margin-top:10px;font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Контрагенти (відправники):</div>
   <div id="np-senders-list"></div>
@@ -313,7 +237,7 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
   </div>
   <button class="btn btn-sm" style="border-color:rgba(0,212,170,.2);color:var(--acc);margin-bottom:10px" onclick="addNpSender()">+ Додати контрагента</button>
   <div id="np-msg" style="font-size:11px;margin-bottom:8px"></div>
-  <button class="btn btn-p" onclick="saveSets()">💾 Зберегти</button><div id="set-msg" style="margin-top:6px"></div>
+  <button class="btn btn-p" onclick="saveSets()"><i data-icon="save" data-size="15"></i> Зберегти</button><div id="set-msg" style="margin-top:6px"></div>
 </div></div>
 
 </div></div>
@@ -327,9 +251,9 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 
 <div class="modal-bg" id="cat-modal"><div class="modal"><h3 id="cm-t">Категорія</h3>
 <div class="fld"><label>Назва</label><input id="cm-name"></div>
-<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="cm-photo-preview" style="width:60px;height:60px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('cm-photo-input').click()">📷 Обрати</button><input type="file" id="cm-photo-input" accept="image/*" style="display:none" onchange="uploadCatPhoto(event)"></div></div>
+<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="cm-photo-preview" style="width:60px;height:60px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('cm-photo-input').click()"><i data-icon="camera" data-size="13"></i> Обрати</button><input type="file" id="cm-photo-input" accept="image/*" style="display:none" onchange="uploadCatPhoto(event)"></div></div>
 <div class="fld"><label>Прихована від дропшиперів</label><select id="cm-hidden"><option value="0">Ні</option><option value="1">Так</option></select></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveCat()">Зберегти</button><button class="btn" onclick="closeM('cat-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="cm-del" style="display:none;margin-left:auto" onclick="delCat()">🗑</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveCat()">Зберегти</button><button class="btn" onclick="closeM('cat-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="cm-del" style="display:none;margin-left:auto" onclick="delCat()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
 
 <div class="modal-bg" id="user-modal"><div class="modal"><h3 id="um-t">Користувач</h3>
@@ -340,14 +264,14 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div id="um-drop" style="display:none"><div class="fld-row"><div class="fld"><label>Знижка %</label><input id="um-dp" type="number" value="0"></div><div class="fld"><label>Знижка ₴</label><input id="um-df" type="number" value="0"></div></div></div>
 <div id="um-wrk" style="display:none"><div class="fld"><label>Роль</label><select id="um-wr"><option value="">—</option><option value="packer">Пакувальник</option><option value="printer">Принтувальник</option><option value="sewer">Нашивальник</option><option value="distributor">Видавач</option></select></div><div class="fld"><label>Ставка ₴</label><input id="um-wrt" type="number" value="0"></div></div>
 <div id="um-err" class="msg msg-err" style="display:none"></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveUser()">Зберегти</button><button class="btn" onclick="closeM('user-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="um-del" style="display:none;margin-left:auto" onclick="delUser()">🗑</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveUser()">Зберегти</button><button class="btn" onclick="closeM('user-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="um-del" style="display:none;margin-left:auto" onclick="delUser()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
 
 <div class="modal-bg" id="model-modal"><div class="modal" style="max-width:560px"><h3 id="mdl-t">Нова модель</h3>
 <div class="fld"><label>Назва</label><input id="mm-name" placeholder="Худі флісовий"></div>
 <div class="fld"><label>Категорія (склад база)</label><select id="mm-cat"><option value="">—</option></select></div>
 <div class="fld"><label>Категорія (склад дроп)</label><select id="mm-cat-drop"><option value="">—</option></select></div>
-<div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="hot">🔥 HOT DROP</option><option value="ads">📢 ADS DROP</option></select></div>
+<div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="hot">HOT DROP</option><option value="ads">ADS DROP</option></select></div>
 <div class="sw"><div class="swb" id="mm-ready" onclick="this.classList.toggle('on');document.getElementById('mm-pw').style.display=this.classList.contains('on')?'none':'block'"></div><label>Готовий товар</label></div>
 <div class="fld-row"><div class="fld"><label>Собівартість ₴</label><input id="mm-cost" type="number" value="0"></div><div class="fld"><label>Дроп-ціна ₴</label><input id="mm-drop" type="number" value="0"></div></div>
 <div class="fld"><label>Кольори</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук кольорів..." onfocus="openPS(this,'mm-colors-dd')" oninput="filterPS(this,'mm-colors-dd')"><div class="popup-dd" id="mm-colors-dd"></div></div><div class="sel-tags" id="mm-colors-tags"></div></div>
@@ -359,26 +283,26 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld"><label>Операції для ЗП</label>
 <div id="mm-ops"></div>
 <div style="display:flex;gap:4px;margin-top:4px">
-  <select id="mm-op-role" style="flex:1;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати роль</option><option value="seamstress">🧵 Швея (нашивки)</option><option value="printer">🖨 Принтувальник (принти)</option></select>
+  <select id="mm-op-role" style="flex:1;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати роль</option><option value="seamstress">Швея (нашивки)</option><option value="printer">Принтувальник (принти)</option></select>
   <input id="mm-op-count" type="number" value="1" min="1" style="width:60px;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff" placeholder="К-сть">
   <button class="btn btn-sm" onclick="addModelOp()">+</button>
 </div>
 </div>
 <div id="mm-err" class="msg msg-err" style="display:none"></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveModel()">🚀 Створити</button><button class="btn" onclick="closeM('model-modal')">Скасувати</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveModel()"><i data-icon="rocket" data-size="15"></i> Створити</button><button class="btn" onclick="closeM('model-modal')">Скасувати</button></div>
 </div></div>
 
 <div class="modal-bg" id="mdl-view"><div class="modal" style="max-width:650px"><h3 id="mv-t">Модель</h3><div id="mv-body"></div>
 <div style="margin-top:12px"><button class="btn" onclick="closeM('mdl-view')">Закрити</button></div>
 </div></div>
 
-<div class="modal-bg" id="inc-modal"><div class="modal"><h3>📥 Прихід</h3>
+<div class="modal-bg" id="inc-modal"><div class="modal"><h3><i data-icon="download" data-size="16"></i> Прихід</h3>
 <div class="fld"><label>Товар</label><select id="inc-bp" onchange="loadIncSz()"></select></div>
 <div id="inc-ws-wrap" class="fld"><label>Цех</label><select id="inc-ws" style="width:100%;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"></select>
 <label style="margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="inc-no-ws" onchange="document.getElementById('inc-ws').disabled=this.checked;document.getElementById('inc-ws').style.opacity=this.checked?'.3':'1'" style="width:16px;height:16px;accent-color:var(--acc)"><span style="font-size:11px;color:var(--td)">Не з цеху (товар не шиється)</span></label></div>
 <div id="inc-sz"></div>
 <div class="fld"><label>Примітка</label><input id="inc-note"></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveInc()">💾 Оприбуткувати</button><button class="btn" onclick="closeM('inc-modal')">Скасувати</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveInc()"><i data-icon="save" data-size="15"></i> Оприбуткувати</button><button class="btn" onclick="closeM('inc-modal')">Скасувати</button></div>
 </div></div>
 
 <div class="modal-bg" id="edit-bp-modal"><div class="modal" style="max-width:560px"><h3 id="ebp-t">Редагувати товар</h3>
@@ -390,13 +314,13 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld"><label>Колір</label><select id="ebp-color"></select></div>
 <div class="fld"><label>Залишки (можна змінювати)</label><div id="ebp-stock"></div></div>
 <div class="fld"><label>Операції для ЗП (з моделі)</label><div id="ebp-ops"></div>
-<div style="display:flex;gap:4px;margin-top:4px"><select id="ebp-op-role" style="flex:1;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати</option><option value="seamstress">🧵 Швея</option><option value="printer">🖨 Принтувальник</option></select><input id="ebp-op-count" type="number" value="1" min="1" style="width:50px;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><button class="btn btn-sm" onclick="addBpOp()">+</button></div></div>
+<div style="display:flex;gap:4px;margin-top:4px"><select id="ebp-op-role" style="flex:1;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати</option><option value="seamstress">Швея</option><option value="printer">Принтувальник</option></select><input id="ebp-op-count" type="number" value="1" min="1" style="width:50px;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><button class="btn btn-sm" onclick="addBpOp()">+</button></div></div>
 <div style="margin-top:4px"><select id="ebp-wadd" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати працівника</option></select></div></div>
 <div class="fld"><label>Варіації</label><div id="ebp-vars" style="font-size:11px;color:var(--td);max-height:100px;overflow-y:auto"></div></div>
 <div class="fld"><label>Модель</label><div id="ebp-model" style="font-size:11px;color:var(--td)"></div></div>
-<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ebp-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ebp-fi').click()">📷</button><input type="file" id="ebp-fi" accept="image/*" style="display:none" onchange="uploadBpPhoto(event)"></div></div>
+<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ebp-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ebp-fi').click()"><i data-icon="camera" data-size="13"></i></button><input type="file" id="ebp-fi" accept="image/*" style="display:none" onchange="uploadBpPhoto(event)"></div></div>
 <div class="fld"><label>Статус</label><select id="ebp-active"><option value="1">Активний</option><option value="0">Вимкнений</option></select></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditBp()">💾 Зберегти</button><button class="btn" onclick="closeM('edit-bp-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditBp()">🗑</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditBp()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('edit-bp-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditBp()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
 
 <div class="modal-bg" id="edit-var-modal"><div class="modal" style="max-width:560px"><h3 id="ev-t">Редагувати варіацію</h3>
@@ -406,44 +330,44 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 <div class="fld"><label>Колір / Базовий товар</label><div id="ev-base" style="font-size:11px;color:var(--th)"></div></div>
 <div class="fld"><label>Залишки (база + повернення)</label><div id="ev-stock"></div></div>
 <div class="fld"><label>Операції для ЗП</label><div id="ev-ops" style="font-size:11px"></div></div>
-<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ev-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ev-fi').click()">📷</button><input type="file" id="ev-fi" accept="image/*" style="display:none" onchange="uploadVarPhoto(event)"></div></div>
+<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ev-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ev-fi').click()"><i data-icon="camera" data-size="13"></i></button><input type="file" id="ev-fi" accept="image/*" style="display:none" onchange="uploadVarPhoto(event)"></div></div>
 <div class="fld"><label>Статус</label><select id="ev-active"><option value="1">Активний</option><option value="0">Вимкнений</option></select></div>
 <div class="fld" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="ev-allow-neg" checked style="width:18px;height:18px;accent-color:var(--acc)"><label style="margin:0;font-size:12px;color:var(--t)">Дозволити замовлення при відсутності на складі</label></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditVar()">💾 Зберегти</button><button class="btn" onclick="closeM('edit-var-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditVar()">🗑</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditVar()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('edit-var-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditVar()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
 
-<div class="modal-bg" id="kit-modal"><div class="modal" style="max-width:560px"><h3>🎁 Сформувати комплект</h3>
+<div class="modal-bg" id="kit-modal"><div class="modal" style="max-width:560px"><h3><i data-icon="gift" data-size="16"></i> Сформувати комплект</h3>
 <div class="fld"><label>Назва комплекту</label><input id="kit-name" placeholder="Комплект худі + штани"></div>
 <div class="fld-row">
   <div class="fld"><label>Собівартість ₴</label><input id="kit-cost" type="number" value="0"></div>
   <div class="fld"><label>Дроп-ціна ₴</label><input id="kit-drop" type="number" value="0"></div>
 </div>
 <div class="fld"><label>Категорія (дроп)</label><select id="kit-cat"><option value="">—</option></select></div>
-<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="kit-photo-preview" style="width:80px;height:80px;background:var(--bg);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('kit-photo-input').click()">📷 Обрати</button><input type="file" id="kit-photo-input" accept="image/*" style="display:none" onchange="uploadKitPhoto(event)"></div></div>
+<div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="kit-photo-preview" style="width:80px;height:80px;background:var(--bg);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('kit-photo-input').click()"><i data-icon="camera" data-size="13"></i> Обрати</button><input type="file" id="kit-photo-input" accept="image/*" style="display:none" onchange="uploadKitPhoto(event)"></div></div>
 <div class="fld"><label>Товари в комплекті</label>
   <div class="popup-sel"><input class="popup-sel-input" id="kit-var-search" placeholder="Пошук товару..." oninput="filterKitVars(this.value)"><div class="popup-dd" id="kit-var-dd" style="max-height:200px"></div></div>
   <div id="kit-items" style="margin-top:6px"></div>
 </div>
 <div id="kit-err" class="msg msg-err" style="display:none"></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveKit()">🚀 Створити комплект</button><button class="btn" onclick="closeM('kit-modal')">Скасувати</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveKit()"><i data-icon="rocket" data-size="15"></i> Створити комплект</button><button class="btn" onclick="closeM('kit-modal')">Скасувати</button></div>
 </div></div>
 
-<div class="modal-bg" id="wo-modal"><div class="modal"><h3>📤 Списати товар</h3>
+<div class="modal-bg" id="wo-modal"><div class="modal"><h3><i data-icon="upload" data-size="16"></i> Списати товар</h3>
 <div class="fld"><label>Товар</label><select id="wo-bp" onchange="loadWoSizes()"></select></div>
 <div class="fld-row"><div class="fld"><label>Розмір</label><select id="wo-size"></select></div><div class="fld"><label>Кількість</label><input id="wo-qty" type="number" min="1" value="1"></div></div>
 <div class="fld"><label>Причина</label><input id="wo-note" placeholder="Необов'язково"></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-d" onclick="saveWriteOff()">📤 Списати</button><button class="btn" onclick="closeM('wo-modal')">Скасувати</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-d" onclick="saveWriteOff()"><i data-icon="upload" data-size="15"></i> Списати</button><button class="btn" onclick="closeM('wo-modal')">Скасувати</button></div>
 </div></div>
 
-<div class="modal-bg" id="swap-modal"><div class="modal"><h3>🔄 Заміна розміру</h3>
+<div class="modal-bg" id="swap-modal"><div class="modal"><h3><i data-icon="refreshCw" data-size="16"></i> Заміна розміру</h3>
 <div class="fld"><label>Товар</label><select id="sw-bp" onchange="loadSwSizes()"></select></div>
 <div class="fld-row"><div class="fld"><label>З розміру</label><select id="sw-from"></select></div><div class="fld"><label>На розмір</label><select id="sw-to"></select></div></div>
 <div class="fld"><label>Кількість</label><input id="sw-qty" type="number" min="1" value="1"></div>
-<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveSwapSize()">🔄 Замінити</button><button class="btn" onclick="closeM('swap-modal')">Скасувати</button></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveSwapSize()"><i data-icon="refreshCw" data-size="15"></i> Замінити</button><button class="btn" onclick="closeM('swap-modal')">Скасувати</button></div>
 </div></div>
 
 <!-- Dropshipper stats modal -->
-<div class="modal-bg" id="drop-stats-modal"><div class="modal" style="max-width:650px"><h3 id="ds-title">📊 Статистика</h3>
+<div class="modal-bg" id="drop-stats-modal"><div class="modal" style="max-width:650px"><h3 id="ds-title">Статистика</h3>
 <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><input type="date" id="ds-from" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff"><span style="color:var(--td)">—</span><input type="date" id="ds-to" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadDropStats()">OK</button></div>
 <div id="ds-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:12px"></div>
 <div id="ds-chart" style="overflow-x:auto;margin-bottom:10px"></div>
@@ -451,13 +375,13 @@ html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min
 </div></div>
 
 <!-- Edit order modal -->
-<div class="modal-bg" id="eo-modal"><div class="modal" style="max-width:500px"><h3>✏️ Редагувати замовлення #<span id="eo-id"></span></h3>
+<div class="modal-bg" id="eo-modal"><div class="modal" style="max-width:500px"><h3><i data-icon="pencil" data-size="16"></i> Редагувати замовлення #<span id="eo-id"></span></h3>
 <div class="fld"><label>ПІБ клієнта</label><input id="eo-name"></div>
 <div class="fld"><label>Телефон</label><input id="eo-phone"></div>
 <div class="fld-row"><div class="fld"><label>Місто</label><input id="eo-city"></div><div class="fld"><label>Відділення</label><input id="eo-wh"></div></div>
 <div class="fld-row"><div class="fld"><label>Наложка ₴</label><input id="eo-cod" type="number"></div><div class="fld"><label>Оціночна вартість ₴</label><input id="eo-dval" type="number"></div></div>
 <div class="fld"><label>Примітка</label><input id="eo-note"></div>
-<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveEditOrder()">💾 Зберегти</button><button class="btn" onclick="closeM('eo-modal')">Скасувати</button></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveEditOrder()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('eo-modal')">Скасувати</button></div>
 </div></div>
 
 <script>
@@ -465,8 +389,8 @@ let ME,CC={colors:[],sizes:[],prints:[],patches:[],cats:[]};
 let curDir="colors",editDirId=null,editCatId=null,catPhoto="";
 let editUID=null,editUR=null,editBpId=null,editVarId=null;
 let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let modelOps=[];
-function addModelOp(){var r=document.getElementById("mm-op-role").value;var c=parseInt(document.getElementById("mm-op-count").value)||1;if(!r)return;var rl={"seamstress":"🧵 Швея","printer":"🖨 Принтувальник"};if(modelOps.find(function(o){return o.worker_role===r}))return;modelOps.push({worker_role:r,operations_count:c});renderModelOps();document.getElementById("mm-op-role").value=""}
-function renderModelOps(){document.getElementById("mm-ops").innerHTML=modelOps.map(function(o,i){var rl={"seamstress":"🧵 Швея (нашивки)","printer":"🖨 Принтувальник (принти)"};return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+rl[o.worker_role]+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="modelOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="modelOps.splice('+i+',1);renderModelOps()">✕</button></div>'}).join("")}
+function addModelOp(){var r=document.getElementById("mm-op-role").value;var c=parseInt(document.getElementById("mm-op-count").value)||1;if(!r)return;var rl={"seamstress":Icon('shirt',13)+" Швея","printer":Icon('printer',13)+" Принтувальник"};if(modelOps.find(function(o){return o.worker_role===r}))return;modelOps.push({worker_role:r,operations_count:c});renderModelOps();document.getElementById("mm-op-role").value=""}
+function renderModelOps(){document.getElementById("mm-ops").innerHTML=modelOps.map(function(o,i){var rl={"seamstress":Icon('shirt',13)+" Швея (нашивки)","printer":Icon('printer',13)+" Принтувальник (принти)"};return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+rl[o.worker_role]+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="modelOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="modelOps.splice('+i+',1);renderModelOps()">'+Icon('x',12)+'</button></div>'}).join("")}
 
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-name").textContent=ME.name||ME.username;
   const h=location.hash.slice(1);const navBtn=h&&document.querySelector(`.side-nav a[data-p="${h}"]`);
@@ -474,7 +398,7 @@ async function init(){try{ME=(await api("/api/auth/me")).user;document.getElemen
 }catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#22c55e';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
-function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.textContent="✅ "+t+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
+function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.textContent=t+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Помилка");return d}
 function closeM(id){document.getElementById(id).classList.remove("on")}
@@ -502,8 +426,8 @@ async function loadDir(){
   await refreshCC();const q=document.getElementById("dir-search").value;
   const items=q?(curDir==="colors"?CC.colors:curDir==="sizes"?CC.sizes:curDir==="prints"?CC.prints:CC.patches).filter(i=>i.name.toLowerCase().includes(q.toLowerCase())):(curDir==="colors"?CC.colors:curDir==="sizes"?CC.sizes:curDir==="prints"?CC.prints:CC.patches);
   const el=document.getElementById("dir-list");
-  if(!items.length){el.innerHTML='<div class="empty"><span class="ic">📭</span>Порожньо</div>';return}
-  el.innerHTML=`<table class="tbl"><tr><th>Назва</th>${curDir==="colors"?"<th>Колір</th>":""}<th style="width:80px"></th></tr>${items.map(i=>`<tr><td style="color:var(--th)">${esc(i.name)}</td>${curDir==="colors"?`<td><span class="cdot" style="background:${i.hex_code||'#888'}"></span> ${i.hex_code||""}</td>`:""}<td><button class="btn btn-sm btn-a" onclick="editDirFn(${i.id})">✏️</button> <button class="btn btn-sm btn-d" onclick="delDI(${i.id},'${esc(i.name)}')">🗑</button></td></tr>`).join("")}</table>`;
+  if(!items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('packageOpen',40)+'</span>Порожньо</div>';return}
+  el.innerHTML=`<table class="tbl"><tr><th>Назва</th>${curDir==="colors"?"<th>Колір</th>":""}<th style="width:80px"></th></tr>${items.map(i=>`<tr><td style="color:var(--th)">${esc(i.name)}</td>${curDir==="colors"?`<td><span class="cdot" style="background:${i.hex_code||'#888'}"></span> ${i.hex_code||""}</td>`:""}<td><button class="btn btn-sm btn-a" onclick="editDirFn(${i.id})">${Icon('pencil',13)}</button> <button class="btn btn-sm btn-d" onclick="delDI(${i.id},'${esc(i.name)}')">${Icon('trash2',13)}</button></td></tr>`).join("")}</table>`;
 }
 function addDirItem(){editDirId=null;document.getElementById("dm-t").textContent="Додати";document.getElementById("dm-name").value="";document.getElementById("dm-hex").value="#808080";document.getElementById("dm-hex-w").style.display=curDir==="colors"?"block":"none";openM("dir-modal")}
 function editDirFn(id){const items=curDir==="colors"?CC.colors:curDir==="sizes"?CC.sizes:curDir==="prints"?CC.prints:CC.patches;const i=items.find(x=>x.id===id);if(!i)return;editDirId=id;document.getElementById("dm-t").textContent=i.name;document.getElementById("dm-name").value=i.name;document.getElementById("dm-hex").value=i.hex_code||"#808080";document.getElementById("dm-hex-w").style.display=curDir==="colors"?"block":"none";openM("dir-modal")}
@@ -516,7 +440,7 @@ async function uploadCatPhoto(e){const f=e.target.files[0];if(!f)return;const r=
 // ── Models ───────────────────────────────────────────────────────
 async function loadModels(){
   const{models}=await api("/api/models");const el=document.getElementById("model-list");
-  if(!models.length){el.innerHTML='<div class="empty"><span class="ic">🏷</span>Створіть першу модель</div>';return}
+  if(!models.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('tag',40)+'</span>Створіть першу модель</div>';return}
   el.innerHTML=`<table class="tbl"><tr><th>Назва</th><th>Тип</th><th>Кольори</th><th>Принти</th><th>Товарів</th><th>Варіацій</th><th>Працівники</th><th></th></tr>${models.map(m=>`<tr>
     <td><strong style="color:var(--th);cursor:pointer" onclick="viewModel(${m.id})">${esc(m.name)}</strong>${m.category_name?`<br><span style="font-size:9px;color:var(--td)">${esc(m.category_name)}</span>`:""}</td>
     <td>${m.is_ready_product?'<span class="tag tag-b">Готовий</span>':'<span class="tag tag-y">База</span>'}</td>
@@ -524,7 +448,7 @@ async function loadModels(){
     <td style="max-width:150px;font-size:10px">${m.is_ready_product?"—":m.prints.map(p=>esc(p.name)).join(", ")}</td>
     <td class="mono">${m.base_products_count}</td><td class="mono">${m.variations_count}</td>
     <td style="font-size:10px">${m.workers.map(w=>`${esc(w.worker_name)}: ${w.amount}₴`).join("<br>")||"—"}</td>
-    <td><button class="btn btn-sm btn-a" onclick="viewModel(${m.id})">👁</button></td>
+    <td><button class="btn btn-sm btn-a" onclick="viewModel(${m.id})">${Icon('eye',13)}</button></td>
   </tr>`).join("")}</table>`;
 }
 
@@ -533,7 +457,7 @@ async function viewModel(id){
   document.getElementById("mv-t").textContent=m.name;
   let h=`<div style="font-size:12px">
   <div class="acts" style="margin-bottom:10px">
-    <button class="btn btn-d" onclick="deleteModel(${m.id})">🗑 Видалити модель</button>
+    <button class="btn btn-d" onclick="deleteModel(${m.id})">${Icon('trash2',13)} Видалити модель</button>
   </div>
   <div class="fld-row"><div><strong>Тип:</strong> ${m.is_ready_product?"Готовий":"База"}</div><div><strong>Категорія:</strong> ${esc(m.category_name||"—")}</div></div>
   <div class="fld-row" style="margin-top:6px"><div><strong>Собівартість:</strong> ${m.cost_price}₴</div><div><strong>Дроп-ціна:</strong> ${m.drop_price}₴</div></div>
@@ -544,13 +468,13 @@ async function viewModel(id){
   ${m.workers.length?`<div style="margin-top:4px"><strong>Працівники:</strong> ${m.workers.map(w=>`${esc(w.worker_name)} — ${w.amount}₴`).join(", ")}</div>`:""}
   <div style="margin-top:12px;font-weight:700;color:var(--th)">Базові товари (${m.base_products.length}):</div>`;
   m.base_products.forEach(bp=>{
-    h+=`<div style="margin:6px 0;padding:8px;background:var(--bg);border-radius:6px"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:var(--acc)">${esc(bp.name)}</strong><div><button class="btn btn-sm btn-a" onclick="closeM('mdl-view');openEditBp(${bp.id})">✏️</button> <button class="btn btn-sm btn-d" onclick="deleteBp(${bp.id},${id})">🗑</button></div></div>`;
+    h+=`<div style="margin:6px 0;padding:8px;background:var(--bg);border-radius:6px"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:var(--acc)">${esc(bp.name)}</strong><div><button class="btn btn-sm btn-a" onclick="closeM('mdl-view');openEditBp(${bp.id})">${Icon('pencil',13)}</button> <button class="btn btn-sm btn-d" onclick="deleteBp(${bp.id},${id})">${Icon('trash2',13)}</button></div></div>`;
     h+=`<div style="margin-top:4px;font-size:10px;color:var(--td)">Залишки: ${bp.stock.map(s=>`${s.size_name}:${s.quantity}`).join(" | ")}</div>`;
     if(bp.variations.length){
       h+=`<div style="margin-top:6px;font-size:10px"><strong>Варіації (${bp.variations.length}):</strong></div>`;
       bp.variations.forEach(v=>{
         const retInfo=v.stock_returns?.length?v.stock_returns.filter(r=>r.quantity>0).map(r=>`${r.size_name}:${r.quantity}`).join(" "):"";
-        h+=`<div style="margin:2px 0 2px 10px;font-size:10px;display:flex;justify-content:space-between;align-items:center"><span>${esc(v.name)} ${v.print_name?`<span class="tag tag-y">${esc(v.print_name)}</span>`:""} ${retInfo?`<span style="color:var(--warn)">поверн: ${retInfo}</span>`:""}</span><div><button class="btn btn-sm" onclick="closeM('mdl-view');openEditVar(${v.id})" style="font-size:8px">✏️</button> <button class="btn btn-sm btn-d" onclick="deleteVar(${v.id},${id})" style="font-size:8px">🗑</button></div></div>`;
+        h+=`<div style="margin:2px 0 2px 10px;font-size:10px;display:flex;justify-content:space-between;align-items:center"><span>${esc(v.name)} ${v.print_name?`<span class="tag tag-y">${esc(v.print_name)}</span>`:""} ${retInfo?`<span style="color:var(--warn)">поверн: ${retInfo}</span>`:""}</span><div><button class="btn btn-sm" onclick="closeM('mdl-view');openEditVar(${v.id})" style="font-size:8px">${Icon('pencil',10)}</button> <button class="btn btn-sm btn-d" onclick="deleteVar(${v.id},${id})" style="font-size:8px">${Icon('trash2',10)}</button></div></div>`;
       });
     }
     h+=`</div>`;
@@ -565,7 +489,7 @@ async function editModelFields(id){
   closeM("mdl-view");
   const{model:m}=await api("/api/models/"+id);editModelId=id;
   await refreshCC();
-  document.getElementById("mdl-t").textContent="✏️ Редагувати: "+m.name;
+  document.getElementById("mdl-t").textContent="Редагувати: "+m.name;
   document.getElementById("mm-name").value=m.name;
   document.getElementById("mm-cost").value=m.cost_price;
   document.getElementById("mm-drop").value=m.drop_price;
@@ -594,7 +518,7 @@ async function saveModelEdit(){
 
 async function deleteModel(id){if(!confirm("Видалити модель і ВСІ її товари?"))return;await api(`/api/models/${id}`,{method:"DELETE"});closeM("mdl-view");loadModels()}
 
-async function regenerateModel(id){if(!confirm("⚠️ Перегенерувати всі товари?\nВсі залишки і фото товарів будуть скинуті!"))return;const r=await api(`/api/models/${id}/regenerate`,{method:"POST"});closeM("mdl-view");loadModels();alert(`✅ Перегенеровано: ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}
+async function regenerateModel(id){if(!confirm("Перегенерувати всі товари?\nВсі залишки і фото товарів будуть скинуті!"))return;const r=await api(`/api/models/${id}/regenerate`,{method:"POST"});closeM("mdl-view");loadModels();alert(`Перегенеровано: ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}
 
 async function deleteBp(id,modelId){if(!confirm("Видалити товар і всі його варіації?"))return;await api(`/api/base-products/${id}`,{method:"DELETE"});viewModel(modelId)}
 
@@ -625,7 +549,7 @@ function togglePSI(el,key){const id=parseInt(el.dataset.id);if(mmSel[key].has(id
 function renderSelTags(){
   ["colors","sizes","prints","patches"].forEach(key=>{
     const items=CC[key]||[];const tags=document.getElementById(`mm-${key}-tags`);
-    tags.innerHTML=[...mmSel[key]].map(id=>{const i=items.find(x=>x.id===id);return i?`<span class="sel-tag" onclick="mmSel.${key}.delete(${id});renderSelTags()">${esc(i.name)} ✕</span>`:""}).join("");
+    tags.innerHTML=[...mmSel[key]].map(id=>{const i=items.find(x=>x.id===id);return i?`<span class="sel-tag" onclick="mmSel.${key}.delete(${id});renderSelTags()">${esc(i.name)} ${Icon('x',11)}</span>`:""}).join("");
   });
 }
 // renderWorkers replaced by renderModelOps
@@ -647,14 +571,14 @@ let sbProducts=[],sbSizes=[],sbCatP=null,sbPage=0,sbReady="";
 async function loadSBase(){
   // Load categories
   const cd=await api(`/api/categories?parent_id=${sbCatP||""}&scope=base`);
-  let bc='<div class="bread"><a onclick="sbCatP=null;loadSBase()">📦 Всі товари</a>';
+  let bc='<div class="bread"><a onclick="sbCatP=null;loadSBase()">'+Icon('package',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sbCatP=${b.id};loadSBase()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("sbase-bread").innerHTML=bc;
   // Category cards
   document.getElementById("sbase-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sbCatP=${c.id};loadSBase()">
-    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:'📁'}</div>
+    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:Icon('folder',28)}</div>
     <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
-    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">✏️</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">🗑</button></div></div></div>`).join("");
+    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">${Icon('trash2',13)}</button></div></div></div>`).join("");
   // Products
   document.querySelectorAll("[id^=sr-]").forEach(function(b){b.className="btn";if(b.id===("sr-"+(sbReady||"all")))b.className="btn btn-a"});
   var url=sbCatP?"/api/base-products?category_id="+sbCatP:"/api/base-products";
@@ -664,13 +588,13 @@ async function loadSBase(){
 }
 function renderSBase(products){
   const el=document.getElementById("sbase-list");const thr=3;const perPage=20;
-  if(!products.length&&!document.getElementById("sbase-cats").innerHTML){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">📦</span>Порожньо</div>';return}
+  if(!products.length&&!document.getElementById("sbase-cats").innerHTML){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">'+Icon('package',40)+'</span>Порожньо</div>';return}
   if(!products.length){el.innerHTML="";return}
   const pages=Math.ceil(products.length/perPage);sbPage=Math.min(sbPage,pages-1);
   const slice=products.slice(sbPage*perPage,(sbPage+1)*perPage);
   el.innerHTML=slice.map(p=>{
     const szs=sbSizes.filter(s=>p.stock[s.id]!==undefined);
-    return'<div class="pcard"><div class="pcard-img" onclick="openEditBp('+p.id+')">'+(p.photo?'<img src="'+p.photo+'">':'📷')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+(p.drop_channel==='hot'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(p.drop_channel==='ads'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(0,212,170,.1);color:#00d4aa">ADS</span>':'')+'</div><div class="pcard-sub">'+esc(p.category_name||"")+'</div><div class="pcard-prices"><span class="pp tag" style="background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span><span class="pp tag tag-g">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(s=>{const q=p.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":q<=thr?"low":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div><div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditBp('+p.id+')">✏️</button> <button class="btn btn-sm" onclick="dupBp('+p.id+')" title="Дублювати">📋</button></div></div></div>';
+    return'<div class="pcard"><div class="pcard-img" onclick="openEditBp('+p.id+')">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+(p.drop_channel==='hot'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(p.drop_channel==='ads'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(0,212,170,.1);color:#00d4aa">ADS</span>':'')+'</div><div class="pcard-sub">'+esc(p.category_name||"")+'</div><div class="pcard-prices"><span class="pp tag" style="background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span><span class="pp tag tag-g">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(s=>{const q=p.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":q<=thr?"low":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div><div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditBp('+p.id+')">'+Icon('pencil',13)+'</button> <button class="btn btn-sm" onclick="dupBp('+p.id+')" title="Дублювати">'+Icon('clipboardList',13)+'</button></div></div></div>';
   }).join("");
   if(pages>1){let pg='<div style="grid-column:1/-1;display:flex;justify-content:center;gap:4px;margin-top:8px">';for(let i=0;i<pages;i++)pg+='<button style="padding:5px 10px;font-size:10px;border-radius:5px;border:1px solid '+(i===sbPage?'var(--acc)':'var(--brd)')+';background:'+(i===sbPage?'var(--accbg)':'var(--card)')+';color:'+(i===sbPage?'var(--acc)':'var(--td)')+';cursor:pointer;font-family:inherit" onclick="sbPage='+i+';renderSBase(sbProducts)">'+(i+1)+'</button>';pg+='</div>';el.innerHTML+=pg}
 }
@@ -681,13 +605,13 @@ let sdVars=[],sdSizes=[],sdCatP=null,sdChannel="";
 async function loadSDrop(){
   document.querySelectorAll("[id^=dc-]").forEach(function(b){b.className="btn";if(b.id==="dc-"+(sdChannel||"all"))b.className="btn btn-a"});
   const cd=await api(`/api/categories?parent_id=${sdCatP||""}&scope=drop`);
-  let bc='<div class="bread"><a onclick="sdCatP=null;loadSDrop()">🛒 Всі варіації</a>';
+  let bc='<div class="bread"><a onclick="sdCatP=null;loadSDrop()">'+Icon('shoppingCart',13)+' Всі варіації</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sdCatP=${b.id};loadSDrop()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("sdrop-bread").innerHTML=bc;
   document.getElementById("sdrop-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sdCatP=${c.id};loadSDrop()">
-    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:'📁'}</div>
+    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:Icon('folder',28)}</div>
     <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
-    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'drop')">✏️</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">🗑</button></div></div></div>`).join("");
+    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'drop')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">${Icon('trash2',13)}</button></div></div></div>`).join("");
   // Load variations with channel filter
   let url="/api/variations";const vp=[];
   if(sdCatP)vp.push("category_id="+sdCatP);
@@ -703,13 +627,13 @@ async function loadSDrop(){
 }
 function renderSDrop(items){
   const el=document.getElementById("sdrop-list");const thr=3;
-  if(!items.length&&!document.getElementById("sdrop-cats").innerHTML){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">🛒</span>Порожньо</div>';return}
+  if(!items.length&&!document.getElementById("sdrop-cats").innerHTML){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">'+Icon('shoppingCart',40)+'</span>Порожньо</div>';return}
   if(!items.length){el.innerHTML="";return}
   el.innerHTML=items.map(v=>{
     const szs=sdSizes.filter(s=>v.stock[s.id]!==undefined);
-    const kitBadge=v.is_kit?'<span class="tag tag-y" style="margin-left:4px">🎁 Комплект</span>':"";
-    const editBtn=v.is_kit?'<button class="btn btn-sm btn-d" onclick="deleteKit('+v.id+')">🗑</button>':'<button class="btn btn-sm btn-a" onclick="openEditVar('+v.id+')">✏️</button>';
-    return`<div class="pcard" style="${v.is_kit?"border-color:rgba(255,167,38,.3)":""}"><div class="pcard-img" onclick="${v.is_kit?"":"openEditVar("+v.id+")"}">${v.photo||v.print_photo?`<img src="${v.photo||v.print_photo}">`:'📷'}</div><div class="pcard-body">
+    const kitBadge=v.is_kit?'<span class="tag tag-y" style="margin-left:4px">'+Icon('gift',11)+' Комплект</span>':"";
+    const editBtn=v.is_kit?'<button class="btn btn-sm btn-d" onclick="deleteKit('+v.id+')">'+Icon('trash2',13)+'</button>':'<button class="btn btn-sm btn-a" onclick="openEditVar('+v.id+')">'+Icon('pencil',13)+'</button>';
+    return`<div class="pcard" style="${v.is_kit?"border-color:rgba(255,167,38,.3)":""}"><div class="pcard-img" onclick="${v.is_kit?"":"openEditVar("+v.id+")"}">${v.photo||v.print_photo?`<img src="${v.photo||v.print_photo}">`:Icon('camera',28)}</div><div class="pcard-body">
     <div class="pcard-name">${esc(v.name)}${kitBadge}</div>
     <div class="pcard-sub">${v.print_name?'Принт: '+esc(v.print_name):""} ${v.color_name?'· '+esc(v.color_name):""} ${v.is_kit&&v.items?'('+v.items.length+' товарів)':""}</div>
     <div class="pcard-prices"><span class="pp tag tag-g">${v.drop_price}₴</span></div>
@@ -732,7 +656,7 @@ function delCat(){if(editCatId)delCatFn(editCatId,"")}
 let bpEditModelId=null;
 async function openEditBp(id){
   const{product:p}=await api("/api/base-products/"+id);editBpId=id;
-  document.getElementById("ebp-t").textContent="✏️ "+p.name;
+  document.getElementById("ebp-t").textContent=p.name;
   document.getElementById("ebp-name").value=p.name;
   document.getElementById("ebp-cost").value=p.cost_price||0;
   document.getElementById("ebp-drop").value=p.drop_price||0;
@@ -758,7 +682,7 @@ async function openEditBp(id){
   openM("edit-bp-modal");
 }
 let bpOps=[];
-function renderBpOps(){var rl={"seamstress":"🧵 Швея (нашивки)","printer":"🖨 Принтувальник (принти)"};document.getElementById("ebp-ops").innerHTML=bpOps.map(function(o,i){return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+(rl[o.worker_role]||o.worker_role)+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="bpOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="bpOps.splice('+i+',1);renderBpOps()">✕</button></div>'}).join("")||'<div style="font-size:10px;color:var(--td)">Не задано</div>'}
+function renderBpOps(){var rl={"seamstress":Icon('shirt',13)+" Швея (нашивки)","printer":Icon('printer',13)+" Принтувальник (принти)"};document.getElementById("ebp-ops").innerHTML=bpOps.map(function(o,i){return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+(rl[o.worker_role]||o.worker_role)+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="bpOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="bpOps.splice('+i+',1);renderBpOps()">'+Icon('x',12)+'</button></div>'}).join("")||'<div style="font-size:10px;color:var(--td)">Не задано</div>'}
 function addBpOp(){var r=document.getElementById("ebp-op-role").value;var c=parseInt(document.getElementById("ebp-op-count").value)||1;if(!r||bpOps.find(function(o){return o.worker_role===r}))return;bpOps.push({worker_role:r,operations_count:c});renderBpOps();document.getElementById("ebp-op-role").value=""}
 async function uploadBpPhoto(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const{url}=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});await api(`/api/base-products/${editBpId}`,{method:"PUT",body:JSON.stringify({photo:url})});document.getElementById("ebp-photo").innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover">`}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
 async function saveEditBp(){
@@ -788,7 +712,7 @@ async function dupBp(id){if(!confirm("Дублювати товар з усім�
 // ── Edit variation ───────────────────────────────────────────────
 async function openEditVar(id){
   const{variation:v}=await api("/api/variations/"+id);editVarId=id;
-  document.getElementById("ev-t").textContent="✏️ "+v.name;
+  document.getElementById("ev-t").textContent=v.name;
   document.getElementById("ev-name").value=v.name;
   document.getElementById("ev-price").value=v.drop_price_override||"";
   document.getElementById("ev-active").value=v.active?"1":"0";
@@ -809,7 +733,7 @@ async function openEditVar(id){
     </div>
   </div>`).join("");
   // Workers
-  try{var opsR=await api("/api/product-worker-ops/"+v.model_id);var rl={"seamstress":"🧵 Швея","printer":"🖨 Принтувальник"};document.getElementById("ev-ops").innerHTML=(opsR.ops||[]).map(function(o){return '<div style="padding:2px 0">'+(rl[o.worker_role]||o.worker_role)+': <b style="color:var(--acc)">'+o.operations_count+' шт</b></div>'}).join("")||'<span style="color:var(--td)">—</span>'}catch(e){document.getElementById("ev-ops").innerHTML='<span style="color:var(--td)">—</span>'}
+  try{var opsR=await api("/api/product-worker-ops/"+v.model_id);var rl={"seamstress":Icon('shirt',13)+" Швея","printer":Icon('printer',13)+" Принтувальник"};document.getElementById("ev-ops").innerHTML=(opsR.ops||[]).map(function(o){return '<div style="padding:2px 0">'+(rl[o.worker_role]||o.worker_role)+': <b style="color:var(--acc)">'+o.operations_count+' шт</b></div>'}).join("")||'<span style="color:var(--td)">—</span>'}catch(e){document.getElementById("ev-ops").innerHTML='<span style="color:var(--td)">—</span>'}
   // Photo
   document.getElementById("ev-photo").innerHTML=v.photo?`<img src="${v.photo}" style="width:100%;height:100%;object-fit:cover">`:(v.print_photo?`<img src="${v.print_photo}" style="width:100%;height:100%;object-fit:cover">`:"—");
   openM("edit-var-modal");
@@ -898,7 +822,7 @@ function renderKitVarDD(q){
   }).join("")||'<div style="padding:8px;color:var(--td);font-size:11px">Нічого не знайдено</div>';
 }
 function toggleKitVar(id){if(kitSelected.includes(id))kitSelected=kitSelected.filter(x=>x!==id);else kitSelected.push(id);renderKitVarDD(document.getElementById("kit-var-search").value);renderKitItems()}
-function renderKitItems(){document.getElementById("kit-items").innerHTML=kitSelected.map(id=>{const v=kitVarList.find(x=>x.id===id);return v?'<div class="sel-tag" onclick="toggleKitVar('+id+')">'+esc(v.name)+' ✕</div>':''}).join("")||'<div style="font-size:10px;color:var(--td)">Оберіть товари зі списку</div>'}
+function renderKitItems(){document.getElementById("kit-items").innerHTML=kitSelected.map(id=>{const v=kitVarList.find(x=>x.id===id);return v?'<div class="sel-tag" onclick="toggleKitVar('+id+')">'+esc(v.name)+' '+Icon('x',11)+'</div>':''}).join("")||'<div style="font-size:10px;color:var(--td)">Оберіть товари зі списку</div>'}
 async function uploadKitPhoto(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});kitPhoto=d.url;document.getElementById("kit-photo-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
 async function saveKit(){
   const err=document.getElementById("kit-err");err.style.display="none";
@@ -920,16 +844,16 @@ async function loadCuts(){
   try{var r=await api("/api/stock-cuts?show_all="+(cutShowAll?"1":"0"));
   var szs=r.sizes;
   // Workshop filter buttons
-  document.getElementById("cut-ws-filter").innerHTML='<button class="btn btn-sm'+(cutWsFilter===0?' on':'')+'" onclick="cutWsFilter=0;loadCuts()">Всі цехи</button>'+r.workshops.map(function(w){return '<button class="btn btn-sm'+(cutWsFilter===w.id?' on':'')+'" onclick="cutWsFilter='+w.id+';loadCuts()">🏭 '+esc(w.name)+'</button>'}).join("");
+  document.getElementById("cut-ws-filter").innerHTML='<button class="btn btn-sm'+(cutWsFilter===0?' on':'')+'" onclick="cutWsFilter=0;loadCuts()">Всі цехи</button>'+r.workshops.map(function(w){return '<button class="btn btn-sm'+(cutWsFilter===w.id?' on':'')+'" onclick="cutWsFilter='+w.id+';loadCuts()">'+Icon('factory',13)+' '+esc(w.name)+'</button>'}).join("");
   // Filter products by workshop
   var products=r.products;
   if(cutWsFilter){products=products.map(function(p){var fp={};fp=Object.assign({},p);fp.cuts={};fp.total_cuts=0;for(var sid in p.cuts){var ws=p.cuts[sid].workshops.filter(function(w){return w.id===cutWsFilter});if(ws.length){fp.cuts[sid]={total:ws.reduce(function(s,w){return s+w.qty},0),workshops:ws};fp.total_cuts+=fp.cuts[sid].total}}return fp}).filter(function(p){return p.total_cuts>0})}
   document.getElementById("cuts-list").innerHTML=products.length?products.map(function(p){
     // Collect all workshops for this product
     var allWs={};for(var sid in p.cuts){p.cuts[sid].workshops.forEach(function(w){if(!allWs[w.id])allWs[w.id]={name:w.name,qty:0};allWs[w.id].qty+=w.qty})}
-    var wsLine=Object.values(allWs).map(function(w){return '🏭 '+esc(w.name)}).join(' · ');
+    var wsLine=Object.values(allWs).map(function(w){return Icon('factory',12)+' '+esc(w.name)}).join(' · ');
     return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div><div style="font-size:11px;color:var(--warn)">'+wsLine+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">'+szs.map(function(s){var cd=p.cuts[s.id];if(!cd||cd.total<=0)return"";return '<div style="background:var(--bg);border-radius:8px;padding:6px 10px;text-align:center;min-width:50px"><div style="font-size:13px;font-weight:700;color:var(--th)">'+s.name+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+cd.total+'</div></div>'}).join("")+'</div></div>'
-  }).join(""):'<div class="empty"><span class="ic">✂️</span>'+(cutShowAll?'Немає товарів':'Немає крою')+'</div>'}catch(e){}
+  }).join(""):'<div class="empty"><span class="ic">'+Icon('scissors',40)+'</span>'+(cutShowAll?'Немає товарів':'Немає крою')+'</div>'}catch(e){}
 }
 async function openCutModal(){
   var bps=await api("/api/base-products?all=1");
@@ -953,13 +877,13 @@ async function saveCut(){
 }
 async function openWorkshopMgr(){
   var r=await api("/api/workshops");
-  document.getElementById("ws-list").innerHTML=r.workshops.map(function(w){return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--brd)"><span style="color:var(--th);font-size:13px">'+esc(w.name)+'</span><button class="btn btn-sm" onclick="delWorkshop('+w.id+')" style="color:var(--red);border-color:rgba(255,107,107,.2)">✕</button></div>'}).join("")||'<div style="color:var(--td);font-size:11px">Немає цехів</div>';
+  document.getElementById("ws-list").innerHTML=r.workshops.map(function(w){return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--brd)"><span style="color:var(--th);font-size:13px">'+esc(w.name)+'</span><button class="btn btn-sm" onclick="delWorkshop('+w.id+')" style="color:var(--red);border-color:rgba(255,107,107,.2)">'+Icon('x',13)+'</button></div>'}).join("")||'<div style="color:var(--td);font-size:11px">Немає цехів</div>';
   openM("ws-modal");
 }
 async function addWorkshop(){var n=document.getElementById("ws-name").value.trim();if(!n)return;try{await api("/api/workshops",{method:"POST",body:JSON.stringify({name:n})});document.getElementById("ws-name").value="";openWorkshopMgr()}catch(e){}}
 async function delWorkshop(id){if(!confirm("Видалити цех?"))return;try{await api("/api/workshops/"+id,{method:"DELETE"});openWorkshopMgr()}catch(e){}}
 
-async function admTrackNP(){var b=document.getElementById("adm-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></div>Оновлення...';try{await fetch("/api/nova-poshta/track-all",{method:"POST",headers:{"Content-Type":"application/json"}});b.innerHTML='✅ Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML='🔄 Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false;loadAdmOrders(admOrdFilter)},1500)}catch(e){b.innerHTML='❌ Помилка';setTimeout(function(){b.innerHTML='🔄 Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false},2000)}}
+async function admTrackNP(){var b=document.getElementById("adm-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></div>Оновлення...';try{await fetch("/api/nova-poshta/track-all",{method:"POST",headers:{"Content-Type":"application/json"}});b.innerHTML=Icon('check',12)+' Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false;loadAdmOrders(admOrdFilter)},1500)}catch(e){b.innerHTML=Icon('x',12)+' Помилка';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false},2000)}}
 async function loadAdmOrders(status){document.getElementById("adm-orders").innerHTML='<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   admOrdFilter=status;
   document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");
@@ -975,7 +899,7 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
   var ttn=document.getElementById("adm-ttn")?.value||"";if(ttn)url+="&ttn_search="+ttn;
   const{orders}=await api(url);
   const el=document.getElementById("adm-orders");
-  if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">📋</span>Немає замовлень</div>';return}
+  if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('clipboardList',40)+'</span>Немає замовлень</div>';return}
   let html="";
   for(const o of orders){
     const{order}=await api("/api/orders/"+o.id);
@@ -987,23 +911,23 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
     html+='<div style="text-align:right"><div style="font-size:10px;color:var(--blue)">'+esc(o.drop_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
     // TTN block
     html+='<div style="padding:8px 14px;display:flex;gap:6px;align-items:center">';
-    if(o.ttn)html+='<div style="flex:1;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">📦 '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">↩ '+esc(o.return_ttn)+'</div>':'')+'</div>';
-    html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." readonly style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;opacity:.7"><button id="ttn-edit-'+o.id+'" class="btn btn-sm" onclick="editTtn('+o.id+')" style="font-size:10px">✏️</button><button id="ttn-save-'+o.id+'" class="btn btn-sm btn-p" onclick="saveTtn('+o.id+')" style="font-size:10px;display:none">💾</button>';
-    if(!o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+')">📦 Створити ТТН</button>';
-    if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="window.open(\'https://my.novaposhta.ua/orders/printMarkings/orders[]/\'+document.getElementById(\'ttn-\'+'+o.id+').value+\'/type/pdf\',\'_blank\')">🖨</button>';
+    if(o.ttn)html+='<div style="flex:1;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">'+Icon('package',11)+' '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div>';
+    html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." readonly style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;opacity:.7"><button id="ttn-edit-'+o.id+'" class="btn btn-sm" onclick="editTtn('+o.id+')" style="font-size:10px">'+Icon('pencil',11)+'</button><button id="ttn-save-'+o.id+'" class="btn btn-sm btn-p" onclick="saveTtn('+o.id+')" style="font-size:10px;display:none">'+Icon('save',11)+'</button>';
+    if(!o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+')">'+Icon('package',13)+' Створити ТТН</button>';
+    if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="window.open(\'https://my.novaposhta.ua/orders/printMarkings/orders[]/\'+document.getElementById(\'ttn-\'+'+o.id+').value+\'/type/pdf\',\'_blank\')">'+Icon('printer',13)+'</button>';
     html+='</div>';
     // Items
     for(const i of order.items){
       html+='<div style="display:flex;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(30,39,64,.5);align-items:center">';
       html+=((i.var_photo||i.print_photo||i.bp_photo)?'<img src="'+(i.var_photo||i.print_photo||i.bp_photo)+'" style="width:120px;height:120px;border-radius:10px;object-fit:cover">':'<div style="width:120px;height:120px;background:var(--bg);border-radius:10px"></div>');
       html+='<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>';
-      if(i.print_name)html+='<div style="font-size:10px;color:var(--warn)">🖼 '+esc(i.print_name)+'</div>';
+      if(i.print_name)html+='<div style="font-size:10px;color:var(--warn)">'+Icon('image',11)+' '+esc(i.print_name)+'</div>';
       html+='<span style="font-size:14px;font-weight:700;color:var(--acc);background:var(--accbg);padding:3px 12px;border-radius:6px;margin-top:4px;display:inline-block">'+esc(i.size_name)+'</span>';
       if(i.original_size_name)html+=' <span style="font-size:11px"><span style="color:var(--red);text-decoration:line-through">'+esc(i.original_size_name)+'</span> → <span style="color:var(--acc);font-weight:700">'+esc(i.size_name)+'</span></span>';
       if(i.quantity>1)html+=' <span style="color:var(--td);font-size:13px">×'+i.quantity+'</span>';
       html+='</div></div>';
     }
-    if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:12px;color:var(--warn);padding:6px 10px;background:rgba(255,167,38,.06);border-radius:6px;border:1px solid rgba(255,167,38,.1)">📝 '+esc(o.note)+'</div></div>';
+    if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:12px;color:var(--warn);padding:6px 10px;background:rgba(255,167,38,.06);border-radius:6px;border:1px solid rgba(255,167,38,.1)">'+Icon('fileText',13)+' '+esc(o.note)+'</div></div>';
     html+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.1);flex-wrap:wrap;gap:6px">';
     if(o.status==='refused'||o.status==='return_transit')
       html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--red)">Збиток: -'+(o.return_cost||0).toFixed(0)+'₴</span></div>';
@@ -1012,9 +936,9 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
     html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
-    html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">✏️</button>';
-    
-    html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">✕ Скасувати</button></div></div></div>';
+    html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">'+Icon('pencil',13)+'</button>';
+
+    html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button></div></div></div>';
   }
   el.innerHTML=html;
 }
@@ -1041,7 +965,7 @@ async function fetchRetCost(id){
   alert(msg);loadAdmOrders(admOrdFilter)}catch(e){alert("Помилка: "+e.message)}
 }
 function editTtn(id){var inp=document.getElementById("ttn-"+id);inp.readOnly=false;inp.style.opacity="1";inp.focus();document.getElementById("ttn-edit-"+id).style.display="none";document.getElementById("ttn-save-"+id).style.display=""}
-async function saveTtn(id){var inp=document.getElementById("ttn-"+id);var v=inp.value;var btn=document.getElementById("ttn-save-"+id);btn.innerHTML='<div style="display:inline-block;width:10px;height:10px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div>';try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});btn.innerHTML="✅";btn.style.color="var(--acc)";inp.readOnly=true;inp.style.opacity=".7";setTimeout(function(){loadAdmOrders(admOrdFilter)},1000)}catch(e){btn.innerHTML="❌"}}
+async function saveTtn(id){var inp=document.getElementById("ttn-"+id);var v=inp.value;var btn=document.getElementById("ttn-save-"+id);btn.innerHTML='<div style="display:inline-block;width:10px;height:10px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div>';try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});btn.innerHTML=Icon('check',12);btn.style.color="var(--acc)";inp.readOnly=true;inp.style.opacity=".7";setTimeout(function(){loadAdmOrders(admOrdFilter)},1000)}catch(e){btn.innerHTML=Icon('x',12)}}
 
 // ── ADMIN PAYOUTS ────────────────────────────────────────────────
 let allPayouts=[];
@@ -1061,16 +985,16 @@ function renderPayouts(list){
     '<div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
     '<div><div style="font-size:15px;font-weight:700;color:var(--th)">'+esc(p.drop_name)+' <span style="font-size:11px;color:var(--td)">#'+p.dropshipper_id+'</span></div>'+
     '<div style="margin-top:4px">'+(p.payment_type==="iban"?'<div style="font-size:10px;color:var(--td)">IBAN:</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:var(--acc);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(p.payment_iban||"")+'\')">'+esc(p.payment_iban||"не вказано")+'</div>'+(p.full_name?'<div style="font-size:10px;color:var(--td);margin-top:2px">'+esc(p.full_name)+'</div>':''):'<div style="font-size:10px;color:var(--td)">Карта:</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:var(--warn);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(p.payment_card||"")+'\')">'+esc(p.payment_card||"не вказано")+'</div>')+'</div>'+
-    (p.comment?'<div style="font-size:11px;color:var(--t);margin-top:2px">💬 '+esc(p.comment)+'</div>':'')+
+    (p.comment?'<div style="font-size:11px;color:var(--t);margin-top:2px">'+Icon('messageSquare',12)+' '+esc(p.comment)+'</div>':'')+
     '<div style="font-size:10px;color:var(--td);margin-top:2px">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+
-    '<div style="font-size:10px;margin-top:3px"><span style="color:var(--acc)">✅ '+success.length+' успішних (+'+successSum.toFixed(0)+'₴)</span> · <span style="color:var(--red)">❌ '+returns.length+' повернень (-'+returnSum.toFixed(0)+'₴)</span></div>'+
+    '<div style="font-size:10px;margin-top:3px"><span style="color:var(--acc)">'+Icon('check',11)+' '+success.length+' успішних (+'+successSum.toFixed(0)+'₴)</span> · <span style="color:var(--red)">'+Icon('x',11)+' '+returns.length+' повернень (-'+returnSum.toFixed(0)+'₴)</span></div>'+
     '</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(isPaid?'var(--acc)':'var(--red)')+'">'+p.total_amount.toFixed(0)+'₴</div>'+
-    '<div style="margin-top:4px">'+(isPaid?'<span style="color:var(--acc);font-size:12px;font-weight:600">✅ Виплачено</span>':'<button class="btn btn-p" onclick="event.stopPropagation();markPaid('+p.id+')" style="font-size:11px">💸 Виплачено</button>')+'</div></div></div>'+
+    '<div style="margin-top:4px">'+(isPaid?'<span style="color:var(--acc);font-size:12px;font-weight:600">'+Icon('check',13)+' Виплачено</span>':'<button class="btn btn-p" onclick="event.stopPropagation();markPaid('+p.id+')" style="font-size:11px">'+Icon('banknote',12)+' Виплачено</button>')+'</div></div></div>'+
     '<div style="display:none;border-top:1px solid var(--brd)">'+
-    (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">✅ Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
-    (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">❌ Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">↩ '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
+    (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">'+Icon('check',12)+' Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
+    (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">'+Icon('x',12)+' Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
     '</div></div>';
-  }).join(""):'<div class="empty"><span class="ic">💰</span>Немає запитів на виплату</div>';
+  }).join(""):'<div class="empty"><span class="ic">'+Icon('banknote',40)+'</span>Немає запитів на виплату</div>';
 }
 async function markPaid(id){if(!confirm("Підтвердити виплату?"))return;try{await api("/api/payouts/"+id+"/paid",{method:"PUT"});loadAdmPayouts()}catch(e){}}
 
@@ -1102,40 +1026,40 @@ function renderReturns(orders){
   document.getElementById("adm-returns-list").innerHTML=orders.length?orders.map(function(o){
       var allDone=o.items.every(function(i){return i.returned_to_stock});
       return '<div style="background:var(--card);border:1px solid '+(allDone?'rgba(0,212,170,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:8px;overflow:hidden">'+
-      '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(allDone?' <span style="font-size:10px;color:var(--acc)">✅ На складі</span>':'')+'</div>'+
+      '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(allDone?' <span style="font-size:10px;color:var(--acc)">'+Icon('check',11)+' На складі</span>':'')+'</div>'+
       '<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · '+esc(o.drop_name)+'</div>'+
-      (o.ttn?'<div style="font-size:11px;color:'+ttnColor(o)+';font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:'+ttnColor(o)+'">📦 '+esc(o.np_status_text)+'</div>':'')+
+      (o.ttn?'<div style="font-size:11px;color:'+ttnColor(o)+';font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:'+ttnColor(o)+'">'+Icon('package',10)+' '+esc(o.np_status_text)+'</div>':'')+
       '</div><div style="font-size:10px;color:var(--td)">'+(o.updated_at?.slice(0,16)||"")+'</div></div>'+
       '<div style="padding:4px 14px 10px">'+o.items.map(function(it){var ph=it.var_photo||it.print_photo||it.bp_photo;
         return '<div style="display:flex;gap:8px;padding:4px 0;align-items:center;border-top:1px solid var(--brd);">'+(ph?'<img src="'+ph+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+
         '<div style="flex:1;font-size:11px;color:var(--th)">'+esc(it.var_name)+' <b style="color:var(--acc)">'+esc(it.size_name)+'</b></div>'+
-        '<div style="font-size:10px;color:'+(it.returned_to_stock?'var(--acc)':'var(--red)')+'">'+(it.returned_to_stock?'✅ На складі':'⏳ Очікує')+'</div>'+
-        (!it.returned_to_stock?'<button class="btn btn-sm btn-p" onclick="admRetItem('+it.id+',this)" style="font-size:9px">📦 На склад</button>':'')+
+        '<div style="font-size:10px;color:'+(it.returned_to_stock?'var(--acc)':'var(--red)')+'">'+(it.returned_to_stock?Icon('check',11)+' На складі':Icon('refreshCw',11)+' Очікує')+'</div>'+
+        (!it.returned_to_stock?'<button class="btn btn-sm btn-p" onclick="admRetItem('+it.id+',this)" style="font-size:9px">'+Icon('package',10)+' На склад</button>':'')+
         '</div>'}).join("")+'</div></div>'
-  }).join(""):'<div class="empty"><span class="ic">↩</span>Немає повернень</div>';
+  }).join(""):'<div class="empty"><span class="ic">'+Icon('undo2',40)+'</span>Немає повернень</div>';
 }
 async function admScanReturn(ttn){
   if(!ttn)return;var el=document.getElementById("ret-scan-result");
   try{var r=await api("/api/scan",{method:"POST",body:JSON.stringify({ttn:ttn,scan_type:"return"})});
   var o=r.order;
-  el.innerHTML='<div class="msg msg-ok">✅ Повернення #'+o.id+' · '+esc(o.client_name)+' зареєстровано</div>';
-  loadAdmReturns()}catch(e){el.innerHTML='<div class="msg msg-err">❌ '+esc(e.message)+'</div>'}
+  el.innerHTML='<div class="msg msg-ok">'+Icon('check',13)+' Повернення #'+o.id+' · '+esc(o.client_name)+' зареєстровано</div>';
+  loadAdmReturns()}catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
 }
-async function admRetItem(id,btn){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});btn.parentElement.querySelector("div:nth-child(3)").innerHTML='✅ На складі';btn.parentElement.querySelector("div:nth-child(3)").style.color='var(--acc)';btn.remove()}catch(e){}}
+async function admRetItem(id,btn){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});btn.parentElement.querySelector("div:nth-child(3)").innerHTML=Icon('check',11)+' На складі';btn.parentElement.querySelector("div:nth-child(3)").style.color='var(--acc)';btn.remove()}catch(e){}}
 
 var slFilter='';
 async function loadStockLog(){
   try{const{logs}=await api("/api/stock-log"+(slFilter?"?type="+slFilter:""));
-  var tl={incoming:"📥 Прихід",writeoff:"📤 Списання",swap:"🔄 Заміна",cut_in:"✂️ Крій +",cut_out:"✂️ Крій →"};
+  var tl={incoming:Icon('download',13)+" Прихід",writeoff:Icon('upload',13)+" Списання",swap:Icon('refreshCw',13)+" Заміна",cut_in:Icon('scissors',13)+" Крій +",cut_out:Icon('scissors',13)+" Крій →"};
   var tc={incoming:"var(--acc)",writeoff:"var(--red)",swap:"var(--warn)",cut_in:"var(--blue)",cut_out:"var(--warn)"};
-  document.getElementById("stocklog-list").innerHTML=logs.length?'<table class="tbl"><tr><th>Дата</th><th>Тип</th><th>Товар</th><th>Розмір</th><th>Кіл.</th><th>Примітка</th><th>Хто</th></tr>'+logs.map(function(l){return '<tr><td style="font-size:10px;color:var(--td);white-space:nowrap">'+(l.created_at?.slice(0,16)||"")+'</td><td style="color:'+( tc[l.type]||"var(--t)")+';font-weight:600;font-size:11px">'+(tl[l.type]||l.type)+'</td><td style="color:var(--th);font-size:11px">'+esc(l.product_name||"—")+'</td><td style="color:var(--acc);font-weight:600">'+esc(l.size_name||"—")+'</td><td style="font-family:JetBrains Mono,monospace;font-weight:700;color:'+(l.type==="writeoff"?"var(--red)":"var(--th)")+'">'+l.quantity+'</td><td style="font-size:10px;color:var(--td)">'+esc(l.note||"")+'</td><td style="font-size:10px;color:var(--blue)">'+esc(l.user_name||"")+'</td></tr>'}).join("")+'</table>':'<div class="empty"><span class="ic">📊</span>Немає записів</div>'}catch(e){}
+  document.getElementById("stocklog-list").innerHTML=logs.length?'<table class="tbl"><tr><th>Дата</th><th>Тип</th><th>Товар</th><th>Розмір</th><th>Кіл.</th><th>Примітка</th><th>Хто</th></tr>'+logs.map(function(l){return '<tr><td style="font-size:10px;color:var(--td);white-space:nowrap">'+(l.created_at?.slice(0,16)||"")+'</td><td style="color:'+( tc[l.type]||"var(--t)")+';font-weight:600;font-size:11px">'+(tl[l.type]||l.type)+'</td><td style="color:var(--th);font-size:11px">'+esc(l.product_name||"—")+'</td><td style="color:var(--acc);font-weight:600">'+esc(l.size_name||"—")+'</td><td style="font-family:JetBrains Mono,monospace;font-weight:700;color:'+(l.type==="writeoff"?"var(--red)":"var(--th)")+'">'+l.quantity+'</td><td style="font-size:10px;color:var(--td)">'+esc(l.note||"")+'</td><td style="font-size:10px;color:var(--blue)">'+esc(l.user_name||"")+'</td></tr>'}).join("")+'</table>':'<div class="empty"><span class="ic">'+Icon('barChart3',40)+'</span>Немає записів</div>'}catch(e){}
 }
 
 // Admin create TTN
 async function admCreateTTN(id){
   try{var r=await api("/api/nova-poshta/create-ttn/"+id,{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){
     var el=document.getElementById("adm-orders");
-    el.insertAdjacentHTML("afterbegin",'<div style="padding:8px 12px;background:var(--redbg);color:var(--red);border-radius:8px;font-size:11px;margin-bottom:8px">❌ '+esc(e.message)+'</div>');
+    el.insertAdjacentHTML("afterbegin",'<div style="padding:8px 12px;background:var(--redbg);color:var(--red);border-radius:8px;font-size:11px;margin-bottom:8px">'+Icon('x',13)+' '+esc(e.message)+'</div>');
   }
 }
 
@@ -1150,10 +1074,10 @@ async function loadReturns(){
   try{
     const{items}=await api("/api/stock-returns");
     const el=document.getElementById("ret-stock-list");
-    if(!items.length){el.innerHTML='<div class="empty"><span class="ic">📦</span>Немає повернень на складі</div>';return}
+    if(!items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('package',40)+'</span>Немає повернень на складі</div>';return}
     // Group by variation
     const groups={};items.forEach(i=>{if(!groups[i.variation_id])groups[i.variation_id]={name:i.var_name,photo:(i.var_photo||i.print_photo||i.bp_photo)||i.print_photo||"",print:i.print_name,color:i.color_name,sizes:[]};groups[i.variation_id].sizes.push({name:i.size_name,qty:i.quantity})});
-    el.innerHTML='<div class="cards">'+Object.values(groups).map(g=>'<div class="pcard">'+(g.photo?'<div class="pcard-img"><img src="'+g.photo+'"></div>':'')+'<div class="pcard-body"><div class="pcard-name">'+esc(g.name)+'</div>'+(g.print?'<div class="pcard-sub">🖼 '+esc(g.print)+'</div>':'')+(g.color?'<div class="pcard-sub">'+esc(g.color)+'</div>':'')+'<div class="stock-row" style="margin-top:4px">'+g.sizes.map(s=>'<div class="stock-sz"><b>'+s.name+'</b><br>'+s.qty+'</div>').join("")+'</div></div></div>').join("")+'</div>';
+    el.innerHTML='<div class="cards">'+Object.values(groups).map(g=>'<div class="pcard">'+(g.photo?'<div class="pcard-img"><img src="'+g.photo+'"></div>':'')+'<div class="pcard-body"><div class="pcard-name">'+esc(g.name)+'</div>'+(g.print?'<div class="pcard-sub">'+Icon('image',11)+' '+esc(g.print)+'</div>':'')+(g.color?'<div class="pcard-sub">'+esc(g.color)+'</div>':'')+'<div class="stock-row" style="margin-top:4px">'+g.sizes.map(s=>'<div class="stock-sz"><b>'+s.name+'</b><br>'+s.qty+'</div>').join("")+'</div></div></div>').join("")+'</div>';
   }catch(e){}
 }
 async function scanRetTTN(){
@@ -1171,23 +1095,23 @@ async function scanRetTTN(){
       html+='<span style="font-size:13px;font-weight:700;color:var(--acc);background:var(--accbg);padding:2px 10px;border-radius:5px">'+esc(i.size_name)+'</span>';
       if(i.quantity>1)html+=' ×'+i.quantity;
       html+='</div>';
-      if(done)html+='<div style="width:30px;height:30px;border-radius:8px;background:var(--acc);display:flex;align-items:center;justify-content:center;color:#0a0e17;font-size:16px;font-weight:700">✓</div>';
+      if(done)html+='<div style="width:30px;height:30px;border-radius:8px;background:var(--acc);display:flex;align-items:center;justify-content:center;color:#0a0e17;font-size:16px;font-weight:700">'+Icon('check',16)+'</div>';
       else html+='<div style="width:30px;height:30px;border-radius:8px;border:2px solid var(--brd2);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="retItem('+i.id+',this)"></div>';
       html+='</div>';
     }
     html+='</div>';
     el.innerHTML=html;
     document.getElementById("ret-scan").value="";document.getElementById("ret-scan").focus();
-  }catch(e){el.innerHTML='<div class="msg msg-err">❌ '+e.message+'</div>'}
+  }catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+e.message+'</div>'}
 }
-async function retItem(id,el){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});el.style.background="var(--acc)";el.style.borderColor="var(--acc)";el.style.color="#0a0e17";el.innerHTML="✓";el.onclick=null;loadReturns()}catch(e){alert(e.message)}}
+async function retItem(id,el){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});el.style.background="var(--acc)";el.style.borderColor="var(--acc)";el.style.color="#0a0e17";el.innerHTML=Icon('check',15);el.onclick=null;loadReturns()}catch(e){alert(e.message)}}
 
 // ── Users ────────────────────────────────────────────────────────
 const WL={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};
 
 let dsDropId=null;
 async function viewDropStats(id,name){
-  dsDropId=id;document.getElementById("ds-title").textContent="📊 "+name;
+  dsDropId=id;document.getElementById("ds-title").textContent=name;
   var d=new Date();document.getElementById("ds-to").value=d.toISOString().slice(0,10);d.setDate(d.getDate()-30);document.getElementById("ds-from").value=d.toISOString().slice(0,10);
   openM("drop-stats-modal");loadDropStats();
 }
@@ -1204,13 +1128,13 @@ async function loadDropStats(){
   }catch(e){document.getElementById("ds-grid").innerHTML='<div style="color:var(--red)">Помилка</div>'}
 }
 
-async function loadDrops(){const{users:u}=await api("/api/users?role=dropshipper");document.getElementById("drop-list").innerHTML=!u.length?'<div class="empty"><span class="ic">🛒</span>Немає</div>':`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Стан</th><th></th></tr>${u.map(x=>`<tr style="cursor:pointer" onclick="viewDropStats(${x.id},'${esc(x.name).replace(/'/g,"")}')"><td style="color:var(--th)">${esc(x.name)}</td><td class="mono">${esc(x.username)}</td><td>${x.discount_percent?x.discount_percent+"%":""}${x.discount_fixed?" "+x.discount_fixed+"₴":""}</td><td>${x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>'}</td><td><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editU(${x.id},'dropshipper')">✏️</button></td></tr>`).join("")}</table>`}
-var ROLES={packer:"👷 Пакувальник",finalizer:"📦 Пакувальниця",seamstress:"🧵 Швея",printer:"🖨 Принтувальник"};
+async function loadDrops(){const{users:u}=await api("/api/users?role=dropshipper");document.getElementById("drop-list").innerHTML=!u.length?'<div class="empty"><span class="ic">'+Icon('shoppingCart',40)+'</span>Немає</div>':`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Стан</th><th></th></tr>${u.map(x=>`<tr style="cursor:pointer" onclick="viewDropStats(${x.id},'${esc(x.name).replace(/'/g,"")}')"><td style="color:var(--th)">${esc(x.name)}</td><td class="mono">${esc(x.username)}</td><td>${x.discount_percent?x.discount_percent+"%":""}${x.discount_fixed?" "+x.discount_fixed+"₴":""}</td><td>${x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>'}</td><td><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editU(${x.id},'dropshipper')">${Icon('pencil',13)}</button></td></tr>`).join("")}</table>`}
+var ROLES={packer:Icon('hardHat',12)+" Пакувальник",finalizer:Icon('package',12)+" Пакувальниця",seamstress:Icon('shirt',12)+" Швея",printer:Icon('printer',12)+" Принтувальник"};
 async function loadWorkers(){
   try{var r=await api("/api/workers");
   document.getElementById("workers-list").innerHTML=r.workers.length?r.workers.map(function(w){
     return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openWorkerDetail('+w.id+')"><div><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(w.name)+' <span style="font-size:10px;color:var(--td)">'+(ROLES[w.role]||w.role)+'</span></div><div style="font-size:10px;color:var(--td);margin-top:2px">Ставка: '+w.daily_rate+'₴/день · Виробіток: '+w.per_item_rate+'₴/річ'+(w.role==="packer"?" · З поверн: "+w.per_return_item_rate+"₴":"")+'</div></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(w.balance>0?"var(--acc)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td)">до виплати</div></div></div>'
-  }).join(""):'<div class="empty"><span class="ic">👷</span>Немає працівників</div>'}catch(e){}
+  }).join(""):'<div class="empty"><span class="ic">'+Icon('hardHat',40)+'</span>Немає працівників</div>'}catch(e){}
 }
 function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-auth-wrap").style.display=(r==="packer"||r==="finalizer")?"":"none";document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none";var lbl=document.getElementById("wk-rate-label");if(r==="seamstress")lbl.textContent="Оплата за 1 нашивку ₴";else if(r==="printer")lbl.textContent="Оплата за 1 принт ₴";else if(r==="packer")lbl.textContent="Виробіток за 1 видану річ ₴";else lbl.textContent="Виробіток за 1 річ ₴"}
 function openAddWorker(){document.getElementById("wk-title").textContent="+ Працівник";["wk-name","wk-login","wk-pass"].forEach(function(id){document.getElementById(id).value=""});document.getElementById("wk-daily").value="0";document.getElementById("wk-rate").value="0";document.getElementById("wk-ret-rate").value="0";document.getElementById("wk-role").value="packer";toggleWkRole();document.getElementById("wk-err").style.display="none";openM("wk-modal")}
@@ -1225,8 +1149,8 @@ async function openWorkerDetail(id){
   html+='<div style="display:flex;gap:10px;margin-top:6px"><div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--acc)">'+w.total_earned.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ЗАРОБЛЕНО</div></div>';
   html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--td)">'+w.total_paid.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ВИПЛАЧЕНО</div></div>';
   html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:'+(w.balance>0?"var(--warn)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ДО ВИПЛАТИ</div></div></div></div>';
-  if(w.balance>0)html+='<button class="btn btn-p" onclick="payWorker('+w.id+')" style="width:100%;margin-bottom:10px">💸 Виплатити '+w.balance.toFixed(0)+'₴</button>';
-  else html+='<button class="btn" style="width:100%;margin-bottom:10px;opacity:.4;cursor:default" disabled>💸 Нічого виплачувати (0₴)</button>';
+  if(w.balance>0)html+='<button class="btn btn-p" onclick="payWorker('+w.id+')" style="width:100%;margin-bottom:10px">'+Icon('banknote',13)+' Виплатити '+w.balance.toFixed(0)+'₴</button>';
+  else html+='<button class="btn" style="width:100%;margin-bottom:10px;opacity:.4;cursor:default" disabled>'+Icon('banknote',13)+' Нічого виплачувати (0₴)</button>';
   // Payout history
   html+='<div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:6px">Історія виплат ('+w.payouts.length+'):</div>';
   if(w.payouts.length){html+=w.payouts.map(function(p,idx){
@@ -1257,16 +1181,16 @@ async function delUser(){if(!editUID||!confirm("Видалити?"))return;await
 async function loadSets(){try{const{settings:s}=await api("/api/settings");Object.entries(s).forEach(([k,v])=>{const el=document.getElementById("s-"+k);if(el)el.value=v})}catch(e){}loadNpSenders()}
 async function loadNpSenders(){
   try{const{senders}=await api("/api/np-senders");
-  document.getElementById("np-senders-list").innerHTML=senders.length?senders.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px;border:1px solid '+(s.is_active?'var(--acc)':'var(--brd)')+'"><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+(s.is_active?' <span class="tag tag-g">активний</span>':'')+'</div><div style="font-size:10px;color:var(--td)">'+esc(s.phone)+' · '+esc(s.address_description||"")+'</div></div>'+(s.is_active?'':'<button class="btn btn-sm btn-p" onclick="activateNpSender('+s.id+')" style="font-size:9px">✓ Активувати</button>')+'<button class="btn btn-sm btn-d" onclick="deleteNpSender('+s.id+')" style="font-size:9px">✕</button></div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає контрагентів</div>'}catch(e){}
+  document.getElementById("np-senders-list").innerHTML=senders.length?senders.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px;border:1px solid '+(s.is_active?'var(--acc)':'var(--brd)')+'"><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+(s.is_active?' <span class="tag tag-g">активний</span>':'')+'</div><div style="font-size:10px;color:var(--td)">'+esc(s.phone)+' · '+esc(s.address_description||"")+'</div></div>'+(s.is_active?'':'<button class="btn btn-sm btn-p" onclick="activateNpSender('+s.id+')" style="font-size:9px">'+Icon('check',10)+' Активувати</button>')+'<button class="btn btn-sm btn-d" onclick="deleteNpSender('+s.id+')" style="font-size:9px">'+Icon('x',10)+'</button></div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає контрагентів</div>'}catch(e){}
 }
 async function addNpSender(){
   const name=document.getElementById("np-add-name").value;const phone=document.getElementById("np-add-phone").value;
-  const msg=document.getElementById("np-msg");msg.innerHTML='<span style="color:var(--blue)">⏳ Пошук контрагента в НП...</span>';
-  try{await api("/api/np-senders",{method:"POST",body:JSON.stringify({name,phone})});document.getElementById("np-add-name").value="";document.getElementById("np-add-phone").value="";msg.innerHTML='<span style="color:var(--acc)">✅ Додано</span>';loadNpSenders()}catch(e){msg.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
+  const msg=document.getElementById("np-msg");msg.innerHTML='<span style="color:var(--blue)">'+Icon('refreshCw',12)+' Пошук контрагента в НП...</span>';
+  try{await api("/api/np-senders",{method:"POST",body:JSON.stringify({name,phone})});document.getElementById("np-add-name").value="";document.getElementById("np-add-phone").value="";msg.innerHTML='<span style="color:var(--acc)">'+Icon('check',13)+' Додано</span>';loadNpSenders()}catch(e){msg.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
 }
 async function activateNpSender(id){await api("/api/np-senders/"+id+"/activate",{method:"PUT"});loadNpSenders()}
 async function deleteNpSender(id){if(!confirm("Видалити?"))return;await api("/api/np-senders/"+id,{method:"DELETE"});loadNpSenders()}
-async function saveSets(){const ks=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];const d={};ks.forEach(k=>{const el=document.getElementById("s-"+k);if(el)d[k]=el.value});try{await api("/api/settings",{method:"PUT",body:JSON.stringify(d)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">✅</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2e3)}catch(e){}}
+async function saveSets(){const ks=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];const d={};ks.forEach(k=>{const el=document.getElementById("s-"+k);if(el)d[k]=el.value});try{await api("/api/settings",{method:"PUT",body:JSON.stringify(d)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">'+Icon('check',13)+'</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2e3)}catch(e){}}
 
 init();
 </script>

@@ -2,35 +2,41 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>CRM — Пакувальниця</title>
+<title>ADS DROP — Пакувальниця</title>
+<link rel="icon" type="image/png" href="/public/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/public/theme.css">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
-:root{--bg:#0a0e17;--card:#111827;--input:#0d1220;--brd:#1e2740;--brd2:#2a3a5c;--t:#c8cdd5;--td:#5a6378;--th:#f0f2f5;--acc:#00d4aa;--accbg:rgba(0,212,170,.06);--red:#ff6b6b;--redbg:rgba(255,107,107,.06);--warn:#ffa726;--blue:#42a5f5;--r:14px}
-*{margin:0;padding:0;box-sizing:border-box}html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min-height:100vh}
-.wrap{max-width:720px;margin:0 auto;padding:14px 14px 40px}
-.hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--brd);margin-bottom:14px}
-.hdr h1{font-size:16px;font-weight:700;color:var(--th)}.hdr small{font-size:10px;color:var(--td)}
-.btn-out{background:none;border:1px solid var(--brd);border-radius:6px;color:var(--td);padding:6px 12px;font-size:10px;font-family:inherit;cursor:pointer}
-.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:14px}
-.sc{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px;text-align:center}
-.sc .sv{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700}.sc .sl{font-size:7px;color:var(--td);text-transform:uppercase;margin-top:2px}
-.scan-input{width:100%;padding:16px;font-size:18px;font-family:'JetBrains Mono',monospace;background:var(--input);border:2px solid var(--brd2);border-radius:12px;color:#fff;outline:0;text-align:center;letter-spacing:2px;margin-bottom:14px}
-.scan-input:focus{border-color:var(--acc)}.scan-input::placeholder{letter-spacing:0;font-family:'Inter',sans-serif;font-size:13px}
-.tag{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px}
-.tag-new{background:var(--accbg);color:var(--acc)}.tag-prog{background:rgba(66,165,245,.08);color:var(--blue)}.tag-done{background:rgba(34,197,94,.08);color:#22c55e}.tag-ship{background:rgba(255,167,38,.08);color:var(--warn)}.tag-bad{background:var(--redbg);color:var(--red)}
-.btn{padding:8px 16px;font-size:12px;font-family:inherit;font-weight:600;border:1px solid var(--brd);border-radius:8px;cursor:pointer;background:var(--card);color:var(--t)}
-.btn-p{background:var(--acc);color:#0a0e17;border-color:var(--acc);font-size:14px;padding:12px 24px}
-.msg{padding:8px 12px;border-radius:7px;font-size:11px;margin-bottom:8px}.msg-err{background:var(--redbg);color:var(--red)}.msg-ok{background:var(--accbg);color:var(--acc)}
-.nav{display:flex;gap:3px;margin-bottom:14px}.nav a{padding:8px 14px;font-size:11px;font-weight:600;background:var(--card);border:1px solid var(--brd);border-radius:8px;color:var(--td);cursor:pointer;text-decoration:none}.nav a.on{color:var(--acc);border-color:rgba(0,212,170,.2);background:var(--accbg)}
-.page{display:none}.page.on{display:block}
-.tbl{width:100%;border-collapse:collapse;font-size:11px}.tbl th{text-align:left;color:var(--td);font-size:9px;padding:6px 8px;border-bottom:1px solid var(--brd)}.tbl td{padding:6px 8px;border-bottom:1px solid var(--brd);color:var(--t)}
+/* Finalizer page-specific */
+.wrap{max-width:760px;margin:0 auto;padding:16px 16px 48px}
+.hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:14px;border-bottom:1px solid var(--border-subtle);margin-bottom:16px}
+.hdr h1{font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px}
+.hdr small{font-size:11px;color:var(--text-muted)}
+/* Navigation */
+.nav{display:flex;gap:4px;margin-bottom:16px}
+.nav a{padding:10px 16px;font-size:12px;font-weight:600;background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-secondary);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:all var(--duration-fast)}
+.nav a:hover{color:var(--text-primary);border-color:var(--border-strong)}
+.nav a.on{color:var(--accent);border-color:var(--border-glow);background:var(--accent-soft)}
+/* Scan input */
+.scan-input{width:100%;padding:18px;font-size:18px;font-family:'JetBrains Mono',monospace;background:var(--bg-input);border:2px solid var(--border-strong);border-radius:var(--radius-lg);color:var(--text-primary);outline:0;text-align:center;letter-spacing:3px;margin-bottom:16px;transition:all var(--duration-fast)}
+.scan-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.scan-input::placeholder{letter-spacing:0;font-family:'Inter',sans-serif;font-size:14px;color:var(--text-muted)}
+/* Status tags */
+.tag-new{background:var(--accent-soft);color:var(--accent)}
+.tag-prog{background:var(--info-soft);color:var(--info)}
+.tag-done{background:var(--success-soft);color:var(--success)}
+.tag-ship{background:var(--warning-soft);color:var(--warning)}
+.tag-bad{background:var(--error-soft);color:var(--error)}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
+<script src="/public/icons.js"></script>
 </head>
 <body>
 <div class="wrap">
-<div class="hdr"><div><h1>📦 Пакувальниця</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
-<div class="nav"><a class="on" data-p="scan">📷 Сканер</a><a data-p="stats">📊 Статистика</a></div>
+<div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:15px;margin-top:2px"><i data-icon="package" data-size="16"></i> Пакувальниця</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
+<div class="nav"><a class="on" data-p="scan"><i data-icon="camera" data-size="15"></i> Сканер</a><a data-p="stats"><i data-icon="barChart3" data-size="15"></i> Статистика</a></div>
 
 <div class="page on" id="pg-scan">
 <div class="sg">
@@ -59,7 +65,7 @@ var SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship
 var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(function(){if(_lc>0){var l=document.getElementById("loader");if(l)l.style.display="flex"}},800)}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){if(_lt){clearTimeout(_lt);_lt=null}var l=document.getElementById("loader");if(l)l.style.display="none"}}
 async function api(u,o){_ls();try{var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();_lh();if(!r.ok)throw new Error(d.error||"Err");return d}catch(e){_lh();throw e}}
 function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#22c55e';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
-function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.textContent="✅ "+t+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
+function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999;display:flex;align-items:center;gap:6px";d.innerHTML=Icon('check',12)+" "+esc(t)+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 
@@ -98,7 +104,7 @@ async function doScan(){
     html+='<div style="padding:12px 14px"><div style="font-size:18px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div>';
     html+='<div style="font-size:13px;color:var(--th);margin-top:4px">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
     html+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
-    if(o.ttn)html+='<div style="margin-top:4px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="copyTTN(this.textContent)">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+'">📦 '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">↩ '+esc(o.return_ttn)+'</div>':'')+'</div>';
+    if(o.ttn)html+='<div style="margin-top:4px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="copyTTN(this.textContent)">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+'">'+Icon('truck',11)+' '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div>';
     html+='<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--th);margin-top:6px">Наложка: '+o.cod_amount+'₴</div></div>';
     for(var i=0;i<o.items.length;i++){
       var it=o.items[i];var ph=it.var_photo||it.print_photo||it.bp_photo;
@@ -112,18 +118,18 @@ async function doScan(){
     }
     html+='<div style="padding:12px 14px;background:rgba(0,0,0,.1);text-align:center">';
     if(o.status==="packed"||o.status==="new"||o.status==="in_progress")
-      html+='<button class="btn btn-p" onclick="finalizeOrder('+o.id+')">✅ Підтвердити відправку</button>';
-    else html+='<div style="color:var(--acc);font-size:13px;font-weight:600">✅ Зареєстровано</div>';
+      html+='<button class="btn btn-p" onclick="finalizeOrder('+o.id+')">'+Icon('check',14)+' Підтвердити відправку</button>';
+    else html+='<div style="color:var(--acc);font-size:13px;font-weight:600">'+Icon('check',13)+' Зареєстровано</div>';
     html+='</div></div>';
     el.innerHTML=html;
     document.getElementById("scan-ttn").value="";document.getElementById("scan-ttn").focus();
     loadStats();loadRecent();
-  }catch(e){el.innerHTML='<div class="msg msg-err">❌ '+esc(e.message)+'</div>';document.getElementById("scan-ttn").value="";document.getElementById("scan-ttn").focus()}
+  }catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>';document.getElementById("scan-ttn").value="";document.getElementById("scan-ttn").focus()}
 }
 
 async function finalizeOrder(id){
   try{await api("/api/scan/finalize/"+id,{method:"POST"});
-  document.getElementById("scan-result").innerHTML='<div class="msg msg-ok" style="font-size:14px;padding:14px;text-align:center">✅ Замовлення #'+id+' відправлено!</div>';
+  document.getElementById("scan-result").innerHTML='<div class="msg msg-ok" style="font-size:14px;padding:14px;text-align:center">'+Icon('check',14)+' Замовлення #'+id+' відправлено!</div>';
   loadStats();loadRecent()}catch(e){}
 }
 
@@ -139,7 +145,7 @@ async function loadFullStats(){
   // Recent
   html+='<div style="font-size:13px;font-weight:600;color:var(--th);margin:14px 0 8px">Останні сканування:</div>';
   html+='<table class="tbl"><tr><th>Час</th><th>ТТН</th><th>Клієнт</th><th>Тип</th><th>Статус НП</th></tr>';
-  r.recent.forEach(function(s){html+='<tr><td style="white-space:nowrap;font-size:10px">'+(s.created_at?.slice(0,16)||"")+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--warn);font-size:10px">'+esc(s.ttn)+'</td><td>'+esc(s.client_name||"")+'</td><td style="color:'+(s.scan_type==="return"?"var(--red)":"var(--acc)")+'">'+(s.scan_type==="return"?"↩ Поверн.":"📦 Відпр.")+'</td><td style="font-size:9px;color:var(--td)">'+esc(s.np_status_text||"")+'</td></tr>'});
+  r.recent.forEach(function(s){html+='<tr><td style="white-space:nowrap;font-size:10px">'+(s.created_at?.slice(0,16)||"")+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--warn);font-size:10px">'+esc(s.ttn)+'</td><td>'+esc(s.client_name||"")+'</td><td style="color:'+(s.scan_type==="return"?"var(--red)":"var(--acc)")+'">'+(s.scan_type==="return"?Icon('undo2',10)+" Поверн.":Icon('package',10)+" Відпр.")+'</td><td style="font-size:9px;color:var(--td)">'+esc(s.np_status_text||"")+'</td></tr>'});
   html+='</table>';
   document.getElementById("stats-content").innerHTML=html}catch(e){}
 }

@@ -65,7 +65,7 @@ app.delete("/api/users/:id", authMiddleware, requireRole("admin"), (req, res) =>
 });
 
 // ── SETTINGS ─────────────────────────────────────────────────────
-app.get("/api/settings", authMiddleware, (req, res) => {
+app.get("/api/settings", authMiddleware, requireRole("admin"), (req, res) => {
   const s={};db.prepare("SELECT key,value FROM settings").all().forEach(r=>s[r.key]=r.value);res.json({settings:s});
 });
 app.put("/api/settings", authMiddleware, requireRole("admin"), (req, res) => {
@@ -215,9 +215,9 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
     if(patch_ids)patch_ids.forEach(id=>lpa.run(mid,id));
     if(workers)workers.forEach(w=>lw.run(mid,w.user_id,parseFloat(w.amount)||0));
 
-    const colors=db.prepare("SELECT * FROM colors WHERE id IN("+color_ids.join(",")+")").all();
-    const sizes=db.prepare("SELECT * FROM sizes WHERE id IN("+size_ids.join(",")+")").all();
-    const prints=print_ids?.length?db.prepare("SELECT * FROM prints WHERE id IN("+print_ids.join(",")+")").all():[];
+    const colors=db.prepare(`SELECT * FROM colors WHERE id IN(${color_ids.map(()=>"?").join(",")})`).all(...color_ids);
+    const sizes=db.prepare(`SELECT * FROM sizes WHERE id IN(${size_ids.map(()=>"?").join(",")})`).all(...size_ids);
+    const prints=print_ids?.length?db.prepare(`SELECT * FROM prints WHERE id IN(${print_ids.map(()=>"?").join(",")})`).all(...print_ids):[];
     const cbp=db.prepare("INSERT INTO base_products(model_id,color_id,name,cost_price,drop_price)VALUES(?,?,?,?,?)");
     const cv=db.prepare("INSERT INTO variations(base_product_id,print_id,name)VALUES(?,?,?)");
     const csb=db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity)VALUES(?,?,0)");
@@ -409,7 +409,7 @@ app.put("/api/base-products/:id", authMiddleware, requireRole("admin"), (req, re
 });
 
 // Directly set stock quantity for a product+size
-app.post("/api/stock/set", authMiddleware, (req, res) => {
+app.post("/api/stock/set", authMiddleware, requireRole("admin"), (req, res) => {
   const { base_product_id, size_id, quantity } = req.body;
   if(!base_product_id || !size_id) return res.status(400).json({ error: "Missing fields" });
   const qty = parseInt(quantity) || 0;
@@ -486,7 +486,7 @@ app.put("/api/variations/:id", authMiddleware, requireRole("admin"), (req, res) 
 });
 
 // Set stock_returns quantity
-app.post("/api/stock-returns/set", authMiddleware, (req, res) => {
+app.post("/api/stock-returns/set", authMiddleware, requireRole("admin"), (req, res) => {
   const { variation_id, size_id, quantity } = req.body;
   if(!variation_id || !size_id) return res.status(400).json({ error: "Missing fields" });
   db.prepare("UPDATE stock_returns SET quantity=? WHERE variation_id=? AND size_id=?").run(parseInt(quantity)||0, variation_id, size_id);
@@ -575,7 +575,7 @@ app.get("/api/stock-cuts", authMiddleware, (req, res) => {
 });
 
 // Add cuts
-app.post("/api/stock-cuts/incoming", authMiddleware, (req, res) => {
+app.post("/api/stock-cuts/incoming", authMiddleware, requireRole("admin"), (req, res) => {
   const { base_product_id, workshop_id, items, note } = req.body;
   if (!base_product_id || !workshop_id || !items?.length) return res.status(400).json({ error: "Всі поля обов'язкові" });
   db.transaction(() => {
@@ -594,7 +594,7 @@ app.post("/api/stock-cuts/incoming", authMiddleware, (req, res) => {
 });
 
 // ── STOCK INCOMING (with workshop deduction from cuts) ───────────
-app.post("/api/stock/incoming-bulk", authMiddleware, (req, res) => {
+app.post("/api/stock/incoming-bulk", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { base_product_id, items, note, workshop_id, no_workshop } = req.body;
   if (!base_product_id || !items?.length) return res.status(400).json({ error: "Немає даних" });
   // Check if product requires workshop
@@ -619,7 +619,7 @@ app.post("/api/stock/incoming-bulk", authMiddleware, (req, res) => {
 });
 
 // Write-off stock (списання)
-app.post("/api/stock/write-off", authMiddleware, (req, res) => {
+app.post("/api/stock/write-off", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { base_product_id, size_id, quantity, note } = req.body;
   if (!base_product_id || !size_id || !quantity) return res.status(400).json({ error: "Всі поля обов'язкові" });
   const qty = parseInt(quantity);
@@ -631,7 +631,7 @@ app.post("/api/stock/write-off", authMiddleware, (req, res) => {
 });
 
 // Swap size (заміна розміру)
-app.post("/api/stock/swap-size", authMiddleware, (req, res) => {
+app.post("/api/stock/swap-size", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { base_product_id, from_size_id, to_size_id, quantity } = req.body;
   if (!base_product_id || !from_size_id || !to_size_id || !quantity) return res.status(400).json({ error: "Всі поля обов'язкові" });
   if (from_size_id === to_size_id) return res.status(400).json({ error: "Розміри однакові" });
@@ -979,7 +979,7 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
 });
 
 // Swap size in order item
-app.post("/api/order-items/:id/swap-size", authMiddleware, (req, res) => {
+app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { new_size_id } = req.body;
   const item = db.prepare("SELECT oi.*,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
@@ -1015,7 +1015,7 @@ app.get("/api/order-items/:id/available-sizes", authMiddleware, (req, res) => {
 });
 
 // Use return instead of base for an order item
-app.post("/api/order-items/:id/use-return", authMiddleware, (req, res) => {
+app.post("/api/order-items/:id/use-return", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   if (!item.print_id) return res.status(400).json({ error: "Готовий товар не має повернень" });
@@ -1040,14 +1040,14 @@ app.post("/api/order-items/:id/use-return", authMiddleware, (req, res) => {
 });
 
 // Manually set TTN
-app.put("/api/orders/:id/ttn", authMiddleware, (req, res) => {
+app.put("/api/orders/:id/ttn", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { ttn } = req.body;
   db.prepare("UPDATE orders SET ttn=?,updated_at=datetime('now','localtime') WHERE id=?").run(ttn||"", req.params.id);
   res.json({ ok: true });
 });
 
 // Change order status
-app.put("/api/orders/:id/status", authMiddleware, (req, res) => {
+app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { status } = req.body;
   const validStatuses = ['new','in_progress','packed','shipped','delivering','delivered','refused','return_transit','return_warehouse','return_received','cancelled'];
   if (!validStatuses.includes(status)) return res.status(400).json({ error: "Невірний статус" });
@@ -1092,7 +1092,7 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
 });
 
 // Cancel order (return stock)
-app.post("/api/orders/:id/cancel", authMiddleware, (req, res) => {
+app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (o.status === "cancelled") return res.status(400).json({ error: "Вже скасовано" });
@@ -1138,7 +1138,7 @@ app.get("/api/stock-returns", authMiddleware, (req, res) => {
 });
 
 // Find order by TTN
-app.get("/api/orders/by-ttn/:ttn", authMiddleware, (req, res) => {
+app.get("/api/orders/by-ttn/:ttn", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.ttn=? OR o.return_ttn=?").get(req.params.ttn, req.params.ttn);
   if (!o) return res.status(404).json({ error: "Замовлення з такою ТТН не знайдено" });
   o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product,oi.original_size_id,os.name as original_size_name
@@ -1148,7 +1148,7 @@ app.get("/api/orders/by-ttn/:ttn", authMiddleware, (req, res) => {
 });
 
 // Register return for specific item (checkbox in packer UI)
-app.post("/api/order-items/:id/return-to-stock", authMiddleware, (req, res) => {
+app.post("/api/order-items/:id/return-to-stock", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   if (item.returned_to_stock) return res.status(400).json({ error: "Вже повернуто" });
@@ -1632,7 +1632,7 @@ app.get("/api/returns", authMiddleware, (req, res) => {
 // Detailed stats for dropshipper
 app.get("/api/stats/detailed", authMiddleware, (req, res) => {
   const { date_from, date_to, dropshipper_id } = req.query;
-  const uid = dropshipper_id || (req.user.role === "dropshipper" ? req.user.id : null);
+  const uid = req.user.role === "dropshipper" ? req.user.id : (dropshipper_id || null);
   if (!uid) return res.status(400).json({ error: "dropshipper_id required" });
   
   const df = date_from || new Date(Date.now() - 30*86400000).toISOString().slice(0,10);

@@ -2,38 +2,42 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Warehouse CRM — Вхід</title>
+<title>ADS DROP — Вхід</title>
+<link rel="icon" type="image/png" href="/public/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/public/theme.css">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-:root{--bg:#0a0e17;--card:#111827;--input:#0d1220;--brd:#1e2740;--brd2:#2a3a5c;--t:#c8cdd5;--td:#5a6378;--th:#f0f2f5;--acc:#00d4aa;--accbg:rgba(0,212,170,.06);--red:#ff6b6b;--r:12px}
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{background:var(--bg);color:var(--t);font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.login-wrap{width:100%;max-width:380px;padding:20px}
-.logo{text-align:center;margin-bottom:32px}
-.logo h1{font-size:22px;font-weight:700;color:var(--th)}
-.logo p{font-size:13px;color:var(--td);margin-top:4px}
-.card{background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:28px 24px}
-.field{margin-bottom:18px}
-.field label{display:block;font-size:12px;color:var(--td);margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
-.field input{width:100%;padding:12px 14px;font-size:15px;font-family:inherit;background:var(--input);border:1px solid var(--brd2);border-radius:10px;color:#fff;outline:0;transition:.2s}
-.field input:focus{border-color:var(--acc)}
-.btn{width:100%;padding:13px;font-size:15px;font-family:inherit;font-weight:600;background:var(--acc);border:none;border-radius:10px;color:#0a0e17;cursor:pointer;transition:.2s;margin-top:6px}
-.btn:hover{opacity:.9}.btn:disabled{opacity:.5;cursor:default}
-.error{color:var(--red);font-size:13px;text-align:center;margin-top:14px;min-height:20px}
-.sp{display:inline-block;width:16px;height:16px;border:2px solid rgba(10,14,23,.3);border-top-color:#0a0e17;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+/* Login page layout */
+html,body{display:flex;align-items:center;justify-content:center}
+.login-wrap{width:100%;max-width:400px;padding:24px}
+.logo{text-align:center;margin-bottom:40px}
+.logo p{font-size:13px;color:var(--text-muted);margin-top:16px}
+.login-card{background:var(--bg-glass);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid var(--border-default);border-radius:var(--radius-xl);padding:32px 28px}
+.field{margin-bottom:20px}
+.field label{display:block;font-size:11px;color:var(--text-muted);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.field input{width:100%;padding:14px 16px;font-size:14px;font-family:inherit;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);outline:0;transition:all var(--duration-fast)}
+.field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.login-btn{width:100%;padding:14px;font-size:14px;font-family:inherit;font-weight:600;background:var(--accent);border:none;border-radius:var(--radius-md);color:var(--bg-deep);cursor:pointer;transition:all var(--duration-fast);margin-top:8px}
+.login-btn:hover{background:var(--accent-hover);transform:translateY(-1px)}
+.login-btn:disabled{opacity:.5;cursor:default;transform:none}
+.error{color:var(--error);font-size:12px;text-align:center;margin-top:16px;min-height:20px}
+.sp{display:inline-block;width:16px;height:16px;border:2px solid rgba(8,10,15,.3);border-top-color:var(--bg-deep);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
+<script src="/public/icons.js"></script>
 </head>
 <body>
 <div class="login-wrap">
   <div class="logo">
-    <h1>Warehouse CRM</h1>
+    <img src="/public/logo-white.png" alt="ADS DROP" style="height:56px;width:auto">
     <p>Система управління складом</p>
   </div>
-  <div class="card">
+  <div class="login-card">
     <div class="field"><label>Логін</label><input id="username" type="text" placeholder="Введіть логін" autocomplete="username" autofocus></div>
     <div class="field"><label>Пароль</label><input id="password" type="password" placeholder="Введіть пароль" autocomplete="current-password"></div>
-    <button class="btn" id="login-btn" onclick="doLogin()">Увійти</button>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Увійти</button>
     <div class="error" id="error"></div>
   </div>
 </div>

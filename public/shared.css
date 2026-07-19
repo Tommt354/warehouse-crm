@@ -1,0 +1,45 @@
+/* Shared polish layer: page transitions, badges, top loader, icons, skeletons.
+   Loaded after each page's own <style> block so these rules win on equal specificity. */
+
+.ico{display:inline-block;vertical-align:-3px;flex-shrink:0}
+[data-icon]{display:inline-flex;align-items:center;justify-content:center}
+
+/* ADS DROP brand wordmark, compact (sidebar/header) and stacked (login) variants */
+.logo-h{display:inline-flex;align-items:baseline;gap:3px;font-family:'Inter',sans-serif;white-space:nowrap}
+.logo-h b{font-weight:800;font-style:italic;color:#fff;font-size:15px;letter-spacing:-.3px}
+.logo-h i{font-weight:600;font-style:normal;color:var(--acc,#00d4aa);font-size:9.5px;letter-spacing:2.5px}
+.logo-stack{font-family:'Inter',sans-serif;text-align:center}
+.logo-stack .l-ads{font-weight:800;font-style:italic;font-size:34px;letter-spacing:-1px;color:#fff;line-height:1}
+.logo-stack .l-drop{font-weight:600;font-size:12px;letter-spacing:7px;color:var(--acc,#00d4aa);margin-top:4px}
+
+/* Smooth page-switch transition (was an instant display:none/block swap) */
+@keyframes pageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.page.on{animation:pageIn .28s cubic-bezier(.22,1,.36,1)}
+
+/* Top progress bar, driven by a global fetch hook in shared.js */
+#top-loader{position:fixed;top:0;left:0;height:2px;width:0;background:var(--acc,#00d4aa);z-index:99999;opacity:0;transition:width .2s ease,opacity .2s ease;pointer-events:none}
+#top-loader.on{opacity:1;width:75%;transition:width 1.6s cubic-bezier(.1,.6,.4,1),opacity .2s ease}
+#top-loader.on.done{width:100%;transition:width .2s ease}
+
+/* Badge / status pill polish (overrides the flatter .tag rules defined per-page) */
+.tag{border-radius:20px !important;padding:3px 10px !important;font-size:10px !important;font-weight:700 !important;letter-spacing:.2px;display:inline-flex !important;align-items:center;gap:5px;line-height:1.4}
+.tag::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* Skeleton shimmer, for content-shaped loading placeholders */
+.skel{position:relative;overflow:hidden;background:var(--brd,#1e2740);border-radius:8px;color:transparent !important}
+.skel::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);animation:skelSweep 1.3s ease-in-out infinite}
+@keyframes skelSweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.skel-row{display:flex;gap:10px;align-items:center;padding:10px 14px}
+.skel-line{height:12px;border-radius:6px}
+.skel-block{background:var(--card,#111827);border:1px solid var(--brd,#1e2740);border-radius:14px;overflow:hidden;margin-bottom:12px}
+
+/* Accessible focus ring, respected across all interactive elements */
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--acc,#00d4aa);outline-offset:2px
+}
+
+@media (prefers-reduced-motion: reduce){
+  .page.on{animation:none}
+  #top-loader{transition:none}
+  .skel::after{animation:none}
+}
