@@ -63,12 +63,13 @@
 input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);border:1px solid var(--border-glow);border-radius:var(--radius-sm);color:var(--text-primary);font-family:inherit;color-scheme:dark}
 </style>
 <script src="/public/icons.js"></script>
+<script src="/public/calendar.js"></script>
 </head>
 <body>
 <div class="wrap">
   <div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:16px;margin-top:2px"><i data-icon="package" data-size="17"></i> Склад</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
   <div id="shift-banner" style="background:rgba(255,107,107,.06);border:1px solid rgba(255,107,107,.15);border-radius:12px;padding:14px;margin-bottom:14px;text-align:center"><div style="font-size:14px;font-weight:600;color:var(--red);margin-bottom:8px"><i data-icon="alertTriangle" data-size="15"></i> Зміна не відкрита</div><button class="btn btn-p" onclick="openShiftModal()" style="font-size:14px"><i data-icon="unlock" data-size="15"></i> Розпочати зміну</button></div>
-  <div id="shift-active" style="display:none;background:var(--accbg);border:1px solid rgba(0,212,170,.15);border-radius:12px;padding:10px 14px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:12px;color:var(--acc);font-weight:600"><i data-icon="check" data-size="12"></i> Зміна відкрита</span><div id="shift-crew" style="font-size:10px;color:var(--td);margin-top:2px"></div></div><button class="btn btn-sm" style="border-color:rgba(255,107,107,.2);color:var(--red)" onclick="closeShift()"><i data-icon="lock" data-size="13"></i> Закрити зміну</button></div></div>
+  <div id="shift-active" style="display:none;background:var(--accbg);border:1px solid rgba(124,134,255,.15);border-radius:12px;padding:10px 14px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:12px;color:var(--acc);font-weight:600"><i data-icon="check" data-size="12"></i> Зміна відкрита</span><div id="shift-crew" style="font-size:10px;color:var(--td);margin-top:2px"></div></div><button class="btn btn-sm" style="border-color:rgba(255,107,107,.2);color:var(--red)" onclick="closeShift()"><i data-icon="lock" data-size="13"></i> Закрити зміну</button></div></div>
   <div class="main-tabs">
     <div class="main-tab on" onclick="showMain('orders')"><i data-icon="clipboardList" data-size="15"></i> Замовлення</div>
     <div class="main-tab" onclick="showMain('returns')"><i data-icon="package" data-size="15"></i> Повернення</div>
@@ -80,7 +81,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
       <button class="main-tab" id="rf-0" onclick="whReady='0';loadOrders()"><i data-icon="printer" data-size="13"></i> Не готові</button>
       <button class="main-tab" id="rf-1" onclick="whReady='1';loadOrders()"><i data-icon="check" data-size="13"></i> Готові товари</button>
     </div>
-    <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center"><button class="stab" id="wc-" onclick="whCh='';loadOrders()">Всі</button><button class="stab" id="wc-hot" onclick="whCh='hot';loadOrders()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="stab" id="wc-ads" onclick="whCh='ads';loadOrders()"><i data-icon="megaphone" data-size="13"></i> ADS</button><input type="date" id="wh-df" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="wh-dt" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('wh-df').value='';document.getElementById('wh-dt').value='';loadOrders()"><i data-icon="x" data-size="11"></i></button></div>
+    <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center"><button class="stab" id="wc-" onclick="whCh='';loadOrders()">Всі</button><button class="stab" id="wc-hot" onclick="whCh='hot';loadOrders()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="stab" id="wc-ads" onclick="whCh='ads';loadOrders()"><i data-icon="megaphone" data-size="13"></i> ADS</button><input type="date" id="wh-df" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="wh-dt" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('wh-df').value='';document.getElementById('wh-dt').value='';loadOrders()"><i data-icon="x" data-size="11"></i></button></div>
     <div class="stabs" id="wh-stabs"></div>
     <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center"><input id="wh-ttn" placeholder="Пошук по ТТН..." style="flex:1;padding:6px 10px;font-size:11px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;outline:0" oninput="loadOrders()"><button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="trackAll()"><i data-icon="refreshCw" data-size="13"></i> Оновити статуси НП</button></div>
     <div id="wh-orders"></div>
@@ -163,7 +164,7 @@ async function init(){
   }catch(e){location.href="/login"}
 }
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
-function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#22c55e';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
+function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.innerHTML=Icon('check',13)+" "+esc(t)+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Err");return d}
@@ -199,7 +200,7 @@ async function loadOrders(){document.getElementById("wh-orders").innerHTML='<div
     var hasOOS=isActive&&od.items.some(function(i){return i.current_stock<=0});
     html+='<div class="ocard'+(hasOOS?' out-of-stock':'')+'">';
     html+='<div class="ocard-header"><div>';
-    html+='<div class="ocard-id"><span style="font-size:18px">#'+o.id+'</span> <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(o.drop_channel==="hot"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(0,212,170,.1);color:#00d4aa">ADS</span>':'')+(hasOOS?' <span class="tag tag-bad">'+Icon('alertTriangle',11)+' Немає</span>':'')+'</div>';
+    html+='<div class="ocard-id"><span style="font-size:18px">#'+o.id+'</span> <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(o.drop_channel==="hot"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(124,134,255,.1);color:#7c86ff">ADS</span>':'')+(hasOOS?' <span class="tag tag-bad">'+Icon('alertTriangle',11)+' Немає</span>':'')+'</div>';
     html+='<div class="cl-name">'+esc(o.client_name)+'</div><div class="cl-phone">'+esc(o.client_phone)+'</div>';
     html+='<div class="cl-addr">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
     html+='</div><div class="ocard-meta"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div><div>'+(o.created_at?o.created_at.slice(0,16):"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
@@ -222,7 +223,7 @@ async function loadOrders(){document.getElementById("wh-orders").innerHTML='<div
     if(o.note)html+='<div style="padding:0 16px 10px"><div class="ocard-note">'+Icon('fileText',12)+' '+esc(o.note)+'</div></div>';
     var osi=WHS.find(function(s){return s.key===o.status});
     html+='<div class="ocard-footer"><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
-    html+='<select onchange="chSt('+o.id+',this.value)" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark">';
+    html+='<select onchange="chSt('+o.id+',this.value)" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
     if(osi&&osi.next){
@@ -447,6 +448,7 @@ async function saveWhSwap(){
   clM("wh-swap-modal");loadWhStock();}catch(e){}
 }
 
+RangePicker.init("wh-df", "wh-dt");
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>

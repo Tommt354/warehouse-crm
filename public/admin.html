@@ -34,6 +34,7 @@
 .wrow .wdel{background:none;border:none;color:var(--error);cursor:pointer;font-size:14px;padding:4px}
 </style>
 <script src="/public/icons.js"></script>
+<script src="/public/calendar.js"></script>
 </head>
 <body>
 <div class="app">
@@ -132,7 +133,7 @@
 
 <div class="page" id="pg-orders"><div class="pt"><i data-icon="clipboardList" data-size="17"></i> Замовлення</div>
 <div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';loadAdmOrders(admOrdFilter)"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';loadAdmOrders(admOrdFilter)"><i data-icon="check" data-size="15"></i> Готові товари</button></div>
-<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button></div>
+<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button></div>
 <div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadAdmOrders(admOrdFilter)"></div>
 <div class="acts" style="flex-wrap:wrap;gap:4px">
   <button class="btn" onclick="loadAdmOrders('')" id="ao-all">Всі</button>
@@ -235,7 +236,7 @@
     <div class="fld"><label>Назва</label><input id="np-add-name" placeholder="Назва контрагента"></div>
     <div class="fld"><label>Телефон</label><input id="np-add-phone" placeholder="+380..."></div>
   </div>
-  <button class="btn btn-sm" style="border-color:rgba(0,212,170,.2);color:var(--acc);margin-bottom:10px" onclick="addNpSender()">+ Додати контрагента</button>
+  <button class="btn btn-sm" style="border-color:rgba(124,134,255,.2);color:var(--acc);margin-bottom:10px" onclick="addNpSender()">+ Додати контрагента</button>
   <div id="np-msg" style="font-size:11px;margin-bottom:8px"></div>
   <button class="btn btn-p" onclick="saveSets()"><i data-icon="save" data-size="15"></i> Зберегти</button><div id="set-msg" style="margin-top:6px"></div>
 </div></div>
@@ -368,7 +369,7 @@
 
 <!-- Dropshipper stats modal -->
 <div class="modal-bg" id="drop-stats-modal"><div class="modal" style="max-width:650px"><h3 id="ds-title">Статистика</h3>
-<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><input type="date" id="ds-from" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff"><span style="color:var(--td)">—</span><input type="date" id="ds-to" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadDropStats()">OK</button></div>
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><input type="date" id="ds-from" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff"><span style="color:var(--td)">—</span><input type="date" id="ds-to" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadDropStats()">OK</button></div>
 <div id="ds-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:12px"></div>
 <div id="ds-chart" style="overflow-x:auto;margin-bottom:10px"></div>
 <div style="text-align:right"><button class="btn" onclick="closeM('drop-stats-modal')">Закрити</button></div>
@@ -397,7 +398,7 @@ async function init(){try{ME=(await api("/api/auth/me")).user;document.getElemen
   if(navBtn)navBtn.click();else loadDash();
 }catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
-function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#22c55e';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
+function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.textContent=t+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Помилка");return d}
@@ -594,7 +595,7 @@ function renderSBase(products){
   const slice=products.slice(sbPage*perPage,(sbPage+1)*perPage);
   el.innerHTML=slice.map(p=>{
     const szs=sbSizes.filter(s=>p.stock[s.id]!==undefined);
-    return'<div class="pcard"><div class="pcard-img" onclick="openEditBp('+p.id+')">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+(p.drop_channel==='hot'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(p.drop_channel==='ads'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(0,212,170,.1);color:#00d4aa">ADS</span>':'')+'</div><div class="pcard-sub">'+esc(p.category_name||"")+'</div><div class="pcard-prices"><span class="pp tag" style="background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span><span class="pp tag tag-g">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(s=>{const q=p.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":q<=thr?"low":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div><div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditBp('+p.id+')">'+Icon('pencil',13)+'</button> <button class="btn btn-sm" onclick="dupBp('+p.id+')" title="Дублювати">'+Icon('clipboardList',13)+'</button></div></div></div>';
+    return'<div class="pcard"><div class="pcard-img" onclick="openEditBp('+p.id+')">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+(p.drop_channel==='hot'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(p.drop_channel==='ads'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(124,134,255,.1);color:#7c86ff">ADS</span>':'')+'</div><div class="pcard-sub">'+esc(p.category_name||"")+'</div><div class="pcard-prices"><span class="pp tag" style="background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span><span class="pp tag tag-g">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(s=>{const q=p.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":q<=thr?"low":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div><div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditBp('+p.id+')">'+Icon('pencil',13)+'</button> <button class="btn btn-sm" onclick="dupBp('+p.id+')" title="Дублювати">'+Icon('clipboardList',13)+'</button></div></div></div>';
   }).join("");
   if(pages>1){let pg='<div style="grid-column:1/-1;display:flex;justify-content:center;gap:4px;margin-top:8px">';for(let i=0;i<pages;i++)pg+='<button style="padding:5px 10px;font-size:10px;border-radius:5px;border:1px solid '+(i===sbPage?'var(--acc)':'var(--brd)')+';background:'+(i===sbPage?'var(--accbg)':'var(--card)')+';color:'+(i===sbPage?'var(--acc)':'var(--td)')+';cursor:pointer;font-family:inherit" onclick="sbPage='+i+';renderSBase(sbProducts)">'+(i+1)+'</button>';pg+='</div>';el.innerHTML+=pg}
 }
@@ -905,7 +906,7 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
     const{order}=await api("/api/orders/"+o.id);
     html+='<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;margin-bottom:12px;overflow:hidden">';
     html+='<div style="padding:12px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--brd)">';
-    html+='<div><div style="font-size:18px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(o.drop_channel==="hot"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(0,212,170,.1);color:#00d4aa">ADS</span>':'')+'</div>';
+    html+='<div><div style="font-size:18px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(o.drop_channel==="hot"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(124,134,255,.1);color:#7c86ff">ADS</span>':'')+'</div>';
     html+='<div style="font-size:13px;color:var(--th);margin-top:3px">'+esc(o.client_name)+' · <span style="color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(o.client_phone)+'</span></div>';
     html+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div></div>';
     html+='<div style="text-align:right"><div style="font-size:10px;color:var(--blue)">'+esc(o.drop_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
@@ -933,7 +934,7 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
       html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--red)">Збиток: -'+(o.return_cost||0).toFixed(0)+'₴</span></div>';
     else
       html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
-    html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">';
+    html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">';
     ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
     html+='</select>';
     html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">'+Icon('pencil',13)+'</button>';
@@ -981,7 +982,7 @@ function renderPayouts(list){
     var returns=p.items.filter(function(i){return i.is_return});
     var successSum=success.reduce(function(s,i){return s+i.amount},0);
     var returnSum=returns.reduce(function(s,i){return s+Math.abs(i.amount)},0);
-    return '<div style="background:var(--card);border:1px solid '+(isPaid?'rgba(0,212,170,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:10px;overflow:hidden">'+
+    return '<div style="background:var(--card);border:1px solid '+(isPaid?'rgba(124,134,255,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:10px;overflow:hidden">'+
     '<div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
     '<div><div style="font-size:15px;font-weight:700;color:var(--th)">'+esc(p.drop_name)+' <span style="font-size:11px;color:var(--td)">#'+p.dropshipper_id+'</span></div>'+
     '<div style="margin-top:4px">'+(p.payment_type==="iban"?'<div style="font-size:10px;color:var(--td)">IBAN:</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:var(--acc);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(p.payment_iban||"")+'\')">'+esc(p.payment_iban||"не вказано")+'</div>'+(p.full_name?'<div style="font-size:10px;color:var(--td);margin-top:2px">'+esc(p.full_name)+'</div>':''):'<div style="font-size:10px;color:var(--td)">Карта:</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:var(--warn);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(p.payment_card||"")+'\')">'+esc(p.payment_card||"не вказано")+'</div>')+'</div>'+
@@ -1025,7 +1026,7 @@ async function loadAdmReturns(){
 function renderReturns(orders){
   document.getElementById("adm-returns-list").innerHTML=orders.length?orders.map(function(o){
       var allDone=o.items.every(function(i){return i.returned_to_stock});
-      return '<div style="background:var(--card);border:1px solid '+(allDone?'rgba(0,212,170,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:8px;overflow:hidden">'+
+      return '<div style="background:var(--card);border:1px solid '+(allDone?'rgba(124,134,255,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:8px;overflow:hidden">'+
       '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(allDone?' <span style="font-size:10px;color:var(--acc)">'+Icon('check',11)+' На складі</span>':'')+'</div>'+
       '<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · '+esc(o.drop_name)+'</div>'+
       (o.ttn?'<div style="font-size:11px;color:'+ttnColor(o)+';font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:'+ttnColor(o)+'">'+Icon('package',10)+' '+esc(o.np_status_text)+'</div>':'')+
@@ -1119,11 +1120,11 @@ async function loadDropStats(){
   if(!dsDropId)return;var df=document.getElementById("ds-from").value;var dt=document.getElementById("ds-to").value;
   document.getElementById("ds-grid").innerHTML='<div style="grid-column:1/-1;text-align:center;padding:12px"><div style="display:inline-block;width:20px;height:20px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div></div>';
   try{var r=await api("/api/stats/detailed?dropshipper_id="+dsDropId+"&date_from="+df+"&date_to="+dt);
-  var items=[{l:"Прибуток",v:r.profit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Замовлень",v:r.total,c:"var(--th)"},{l:"Сер. прибуток",v:r.avgProfit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Сума замовлень",v:r.orderSum.toFixed(2)+"₴",c:"var(--th)"},{l:"Успішно",v:r.success,c:"#22c55e"},{l:"Збитки",v:"-"+r.returnCost.toFixed(2)+"₴",c:"var(--red)"},{l:"Не успішно",v:r.failed,c:"var(--red)"},{l:"% успішних",v:r.successRate.toFixed(1)+"%",c:"var(--acc)"},{l:"Виплачено",v:r.paid.toFixed(2)+"₴",c:"var(--td)"},{l:"Не виплачено",v:(r.unpaid>0?r.unpaid.toFixed(2):"0")+"₴",c:"var(--warn)"},{l:"Накл. платіж",v:r.codTotal.toFixed(2)+"₴",c:"var(--th)"},{l:"Дроп ціна",v:r.dropTotal.toFixed(2)+"₴",c:"var(--td)"}];
+  var items=[{l:"Прибуток",v:r.profit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Замовлень",v:r.total,c:"var(--th)"},{l:"Сер. прибуток",v:r.avgProfit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Сума замовлень",v:r.orderSum.toFixed(2)+"₴",c:"var(--th)"},{l:"Успішно",v:r.success,c:"#34d399"},{l:"Збитки",v:"-"+r.returnCost.toFixed(2)+"₴",c:"var(--red)"},{l:"Не успішно",v:r.failed,c:"var(--red)"},{l:"% успішних",v:r.successRate.toFixed(1)+"%",c:"var(--acc)"},{l:"Виплачено",v:r.paid.toFixed(2)+"₴",c:"var(--td)"},{l:"Не виплачено",v:(r.unpaid>0?r.unpaid.toFixed(2):"0")+"₴",c:"var(--warn)"},{l:"Накл. платіж",v:r.codTotal.toFixed(2)+"₴",c:"var(--th)"},{l:"Дроп ціна",v:r.dropTotal.toFixed(2)+"₴",c:"var(--td)"}];
   document.getElementById("ds-grid").innerHTML=items.map(function(i){return '<div class="sc"><div class="sl">'+i.l+'</div><div class="sv" style="color:'+i.c+';font-size:14px">'+i.v+'</div></div>'}).join("");
   if(r.daily.length){var maxP=Math.max.apply(null,r.daily.map(function(d){return Math.max(d.profit,d.loss)}))||1;var bw=Math.max(18,Math.min(36,500/r.daily.length));var cw=r.daily.length*(bw+3)+30;
   var ch='<svg viewBox="0 0 '+cw+' 180" style="width:'+cw+'px;height:180px">';r.daily.forEach(function(d,i){var x=i*(bw+3)+15;var ph=d.profit/maxP*120;
-  ch+='<rect x="'+x+'" y="'+(140-ph)+'" width="'+bw+'" height="'+ph+'" rx="2" fill="rgba(0,212,170,.45)"/>';if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(135-ph)+'" fill="var(--acc)" font-size="7" text-anchor="middle">'+Math.round(d.profit)+'</text>';
+  ch+='<rect x="'+x+'" y="'+(140-ph)+'" width="'+bw+'" height="'+ph+'" rx="2" fill="rgba(124,134,255,.45)"/>';if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(135-ph)+'" fill="var(--acc)" font-size="7" text-anchor="middle">'+Math.round(d.profit)+'</text>';
   ch+='<text x="'+(x+bw/2)+'" y="165" fill="var(--th)" font-size="8" text-anchor="middle" transform="rotate(-45,'+(x+bw/2)+',165)">'+d.day.slice(5)+'</text>';});ch+='</svg>';document.getElementById("ds-chart").innerHTML=ch;}else{document.getElementById("ds-chart").innerHTML=''}
   }catch(e){document.getElementById("ds-grid").innerHTML='<div style="color:var(--red)">Помилка</div>'}
 }
@@ -1157,7 +1158,7 @@ async function openWorkerDetail(id){
     // Find payroll entries for this payout period
     var prevDate=w.payouts[idx+1]?w.payouts[idx+1].created_at:"1970-01-01";
     var periodItems=w.payroll.filter(function(pr){return pr.created_at>=prevDate&&pr.created_at<=p.created_at});
-    return '<div style="background:var(--bg);border:1px solid rgba(0,212,170,.15);border-radius:10px;margin-bottom:6px;overflow:hidden">'+
+    return '<div style="background:var(--bg);border:1px solid rgba(124,134,255,.15);border-radius:10px;margin-bottom:6px;overflow:hidden">'+
     '<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
     '<div><div style="font-size:12px;font-weight:600;color:var(--th)">Виплата #'+(w.payouts.length-idx)+'</div><div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+'</div></div>'+
     '<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+p.amount.toFixed(0)+'₴</div></div>'+
@@ -1192,6 +1193,8 @@ async function activateNpSender(id){await api("/api/np-senders/"+id+"/activate",
 async function deleteNpSender(id){if(!confirm("Видалити?"))return;await api("/api/np-senders/"+id,{method:"DELETE"});loadNpSenders()}
 async function saveSets(){const ks=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];const d={};ks.forEach(k=>{const el=document.getElementById("s-"+k);if(el)d[k]=el.value});try{await api("/api/settings",{method:"PUT",body:JSON.stringify(d)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">'+Icon('check',13)+'</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2e3)}catch(e){}}
 
+RangePicker.init("adm-df", "adm-dt");
+RangePicker.init("ds-from", "ds-to");
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>

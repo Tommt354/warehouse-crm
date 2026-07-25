@@ -64,7 +64,7 @@ var SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship
 
 var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(function(){if(_lc>0){var l=document.getElementById("loader");if(l)l.style.display="flex"}},800)}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){if(_lt){clearTimeout(_lt);_lt=null}var l=document.getElementById("loader");if(l)l.style.display="none"}}
 async function api(u,o){_ls();try{var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();_lh();if(!r.ok)throw new Error(d.error||"Err");return d}catch(e){_lh();throw e}}
-function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#22c55e';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
+function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999;display:flex;align-items:center;gap:6px";d.innerHTML=Icon('check',12)+" "+esc(t)+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}

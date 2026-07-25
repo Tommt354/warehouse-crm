@@ -60,6 +60,7 @@
 input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);border:1px solid var(--border-glow);border-radius:var(--radius-md);color:var(--text-primary);font-family:inherit;color-scheme:dark}
 </style>
 <script src="/public/icons.js"></script>
+<script src="/public/calendar.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -74,9 +75,9 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 
 <div class="page on" id="pg-dash">
 <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-  <input type="date" id="stat-from" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">
+  <input type="date" id="stat-from" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">
   <span style="color:var(--td)">—</span>
-  <input type="date" id="stat-to" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">
+  <input type="date" id="stat-to" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">
   <button class="btn btn-sm" style="font-size:11px;background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadStats()">OK</button>
   <div style="display:flex;gap:3px;margin-left:auto">
     <button class="stab on" onclick="setStatPeriod(7)">7д</button>
@@ -95,7 +96,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 
 <div class="page" id="pg-orders">
 <button class="btn-new" onclick="openNewOrder()">＋ Подати замовлення</button>
-<div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(0,212,170,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';loadOrders()"><i data-icon="x" data-size="11"></i></button></div>
+<div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';loadOrders()"><i data-icon="x" data-size="11"></i></button></div>
 <div style="margin-bottom:8px"><input id="dr-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadOrders()"></div>
 <div class="stabs" id="ord-stabs"></div>
 <div style="margin-bottom:8px;text-align:right"><button id="np-track-btn" class="btn" onclick="trackNP()" style="font-size:11px;padding:6px 12px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button></div><div id="ord-list"></div>
@@ -151,7 +152,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div class="modal-bg" id="no-modal"><div class="modal">
 <h3>＋ Нове замовлення</h3>
 <div class="fld"><label>Товари в замовленні</label><div id="no-items"><div style="color:var(--td);font-size:11px">Натисніть "Додати товар" щоб обрати</div></div></div>
-<button class="btn" onclick="openCatPicker()" style="width:100%;margin-bottom:10px;border-color:rgba(0,212,170,.2);color:var(--acc)"><i data-icon="package" data-size="13"></i> Додати товар з каталогу</button>
+<button class="btn" onclick="openCatPicker()" style="width:100%;margin-bottom:10px;border-color:rgba(124,134,255,.2);color:var(--acc)"><i data-icon="package" data-size="13"></i> Додати товар з каталогу</button>
 <div class="fld"><label>ПІБ клієнта</label><input id="no-name"></div>
 <div class="fld"><label>Телефон</label><input id="no-phone" placeholder="+380..."></div>
 <div class="fld"><label>Місто</label><input id="no-city" placeholder="Натисніть або введіть..." oninput="searchNpCity(this.value)" onfocus="if(!this.value)searchNpCity('Київ')"><div id="no-city-dd" style="max-height:150px;overflow-y:auto"></div></div>
@@ -194,7 +195,7 @@ var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роб
 
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash()}catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
-function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#22c55e';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
+function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.innerHTML=Icon('check',12)+" "+esc(t)+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(function(){if(_lc>0){var l=document.getElementById("loader");if(l)l.style.display="flex"}},800)}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){if(_lt){clearTimeout(_lt);_lt=null}var l=document.getElementById("loader");if(l)l.style.display="none"}}
@@ -223,7 +224,7 @@ async function loadStats(){
     {l:"Кільк. замовлень",v:r.total,c:"var(--th)"},
     {l:"Сер. прибуток",v:r.avgProfit.toFixed(2)+"₴",c:"var(--acc)"},
     {l:"Сума замовлень",v:r.orderSum.toFixed(2)+"₴",c:"var(--th)"},
-    {l:"Успішно",v:r.success,c:"#22c55e"},
+    {l:"Успішно",v:r.success,c:"#34d399"},
     {l:"Повернення (збитки)",v:"-"+r.returnCost.toFixed(2)+"₴",c:"var(--red)"},
     {l:"Не успішно",v:r.failed,c:"var(--red)"},
     {l:"% успішних",v:r.successRate.toFixed(1)+"%",c:"var(--acc)"},
@@ -239,8 +240,8 @@ async function loadStats(){
     var bw=Math.max(30,Math.min(55,560/r.daily.length));var gap=6;var cw=r.daily.length*(bw+gap)+60;
     var ch='<svg viewBox="0 0 '+cw+' 300" style="width:'+cw+'px;height:300px">';
     r.daily.forEach(function(d,i){var x=i*(bw+gap)+30;var ph=d.profit/maxP*150;var lh=d.loss/maxP*60;
-      ch+='<rect x="'+x+'" y="'+(180-ph)+'" width="'+bw+'" height="'+ph+'" rx="3" fill="rgba(0,212,170,.5)"/>';
-      if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(175-ph-4)+'" fill="#00d4aa" font-size="13" font-weight="700" text-anchor="middle" font-family="JetBrains Mono,monospace">'+(d.profit>=1000?Math.round(d.profit/1000)+'k':Math.round(d.profit))+'</text>';
+      ch+='<rect x="'+x+'" y="'+(180-ph)+'" width="'+bw+'" height="'+ph+'" rx="3" fill="rgba(124,134,255,.5)"/>';
+      if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(175-ph-4)+'" fill="#7c86ff" font-size="13" font-weight="700" text-anchor="middle" font-family="JetBrains Mono,monospace">'+(d.profit>=1000?Math.round(d.profit/1000)+'k':Math.round(d.profit))+'</text>';
       if(d.loss>0){ch+='<rect x="'+x+'" y="180" width="'+bw+'" height="'+lh+'" rx="3" fill="rgba(255,107,107,.5)"/>';
       ch+='<text x="'+(x+bw/2)+'" y="'+(180+lh+16)+'" fill="#ff6b6b" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono,monospace">-'+Math.round(d.loss)+'</text>';}
       ch+='<text x="'+(x+bw/2)+'" y="280" fill="#f0f2f5" font-size="12" font-weight="500" text-anchor="middle" font-family="Inter,sans-serif">'+d.day.slice(5)+'</text>';
@@ -287,7 +288,7 @@ function renderOC(o){
   var items=o._items||[];
   var ph=items[0]?(items[0].var_photo||items[0].print_photo||items[0].bp_photo):"";
   var nm=items.map(function(i){return esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.original_size_name||i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')}).join(', ')||'—';
-  var chB=o.drop_channel==='hot'?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(255,167,38,.12);color:#ffa726;font-weight:600">HOT</span>':'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(0,212,170,.12);color:#00d4aa;font-weight:600">ADS</span>';
+  var chB=o.drop_channel==='hot'?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(255,167,38,.12);color:#ffa726;font-weight:600">HOT</span>':'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(124,134,255,.12);color:#7c86ff;font-weight:600">ADS</span>';
   var h='<div class="oc" onclick="viewOrder('+o.id+')">';
   h+='<div style="display:flex;gap:12px;padding:12px 14px">';
   h+=(ph?'<img src="'+ph+'" style="width:80px;height:80px;border-radius:10px;object-fit:cover;flex-shrink:0">':'<div style="width:80px;height:80px;border-radius:10px;background:var(--bg);flex-shrink:0"></div>');
@@ -346,7 +347,7 @@ async function loadCatPicker(){
   el.innerHTML=filtered.slice(0,40).map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(0,212,170,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('gift',11)+' Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+')">'+s.name+'<br>'+q+'</div>'}).join("")+'</div>')+'</div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('gift',11)+' Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+')">'+s.name+'<br>'+q+'</div>'}).join("")+'</div>')+'</div></div>';
   }).join("");
 }
 
@@ -525,7 +526,7 @@ async function loadPayouts(){
       var rets=(p.items||[]).filter(function(i){return i.is_return});
       var sSum=success.reduce(function(s,i){return s+i.amount},0);
       var rSum=rets.reduce(function(s,i){return s+Math.abs(i.amount)},0);
-      return '<div style="background:var(--card);border:1px solid '+(p.status==="paid"?"rgba(0,212,170,.2)":"rgba(255,107,107,.2)")+';border-radius:12px;margin-bottom:8px;overflow:hidden">'+
+      return '<div style="background:var(--card);border:1px solid '+(p.status==="paid"?"rgba(124,134,255,.2)":"rgba(255,107,107,.2)")+';border-radius:12px;margin-bottom:8px;overflow:hidden">'+
       '<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
       '<div><div style="font-size:13px;font-weight:600;color:var(--th)">Запит #'+p.id+'</div>'+
       '<div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+
@@ -561,6 +562,8 @@ async function saveProfile(){
   document.getElementById("set-msg").innerHTML='<div style="color:var(--acc);font-size:12px">'+Icon('check',12)+' Збережено</div>';ME=(await api("/api/auth/me")).user;setTimeout(function(){document.getElementById("set-msg").innerHTML=""},2000)}catch(e){}
 }
 
+RangePicker.init("stat-from", "stat-to");
+RangePicker.init("dr-df", "dr-dt");
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>

@@ -1,6 +1,6 @@
 /*
  * ADS DROP — Premium Dark Theme
- * Glass-morphism design system with warm gold accent
+ * Glass-morphism design system — Midnight Indigo
  */
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -8,41 +8,41 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* Backgrounds */
-  --bg-deep: #080a0f;
-  --bg-body: #0b0e14;
-  --bg-glass: rgba(13, 16, 23, 0.75);
-  --bg-card: rgba(18, 22, 32, 0.6);
-  --bg-elevated: rgba(26, 32, 44, 0.5);
-  --bg-input: rgba(8, 10, 15, 0.8);
+  /* Backgrounds — deep indigo, not neutral black */
+  --bg-deep: #0e0f1a;
+  --bg-body: #12131f;
+  --bg-glass: rgba(23, 25, 42, 0.75);
+  --bg-card: rgba(26, 28, 46, 0.6);
+  --bg-elevated: rgba(32, 35, 60, 0.5);
+  --bg-input: rgba(14, 15, 26, 0.8);
 
   /* Borders */
   --border-subtle: rgba(255, 255, 255, 0.04);
   --border-default: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.12);
-  --border-glow: rgba(199, 156, 74, 0.35);
+  --border-glow: rgba(124, 134, 255, 0.35);
 
-  /* Text */
-  --text-primary: #f0f2f5;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --text-disabled: #4b5563;
+  /* Text — cool indigo-tinted greys */
+  --text-primary: #f1f1f8;
+  --text-secondary: #8386ab;
+  --text-muted: #565a78;
+  --text-disabled: #3d4159;
 
-  /* Accent — antique gold (signature brand color) */
-  --accent: #c79c4a;
-  --accent-hover: #ddb567;
-  --accent-soft: rgba(199, 156, 74, 0.14);
-  --accent-glow: rgba(199, 156, 74, 0.28);
+  /* Accent — periwinkle indigo (signature brand color) */
+  --accent: #7c86ff;
+  --accent-hover: #929cff;
+  --accent-soft: rgba(124, 134, 255, 0.14);
+  --accent-glow: rgba(124, 134, 255, 0.3);
 
   /* Semantic */
-  --success: #22c55e;
-  --success-soft: rgba(34, 197, 94, 0.12);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.12);
-  --error: #ef4444;
-  --error-soft: rgba(239, 68, 68, 0.12);
-  --info: #3b82f6;
-  --info-soft: rgba(59, 130, 246, 0.12);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.12);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.12);
+  --error: #f87171;
+  --error-soft: rgba(248, 113, 113, 0.12);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.12);
 
   /* Layout */
   --sidebar-width: 220px;
@@ -113,8 +113,8 @@ body {
   line-height: 1.5;
   color: var(--text-primary);
   background:
-    radial-gradient(ellipse 1200px 800px at 50% -10%, rgba(199, 156, 74, 0.05), transparent 60%),
-    radial-gradient(ellipse 900px 700px at 100% 100%, rgba(199, 156, 74, 0.03), transparent 55%),
+    radial-gradient(ellipse 1200px 800px at 50% -10%, rgba(124, 134, 255, 0.06), transparent 60%),
+    radial-gradient(ellipse 900px 700px at 100% 100%, rgba(124, 134, 255, 0.04), transparent 55%),
     var(--bg-body);
   background-attachment: fixed;
   min-height: 100vh;
@@ -519,12 +519,12 @@ input[type="number"]::-webkit-outer-spin-button {
 /* Accent button — .btn-a */
 .btn-a {
   color: var(--accent);
-  border-color: rgba(199, 156, 74, 0.3);
+  border-color: rgba(124, 134, 255, 0.3);
 }
 
 .btn-a:hover {
   background: var(--accent-soft);
-  border-color: rgba(199, 156, 74, 0.45);
+  border-color: rgba(124, 134, 255, 0.45);
 }
 
 /* Danger button — .btn-d */
@@ -1197,7 +1197,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .stab.on {
   color: var(--accent);
   background: var(--accent-soft);
-  border-color: rgba(199, 156, 74, 0.35);
+  border-color: rgba(124, 134, 255, 0.35);
 }
 
 
@@ -1215,7 +1215,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .msg-ok {
   background: var(--accent-soft);
   color: var(--accent);
-  border: 1px solid rgba(199, 156, 74, 0.25);
+  border: 1px solid rgba(124, 134, 255, 0.25);
 }
 
 .msg-err {
@@ -1404,6 +1404,238 @@ input[type="number"]::-webkit-outer-spin-button {
 /* ═══════════════════════════════════════════════════════════════════════════
    LOGO — real ADS DROP artwork rendered via <img src="/public/logo-white.png">
    ═══════════════════════════════════════════════════════════════════════════ */
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RANGE PICKER — custom calendar dropdown (replaces native input[type=date]
+   pairs). See /public/calendar.js — RangePicker.init(fromId, toId, opts).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.rp-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.rp-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.rp-trigger:hover {
+  border-color: var(--accent);
+}
+
+.rp-trigger.open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.rp-trigger svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.rp-trigger .rp-label.placeholder {
+  color: var(--text-muted);
+}
+
+.rp-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 296px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 300;
+  overflow: hidden;
+  animation: slideUp var(--duration-fast) var(--ease-out);
+}
+
+.rp-panel[hidden] {
+  display: none;
+}
+
+.rp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+}
+
+.rp-head b {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.rp-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.rp-nav button {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.rp-nav button:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.rp-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding: 0 12px;
+}
+
+.rp-weekdays span {
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 4px 0;
+  text-transform: uppercase;
+}
+
+.rp-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 2px 12px 14px;
+}
+
+.rp-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  font-family: 'JetBrains Mono', monospace;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.rp-day:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.rp-day.muted {
+  color: var(--text-disabled);
+}
+
+.rp-day.today::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.rp-day.in-range {
+  background: var(--accent-soft);
+  border-radius: 0;
+  color: var(--text-primary);
+}
+
+.rp-day.range-start {
+  background: var(--accent-soft);
+  border-radius: 8px 0 0 8px;
+}
+
+.rp-day.range-end {
+  background: var(--accent-soft);
+  border-radius: 0 8px 8px 0;
+}
+
+.rp-day.selected {
+  background: var(--accent);
+  color: var(--bg-deep);
+  font-weight: 700;
+}
+
+.rp-day.selected:hover {
+  background: var(--accent-hover);
+  color: var(--bg-deep);
+}
+
+.rp-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.rp-presets {
+  display: flex;
+  gap: 10px;
+}
+
+.rp-presets span {
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.rp-presets span:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.rp-apply {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--bg-deep);
+  background: var(--accent);
+  border: none;
+  border-radius: 7px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.rp-apply:hover {
+  background: var(--accent-hover);
+}
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
