@@ -387,6 +387,41 @@ db.exec(`
     FOREIGN KEY (variation_id) REFERENCES variations(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS order_statuses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT DEFAULT '#888888',
+    sort_order INTEGER DEFAULT 0,
+    is_system INTEGER DEFAULT 0,
+    active INTEGER DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS ready_stock (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    variation_id INTEGER NOT NULL,
+    size_id INTEGER NOT NULL,
+    warehouse TEXT DEFAULT 'base',
+    quantity INTEGER DEFAULT 0,
+    UNIQUE(variation_id, size_id, warehouse),
+    FOREIGN KEY (variation_id) REFERENCES variations(id) ON DELETE CASCADE,
+    FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS balance_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    type TEXT NOT NULL,
+    order_id INTEGER,
+    note TEXT DEFAULT '',
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_orders_drop ON orders(dropshipper_id);
   CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
   CREATE INDEX IF NOT EXISTS idx_bp_model ON base_products(model_id);
@@ -426,6 +461,25 @@ addCol("orders","return_cost","REAL DEFAULT 0");
 addCol("orders","is_prepaid","INTEGER DEFAULT 0");
 addCol("orders","receipt_photo","TEXT DEFAULT ''");
 addCol("orders","declared_value","REAL DEFAULT 0");
+addCol("np_senders","api_key","TEXT DEFAULT ''");
+addCol("orders","own_ttn","INTEGER DEFAULT 0");
+addCol("models","size_grid_photo","TEXT DEFAULT ''");
+addCol("orders","cargo_description","TEXT DEFAULT 'Одяг'");
+addCol("models","main_warehouse","TEXT DEFAULT 'base'");
+addCol("users","assigned_warehouse","TEXT DEFAULT ''");
+addCol("users","balance","REAL DEFAULT 0");
+addCol("order_items","return_condition","TEXT DEFAULT ''");
+addCol("models","weight","REAL DEFAULT 0.3");
+addCol("kits","weight","REAL DEFAULT 0.5");
+addCol("orders","weight","REAL DEFAULT 0");
+addCol("orders","delivery_type","TEXT DEFAULT 'warehouse'");
+addCol("orders","client_street","TEXT DEFAULT ''");
+addCol("orders","client_house","TEXT DEFAULT ''");
+addCol("orders","client_flat","TEXT DEFAULT ''");
+addCol("orders","is_postomat","INTEGER DEFAULT 0");
+addCol("orders","parcel_width","REAL DEFAULT 0");
+addCol("orders","parcel_height","REAL DEFAULT 0");
+addCol("orders","parcel_length","REAL DEFAULT 0");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){
@@ -442,6 +496,22 @@ if(!db.prepare("SELECT id FROM users WHERE role='warehouse' LIMIT 1").get()){
   const pw = process.env.WAREHOUSE_PASSWORD || genPassword();
   db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse','Пакувальник 1','packer',5)").run("pack1",bcrypt.hashSync(pw,10));
   console.log("✅ Створено pack1, логін: pack1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
+}
+// Seed default order statuses
+if(!db.prepare("SELECT id FROM order_statuses LIMIT 1").get()){
+  const statuses = [
+    { code: "new", name: "Нове", color: "#3b82f6", sort: 1, system: 1 },
+    { code: "in_progress", name: "В роботі", color: "#f59e0b", sort: 2, system: 1 },
+    { code: "packed", name: "Запаковано", color: "#8b5cf6", sort: 3, system: 1 },
+    { code: "shipped", name: "Відправлено", color: "#10b981", sort: 4, system: 1 },
+    { code: "delivered", name: "Доставлено", color: "#22c55e", sort: 5, system: 0 },
+    { code: "done", name: "Виконано", color: "#059669", sort: 6, system: 0 },
+    { code: "refused", name: "Відмова", color: "#ef4444", sort: 7, system: 0 },
+    { code: "return_transit", name: "Повернення", color: "#f97316", sort: 8, system: 0 },
+    { code: "cancelled", name: "Скасовано", color: "#6b7280", sort: 9, system: 1 }
+  ];
+  const ins = db.prepare("INSERT INTO order_statuses(code,name,color,sort_order,is_system)VALUES(?,?,?,?,?)");
+  statuses.forEach(s => ins.run(s.code, s.name, s.color, s.sort, s.system));
 }
 if(!db.prepare("SELECT id FROM sizes LIMIT 1").get()){
   const s=db.prepare("INSERT INTO sizes(name,sort_order)VALUES(?,?)");

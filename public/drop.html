@@ -80,10 +80,9 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
   <input type="date" id="stat-to" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">
   <button class="btn btn-sm" style="font-size:11px;background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadStats()">OK</button>
   <div style="display:flex;gap:3px;margin-left:auto">
-    <button class="stab on" onclick="setStatPeriod(7)">7д</button>
-    <button class="stab" onclick="setStatPeriod(14)">14д</button>
-    <button class="stab" onclick="setStatPeriod(30)">30д</button>
-    <button class="stab" onclick="setStatPeriod(90)">90д</button>
+    <button class="stab" id="sp-7" onclick="setStatPeriod(7)">7д</button>
+    <button class="stab" id="sp-15" onclick="setStatPeriod(15)">15д</button>
+    <button class="stab on" id="sp-30" onclick="setStatPeriod(30)">30д</button>
   </div>
 </div>
 <div id="stat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px"></div>
@@ -91,20 +90,23 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div id="chart-profit" style="overflow-x:auto;margin-bottom:14px"></div>
 <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:6px">Кількість замовлень по днях</div>
 <div id="chart-orders" style="overflow-x:auto;margin-bottom:14px"></div>
-<button class="btn-new" onclick="goNav('orders');openNewOrder()">＋ Подати замовлення</button>
 </div>
 
 <div class="page" id="pg-orders">
 <button class="btn-new" onclick="openNewOrder()">＋ Подати замовлення</button>
-<div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';loadOrders()"><i data-icon="x" data-size="11"></i></button></div>
-<div style="margin-bottom:8px"><input id="dr-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadOrders()"></div>
+<div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="ordPage=0;loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';ordPage=0;loadOrders()"><i data-icon="x" data-size="11"></i></button></div>
+<div style="margin-bottom:8px"><input id="dr-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="ordPage=0;loadOrders()"></div>
 <div class="stabs" id="ord-stabs"></div>
-<div style="margin-bottom:8px;text-align:right"><button id="np-track-btn" class="btn" onclick="trackNP()" style="font-size:11px;padding:6px 12px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button></div><div id="ord-list"></div>
+<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+  <div style="font-size:11px;color:var(--td);display:flex;align-items:center;gap:6px">На сторінці: <select id="ord-pagesize" onchange="ordPage=0;loadOrders()" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><option value="20">20</option><option value="40">40</option><option value="50" selected>50</option></select></div>
+  <button id="np-track-btn" class="btn" onclick="trackNP()" style="font-size:11px;padding:6px 12px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button>
+</div>
+<div id="ord-list"></div>
 <div class="pagi" id="ord-pagi"></div>
 </div>
 
 <div class="page" id="pg-catalog">
-<div style="display:flex;gap:4px;margin-bottom:10px"><button class="stab on" id="ct-hot" onclick="dropCh='hot';catP=null;loadCatalog()"><i data-icon="flame" data-size="13"></i> HOT DROP</button><button class="stab" id="ct-ads" onclick="dropCh='ads';catP=null;loadCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS DROP</button></div>
+<div style="display:flex;gap:4px;margin-bottom:10px"><button class="stab" id="ct-hot" onclick="dropCh='hot';catP=null;loadCatalog()"><i data-icon="flame" data-size="13"></i> HOT DROP</button><button class="stab on" id="ct-ads" onclick="dropCh='ads';catP=null;loadCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS DROP</button></div>
 <div id="cat-bread"></div>
 <div id="cat-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="cat-prods" class="cards"></div>
@@ -155,9 +157,14 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <button class="btn" onclick="openCatPicker()" style="width:100%;margin-bottom:10px;border-color:rgba(124,134,255,.2);color:var(--acc)"><i data-icon="package" data-size="13"></i> Додати товар з каталогу</button>
 <div class="fld"><label>ПІБ клієнта</label><input id="no-name"></div>
 <div class="fld"><label>Телефон</label><input id="no-phone" placeholder="+380..."></div>
-<div class="fld"><label>Місто</label><input id="no-city" placeholder="Натисніть або введіть..." oninput="searchNpCity(this.value)" onfocus="if(!this.value)searchNpCity('Київ')"><div id="no-city-dd" style="max-height:150px;overflow-y:auto"></div></div>
-<div class="fld"><label>Відділення НП</label><input id="no-wh" placeholder="Натисніть або введіть №..." oninput="searchNpWh(this.value)" onfocus="if(!this.value&&dropCityRef)searchNpWh('')"><div id="no-wh-dd" style="max-height:150px;overflow-y:auto"></div></div>
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px"><input type="checkbox" id="no-prepaid" onchange="togglePrepaid()" style="width:18px;height:18px;accent-color:var(--acc)"><label style="font-size:12px;color:var(--th);margin:0;cursor:pointer" onclick="document.getElementById('no-prepaid').click()">Повна оплата (без наложки)</label></div>
+<div class="fld"><label>Тип доставки</label><div style="display:flex;gap:4px" id="no-dt-tabs"><button type="button" class="stab on" onclick="setDeliveryType('warehouse',this)">Відділення</button><button type="button" class="stab" onclick="setDeliveryType('courier',this)">Кур'єр</button><button type="button" class="stab" onclick="setDeliveryType('pickup',this)">Самовивіз</button></div></div>
+<div id="no-city-wrap"><div class="fld"><label>Місто</label><input id="no-city" placeholder="Натисніть або введіть..." oninput="searchNpCity(this.value)" onfocus="if(!this.value)searchNpCity('Київ')"><div id="no-city-dd" style="max-height:150px;overflow-y:auto"></div></div></div>
+<div id="no-wh-wrap"><div class="fld"><label>Відділення НП</label><input id="no-wh" placeholder="Натисніть або введіть №..." oninput="searchNpWh(this.value)" onfocus="if(!this.value&&dropCityRef)searchNpWh('')"><div id="no-wh-dd" style="max-height:150px;overflow-y:auto"></div></div></div>
+<div id="no-postomat-wrap" style="display:none;padding:8px;background:rgba(124,134,255,.08);border:1px solid rgba(124,134,255,.25);border-radius:8px;margin-bottom:10px"><div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:6px">Поштомат — вкажіть розміри посилки (см)</div><div class="fld-row"><div class="fld"><label>Ширина</label><input id="no-pw" type="number" value="20"></div><div class="fld"><label>Висота</label><input id="no-ph" type="number" value="20"></div><div class="fld"><label>Довжина</label><input id="no-pl" type="number" value="20"></div></div></div>
+<div id="no-courier-wrap" style="display:none"><div class="fld"><label>Вулиця</label><input id="no-street" placeholder="Назва вулиці"></div><div class="fld-row"><div class="fld"><label>Будинок</label><input id="no-house"></div><div class="fld"><label>Квартира</label><input id="no-flat"></div></div></div>
+<div class="fld"><label>Вага посилки (кг)</label><input id="no-weight" type="number" step="0.1" value="0.5" onchange="noWeightManual=true"></div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:rgba(193,127,78,.08);border:1px solid rgba(193,127,78,.25);border-radius:8px"><input type="checkbox" id="no-own-ttn" onchange="toggleOwnTtn()" style="width:18px;height:18px;accent-color:#c17f4e"><label style="font-size:12px;color:#c17f4e;margin:0;cursor:pointer;font-weight:600" onclick="document.getElementById('no-own-ttn').click()">Це мій ТТН (сам відправляю, не наша доставка) — менеджер внесе номер ТТН пізніше</label></div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px"><input type="checkbox" id="no-prepaid" onchange="togglePrepaid()" style="width:18px;height:18px;accent-color:var(--acc)"><label style="font-size:12px;color:var(--th);margin:0;cursor:pointer" onclick="document.getElementById('no-prepaid').disabled||document.getElementById('no-prepaid').click()">Повна оплата (без наложки)</label></div>
 <div id="no-cod-wrap"><div class="fld"><label>Наложка ₴</label><input id="no-cod" type="number" oninput="calcPay()"></div></div>
 <div id="no-prepaid-wrap" style="display:none">
   <div class="fld"><label>Оціночна вартість ₴</label><input id="no-dval" type="number" value="0"></div>
@@ -165,6 +172,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 </div>
 <div id="no-pay" style="font-size:12px;margin:4px 0;color:var(--th)"></div>
 <div class="fld"><label>Примітка</label><input id="no-note"></div>
+<div class="fld"><label>Опис посилки (для НП)</label><input id="no-cargo-desc" value="Одяг"></div>
 <div id="no-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:6px;margin-top:10px"><button class="btn-new" style="flex:1;margin:0;font-size:14px" onclick="submitOrder()"><i data-icon="check" data-size="14"></i> Оформити</button><button class="btn" onclick="clM('no-modal')">Скасувати</button></div>
 </div></div>
@@ -177,10 +185,16 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div style="display:flex;gap:6px;margin-top:12px"><button class="btn-new" style="flex:1;margin:0;font-size:13px" onclick="confirmKitPick()"><i data-icon="check" data-size="13"></i> Додати</button><button class="btn" onclick="clM('kit-pick-modal')">Скасувати</button></div>
 </div></div>
 
+<!-- Size grid photo viewer -->
+<div class="modal-bg" id="sizegrid-modal"><div class="modal" style="max-width:480px"><h3><i data-icon="ruler" data-size="15"></i> Розмірна сітка</h3>
+<img id="sizegrid-img" src="" style="width:100%;border-radius:8px">
+<div style="margin-top:10px;text-align:right"><button class="btn" onclick="clM('sizegrid-modal')">Закрити</button></div>
+</div></div>
+
 <!-- Catalog picker for order -->
 <div class="modal-bg" id="cp-modal"><div class="modal" style="max-width:650px">
 <h3><i data-icon="package" data-size="15"></i> Оберіть товар</h3>
-<div style="display:flex;gap:4px;margin-bottom:8px"><button class="stab on" id="cpt-hot" onclick="dropCh='hot';cpCatP=null;loadCatPicker()"><i data-icon="flame" data-size="12"></i> HOT</button><button class="stab" id="cpt-ads" onclick="dropCh='ads';cpCatP=null;loadCatPicker()"><i data-icon="megaphone" data-size="12"></i> ADS</button></div>
+<div style="display:flex;gap:4px;margin-bottom:8px"><button class="stab" id="cpt-hot" onclick="dropCh='hot';cpCatP=null;loadCatPicker()"><i data-icon="flame" data-size="12"></i> HOT</button><button class="stab on" id="cpt-ads" onclick="dropCh='ads';cpCatP=null;loadCatPicker()"><i data-icon="megaphone" data-size="12"></i> ADS</button></div>
 <div id="cp-bread"></div>
 <div id="cp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="cp-prods" class="cards"></div>
@@ -188,14 +202,29 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 </div></div>
 
 <script>
-var ME,allV=[],allSz=[],oItems=[],dropCh="hot",ordStatus="",ordPage=0,catP=null,cpCatP=null,dashPeriod="today";
+var ME,allV=[],allSz=[],oItems=[],dropCh="ads",ordStatus="",ordPage=0,catP=null,cpCatP=null,dashPeriod="today";
+var noDeliveryType="warehouse",noIsPostomat=false,noWeightManual=false;
+function setDeliveryType(type,btn){
+  noDeliveryType=type;
+  document.querySelectorAll("#no-dt-tabs .stab").forEach(function(b){b.classList.remove("on")});
+  if(btn)btn.classList.add("on");
+  document.getElementById("no-city-wrap").style.display=type==="pickup"?"none":"";
+  document.getElementById("no-wh-wrap").style.display=type==="warehouse"?"":"none";
+  document.getElementById("no-courier-wrap").style.display=type==="courier"?"":"none";
+  if(type!=="warehouse"){noIsPostomat=false;document.getElementById("no-postomat-wrap").style.display="none"}
+}
+function calcOrderWeight(){
+  if(noWeightManual)return;
+  var w=oItems.reduce(function(s,c){return s+(c.weight||0)*c.qty},0);
+  document.getElementById("no-weight").value=(Math.max(0.1,w)||0.5).toFixed(1);
+}
 var SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 var SCL={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роботі"},{k:"packed",l:"Готові"},{k:"shipped",l:"Відправлені"},{k:"delivering",l:"Доставка"},{k:"delivered",l:"Отримані"},{k:"refused",l:"Відмови"},{k:"cancelled",l:"Скасовані"}];
 
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash()}catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
-function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
+function ttnColor(o){if(o.own_ttn)return'#c17f4e';var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.innerHTML=Icon('check',12)+" "+esc(t)+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(function(){if(_lc>0){var l=document.getElementById("loader");if(l)l.style.display="flex"}},800)}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){if(_lt){clearTimeout(_lt);_lt=null}var l=document.getElementById("loader");if(l)l.style.display="none"}}
@@ -212,7 +241,11 @@ function goNav(p){
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────
-function setStatPeriod(days){var d=new Date();document.getElementById("stat-to").value=d.toISOString().slice(0,10);d.setDate(d.getDate()-days);document.getElementById("stat-from").value=d.toISOString().slice(0,10);loadStats()}
+function setStatPeriod(days){
+  document.querySelectorAll('#sp-7,#sp-15,#sp-30').forEach(function(b){b.classList.remove("on")});
+  var btn=document.getElementById("sp-"+days);if(btn)btn.classList.add("on");
+  var d=new Date();document.getElementById("stat-to").value=d.toISOString().slice(0,10);d.setDate(d.getDate()-(days-1));document.getElementById("stat-from").value=d.toISOString().slice(0,10);loadStats()
+}
 async function loadStats(){
   var df=document.getElementById("stat-from").value;var dt=document.getElementById("stat-to").value;
   if(!df){var d=new Date();d.setDate(d.getDate()-30);df=d.toISOString().slice(0,10);document.getElementById("stat-from").value=df}
@@ -255,7 +288,7 @@ async function loadStats(){
   }else{document.getElementById("chart-profit").innerHTML='<div style="color:var(--td);font-size:11px;padding:10px">Немає даних</div>';document.getElementById("chart-orders").innerHTML=''}
   }catch(e){document.getElementById("stat-grid").innerHTML='<div style="color:var(--red);font-size:11px">Помилка завантаження</div>'}
 }
-async function loadDash(){loadStats()}
+async function loadDash(){if(!document.getElementById("stat-from").value)setStatPeriod(30);else loadStats()}
 
 // ── ORDERS ───────────────────────────────────────────────────────
 function renderOrdTabs(){
@@ -265,17 +298,15 @@ async function loadOrders(){document.getElementById("ord-list").innerHTML='<div 
   renderOrdTabs();
   var df=document.getElementById("dr-df")?.value||"",dt=document.getElementById("dr-dt")?.value||"";
   var ttn=document.getElementById("dr-ttn")?.value||"";
-  var url="/api/orders?limit=50"+(ordStatus?"&status="+ordStatus:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(ttn?"&ttn_search="+ttn:"");
+  var pp=parseInt(document.getElementById("ord-pagesize")?.value)||50;
+  var url="/api/orders?page="+(ordPage+1)+"&page_size="+pp+(ordStatus?"&status="+ordStatus:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(ttn?"&ttn_search="+ttn:"");
   var r=await api(url);var orders=r.orders;
   var el=document.getElementById("ord-list");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('clipboardList',13)+'</span>Немає замовлень</div>';document.getElementById("ord-pagi").innerHTML="";return}
-  // Pagination
-  var pp=50,pages=Math.ceil(orders.length/pp);ordPage=Math.min(ordPage,pages-1);
-  var slice=orders.slice(ordPage*pp,(ordPage+1)*pp);
-  // Load details for thumbnails
+  var pages=Math.max(1,Math.ceil(r.total/pp));ordPage=Math.min(ordPage,pages-1);
   var html="";
-  for(var i=0;i<slice.length;i++){
-    var o=slice[i];
+  for(var i=0;i<orders.length;i++){
+    var o=orders[i];
     if(!o._items)o._items=[];
     html+=renderOC(o);
   }
@@ -287,7 +318,11 @@ async function loadOrders(){document.getElementById("ord-list").innerHTML='<div 
 function renderOC(o){
   var items=o._items||[];
   var ph=items[0]?(items[0].var_photo||items[0].print_photo||items[0].bp_photo):"";
-  var nm=items.map(function(i){return esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.original_size_name||i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')}).join(', ')||'—';
+  var totalQty=items.reduce(function(s,i){return s+i.quantity},0);
+  var nm;
+  if(items.length===0)nm='—';
+  else if(items.length===1)nm=esc(items[0].var_name)+' <b style="color:var(--acc)">'+esc(items[0].original_size_name||items[0].size_name)+'</b>'+(items[0].quantity>1?' ×'+items[0].quantity:'');
+  else nm='<span style="color:var(--acc);font-weight:700">'+totalQty+' товар'+(totalQty>4?'ів':totalQty>1?'и':'')+'</span> · '+items.slice(0,2).map(function(i){return esc(i.var_name.length>15?i.var_name.slice(0,15)+'…':i.var_name)}).join(', ')+(items.length>2?' <span style="color:var(--td)">+ще '+(items.length-2)+'</span>':'');
   var chB=o.drop_channel==='hot'?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(255,167,38,.12);color:#ffa726;font-weight:600">HOT</span>':'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(124,134,255,.12);color:#7c86ff;font-weight:600">ADS</span>';
   var h='<div class="oc" onclick="viewOrder('+o.id+')">';
   h+='<div style="display:flex;gap:12px;padding:12px 14px">';
@@ -295,7 +330,8 @@ function renderOC(o){
   h+='<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;color:var(--th);line-height:1.3;margin-bottom:3px">'+nm+'</div>';
   h+='<div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:12px;color:var(--td);font-weight:500">#'+o.id+'</span> <span class="tag '+(SCL[o.status]||"")+'" style="font-size:10px;padding:2px 8px">'+(SL[o.status]||o.status)+'</span> '+chB+'</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:'+((o.status==='refused'||o.status==='return_transit')?'var(--red)':'var(--acc)')+'">'+(o.status==='refused'||o.status==='return_transit'?'-'+(o.return_cost||0).toFixed(0):'+'+o.payout_amount.toFixed(0))+'₴</div><div style="font-size:11px;color:var(--td)">'+o.cod_amount+'₴ нал</div></div></div>';
   h+='<div style="font-size:11px;color:var(--td);margin-top:3px">'+esc(o.client_name)+' · '+(o.created_at?o.created_at.slice(5,16):"")+'</div></div></div>';
-  if(o.ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px" onclick="event.stopPropagation()"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<span style="font-size:10px;color:'+ttnColor(o)+'">'+esc(o.np_status_text).slice(0,35)+'</span>':'')+'</div>'+(o.return_ttn?'<div style="margin-top:4px;display:flex;justify-content:space-between;align-items:center"><span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--red);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.return_ttn)+'\')">'+Icon('undo2',13)+' '+esc(o.return_ttn)+'</span><span style="font-size:10px;color:var(--red)">повернення</span></div>':'')+'</div>';
+  if(o.ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px" onclick="event.stopPropagation()">'+(o.own_ttn?'<div style="font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">'+Icon('alertTriangle',10)+' Це ваш ТТН, не наша доставка</div>':'')+'<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<span style="font-size:10px;color:'+ttnColor(o)+'">'+esc(o.np_status_text).slice(0,35)+'</span>':'')+'</div>'+(o.return_ttn?'<div style="margin-top:4px;display:flex;justify-content:space-between;align-items:center"><span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--red);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.return_ttn)+'\')">'+Icon('undo2',13)+' '+esc(o.return_ttn)+'</span><span style="font-size:10px;color:var(--red)">повернення</span></div>':'')+'</div>';
+  else if(o.own_ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px" onclick="event.stopPropagation()"><div style="font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+Icon('alertTriangle',10)+' Це ваш ТТН — менеджер ще не вніс номер</div></div>';
   else if(!o.is_prepaid&&o.status==="new")h+='<div style="border-top:1px solid var(--brd);padding:8px 14px;display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:12px;color:var(--warn)">Формування ТТН...</span></div>';
   h+='</div>';
   return h;
@@ -325,9 +361,18 @@ async function viewOrder(id){
 async function openNewOrder(){
   oItems=[];renderOItems();
   ["no-name","no-phone","no-city","no-wh","no-cod","no-note"].forEach(function(id){document.getElementById(id).value=""});
+  document.getElementById("no-cargo-desc").value="Одяг";
+  document.getElementById("no-street").value="";document.getElementById("no-house").value="";document.getElementById("no-flat").value="";
+  document.getElementById("no-pw").value="20";document.getElementById("no-ph").value="20";document.getElementById("no-pl").value="20";
+  document.getElementById("no-weight").value="0.5";noWeightManual=false;noIsPostomat=false;
+  document.getElementById("no-postomat-wrap").style.display="none";
+  setDeliveryType("warehouse",document.querySelector("#no-dt-tabs .stab"));
   document.getElementById("no-pay").innerHTML="";document.getElementById("no-err").style.display="none";
+  document.getElementById("no-own-ttn").checked=false;
+  document.getElementById("no-prepaid").disabled=false;document.getElementById("no-prepaid").checked=false;togglePrepaid();
+  receiptPhoto="";document.getElementById("no-receipt-preview").innerHTML="—";
   var d=await api("/api/variations?channel="+dropCh);allV=d.variations;allSz=d.sizes;
-  try{var kd=await api("/api/kits");kd.kits.forEach(function(k){k.is_kit=true;allV.push(k)})}catch(e){}
+  try{var kd=await api("/api/kits?channel="+dropCh);kd.kits.forEach(function(k){k.is_kit=true;allV.push(k)})}catch(e){}
   opM("no-modal");
 }
 
@@ -341,20 +386,20 @@ async function loadCatPicker(){
   var cats=cd.categories.filter(function(c){return!c.hidden_from_drop});
   document.getElementById("cp-cats").innerHTML=cats.map(function(c){return '<div class="crd" onclick="cpCatP='+c.id+';loadCatPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',32))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
   // Products
-  if(!allV.length||true){var dd=await api("/api/variations?channel="+dropCh);allV=dd.variations;allSz=dd.sizes}
+  if(!allV.length||true){var dd=await api("/api/variations?channel="+dropCh);allV=dd.variations;allSz=dd.sizes;try{var kd=await api("/api/kits?channel="+dropCh);kd.kits.forEach(function(k){k.is_kit=true;allV.push(k)})}catch(e){}}
   var filtered=cpCatP?allV.filter(function(v){return v.category_drop_id==cpCatP}):allV;
   var el=document.getElementById("cp-prods");
   el.innerHTML=filtered.slice(0,40).map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('gift',11)+' Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+')">'+s.name+'<br>'+q+'</div>'}).join("")+'</div>')+'</div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('gift',11)+' Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')">'+s.name+'<br>'+q+'</div>'}).join("")+'</div>')+'</div></div>';
   }).join("");
 }
 
 async function trackNP(){var b=document.getElementById("np-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></div>Оновлення...';try{await api("/api/nova-poshta/track-all",{method:"POST"});b.innerHTML=Icon('check',12)+' Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='';b.disabled=false;loadOrders()},1500)}catch(e){b.innerHTML=Icon('x',12)+' Помилка';b.style.color='var(--red)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='';b.disabled=false},2000)}}
-function pickItem(vid,sid,name,price,sz,photo,isKit){
-  oItems.push({varId:vid,sizeId:sid,name:name,price:price,sz:sz,photo:photo,qty:1,kitId:isKit?vid:null});
-  renderOItems();calcPay();clM("cp-modal");
+function pickItem(vid,sid,name,price,sz,photo,isKit,weight){
+  oItems.push({varId:vid,sizeId:sid,name:name,price:price,sz:sz,photo:photo,qty:1,kitId:isKit?vid:null,weight:weight||0.3});
+  renderOItems();calcPay();calcOrderWeight();clM("cp-modal");
 }
 
 var kitPickData=null;
@@ -396,25 +441,32 @@ function confirmKitPick(){
   // Add each component as separate order item
   kit.items.forEach(function(ci,idx){
     var sel=kitPickData.selections[idx];
-    oItems.push({varId:ci.variation_id,sizeId:sel.sizeId,name:ci.var_name+" ("+kit.name+")",price:0,sz:sel.sizeName,photo:ci.var_photo||ci.bp_photo||"",qty:1,kitId:null});
+    oItems.push({varId:ci.variation_id,sizeId:sel.sizeId,name:ci.var_name+" ("+kit.name+")",price:0,sz:sel.sizeName,photo:ci.var_photo||ci.bp_photo||"",qty:1,kitId:null,weight:0});
   });
-  // Add kit price as first item adjustment
+  // Add kit price/weight as first item adjustment
   if(oItems.length>=kit.items.length){
     oItems[oItems.length-kit.items.length].price=kit.drop_price;
+    oItems[oItems.length-kit.items.length].weight=kit.weight||0.5;
   }
-  renderOItems();calcPay();clM("kit-pick-modal");clM("cp-modal");
+  renderOItems();calcPay();calcOrderWeight();clM("kit-pick-modal");clM("cp-modal");
 }
 
 function renderOItems(){
   var el=document.getElementById("no-items");
   if(!oItems.length){el.innerHTML='<div style="color:var(--td);font-size:11px">Натисніть "Додати товар"</div>';return}
-  el.innerHTML=oItems.map(function(c,i){return '<div class="oi-card">'+(c.photo?'<img src="'+c.photo+'" style="width:36px;height:36px;border-radius:5px;object-fit:cover">':'')+'<div style="flex:1;color:var(--th)">'+esc(c.name)+'</div><div style="color:var(--acc);font-weight:600">'+c.sz+'</div><div style="display:flex;align-items:center;gap:3px"><button onclick="oItems['+i+'].qty=Math.max(1,oItems['+i+'].qty-1);renderOItems();calcPay()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">−</button><span style="font-family:JetBrains Mono,monospace;font-size:11px;min-width:16px;text-align:center">'+c.qty+'</span><button onclick="oItems['+i+'].qty++;renderOItems();calcPay()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">+</button></div><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--td);min-width:40px;text-align:right">'+(c.price*c.qty).toFixed(0)+'₴</div><button class="oi-del" onclick="oItems.splice('+i+',1);renderOItems();calcPay()">'+Icon('x',12)+'</button></div>'}).join("");
+  el.innerHTML=oItems.map(function(c,i){return '<div class="oi-card">'+(c.photo?'<img src="'+c.photo+'" style="width:36px;height:36px;border-radius:5px;object-fit:cover">':'')+'<div style="flex:1;color:var(--th)">'+esc(c.name)+'</div><div style="color:var(--acc);font-weight:600">'+c.sz+'</div><div style="display:flex;align-items:center;gap:3px"><button onclick="oItems['+i+'].qty=Math.max(1,oItems['+i+'].qty-1);renderOItems();calcPay();calcOrderWeight()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">−</button><span style="font-family:JetBrains Mono,monospace;font-size:11px;min-width:16px;text-align:center">'+c.qty+'</span><button onclick="oItems['+i+'].qty++;renderOItems();calcPay();calcOrderWeight()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">+</button></div><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--td);min-width:40px;text-align:right">'+(c.price*c.qty).toFixed(0)+'₴</div><button class="oi-del" onclick="oItems.splice('+i+',1);renderOItems();calcPay();calcOrderWeight()">'+Icon('x',12)+'</button></div>'}).join("");
 }
 
 var dropCityRef="",dropSettleRef="",receiptPhoto="",lastCities=[];
 function togglePrepaid(){var p=document.getElementById("no-prepaid").checked;document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";
   if(p){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
   calcPay()}
+function toggleOwnTtn(){
+  var own=document.getElementById("no-own-ttn").checked;
+  var pre=document.getElementById("no-prepaid");
+  if(own){pre.checked=true;pre.disabled=true}else{pre.disabled=false}
+  togglePrepaid();
+}
 
 var cityTimer;
 function searchNpCity(q){clearTimeout(cityTimer);if(q.length<2){document.getElementById("no-city-dd").innerHTML="";return}
@@ -436,8 +488,8 @@ function searchNpWh(q){clearTimeout(whTimer);
     if(!dropCityRef){document.getElementById("no-wh-dd").innerHTML='<div style="padding:6px;font-size:10px;color:var(--red)">Спочатку оберіть місто</div>';return}
   }
   whTimer=setTimeout(async function(){try{var r=await api("/api/nova-poshta/search-warehouse",{method:"POST",body:JSON.stringify({city_ref:dropCityRef,settle_ref:dropSettleRef,query:q})});
-  document.getElementById("no-wh-dd").innerHTML=r.warehouses.slice(0,10).map(function(w){return '<div style="padding:8px;cursor:pointer;font-size:11px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickWh(\''+w.Description.replace(/'/g,"")+'\')">'+(w.Description)+'</div>'}).join("")||'<div style="padding:6px;font-size:10px;color:var(--td)">Не знайдено</div>'}catch(e){}},300)}
-function pickWh(desc){document.getElementById("no-wh").value=desc;document.getElementById("no-wh-dd").innerHTML=""}
+  document.getElementById("no-wh-dd").innerHTML=r.warehouses.slice(0,10).map(function(w){return '<div style="padding:8px;cursor:pointer;font-size:11px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickWh(\''+w.Description.replace(/'/g,"")+'\','+(w.CategoryOfWarehouse==="Postomat")+')">'+(w.Description)+(w.CategoryOfWarehouse==="Postomat"?' <span style="color:var(--acc);font-size:9px">(поштомат)</span>':'')+'</div>'}).join("")||'<div style="padding:6px;font-size:10px;color:var(--td)">Не знайдено</div>'}catch(e){}},300)}
+function pickWh(desc,isPostomat){document.getElementById("no-wh").value=desc;document.getElementById("no-wh-dd").innerHTML="";noIsPostomat=!!isPostomat;document.getElementById("no-postomat-wrap").style.display=noIsPostomat?"":"none"}
 
 async function uploadReceipt(e){var f=e.target.files[0];if(!f)return;var r=new FileReader;r.onload=async function(){try{var d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});receiptPhoto=d.url;document.getElementById("no-receipt-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){}};r.readAsDataURL(f);e.target.value=""}
 
@@ -447,9 +499,19 @@ async function submitOrder(){
   var err=document.getElementById("no-err");err.style.display="none";
   if(!oItems.length){err.textContent="Додайте товари";err.style.display="block";return}
   var isPre=document.getElementById("no-prepaid").checked;
+  var isOwnTtn=document.getElementById("no-own-ttn").checked;
   if(isPre&&!receiptPhoto){err.textContent="Завантажте скрін чеку оплати";err.style.display="block";return}
   if(!document.getElementById("no-name").value){err.textContent="Вкажіть ПІБ";err.style.display="block";return}
   if(!document.getElementById("no-phone").value){err.textContent="Вкажіть телефон";err.style.display="block";return}
+  if(!isPre&&!isOwnTtn){
+    var totalDrop=oItems.reduce(function(s,it){return s+it.price*it.qty},0);
+    var cod=parseFloat(document.getElementById("no-cod").value)||0;
+    if(cod<totalDrop){err.textContent="Наложка ("+cod.toFixed(2)+"₴) не може бути меншою за дроп ціну ("+totalDrop.toFixed(2)+"₴)";err.style.display="block";return}
+  }
+  if(noDeliveryType!=="pickup"&&!document.getElementById("no-city").value){err.textContent="Вкажіть місто";err.style.display="block";return}
+  if(noDeliveryType==="warehouse"&&!document.getElementById("no-wh").value){err.textContent="Вкажіть відділення";err.style.display="block";return}
+  if(noDeliveryType==="courier"&&!document.getElementById("no-street").value){err.textContent="Вкажіть вулицю";err.style.display="block";return}
+  if(noDeliveryType==="courier"&&!document.getElementById("no-house").value){err.textContent="Вкажіть номер будинку";err.style.display="block";return}
   try{
     var r=await api("/api/orders",{method:"POST",body:JSON.stringify({
       items:oItems.map(function(c){return{variation_id:c.kitId?undefined:c.varId,size_id:c.sizeId,quantity:c.qty,kit_id:c.kitId||undefined}}),
@@ -461,7 +523,18 @@ async function submitOrder(){
       note:document.getElementById("no-note").value,
       is_prepaid:isPre,
       receipt_photo:isPre?receiptPhoto:"",
-      declared_value:isPre?(parseFloat(document.getElementById("no-dval").value)||0):0
+      declared_value:isPre?(parseFloat(document.getElementById("no-dval").value)||0):0,
+      own_ttn:isOwnTtn,
+      cargo_description:document.getElementById("no-cargo-desc").value||"Одяг",
+      weight:parseFloat(document.getElementById("no-weight").value)||0.5,
+      delivery_type:noDeliveryType,
+      client_street:document.getElementById("no-street").value,
+      client_house:document.getElementById("no-house").value,
+      client_flat:document.getElementById("no-flat").value,
+      is_postomat:noIsPostomat,
+      parcel_width:parseFloat(document.getElementById("no-pw").value)||0,
+      parcel_height:parseFloat(document.getElementById("no-ph").value)||0,
+      parcel_length:parseFloat(document.getElementById("no-pl").value)||0
     })});
     clM("no-modal");receiptPhoto="";dropCityRef="";dropSettleRef="";
     loadDash();
@@ -491,9 +564,10 @@ async function loadCatalog(){
   document.getElementById("cat-prods").innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div></div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div>'+(v.size_grid_photo?'<button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();showSizeGrid(\''+v.size_grid_photo+'\')">'+Icon('ruler',11)+' Розмірна сітка</button>':'')+'</div></div>';
   }).join("");
 }
+function showSizeGrid(photo){document.getElementById("sizegrid-img").src=photo;opM("sizegrid-modal")}
 
 // ── PAYOUTS ──────────────────────────────────────────────────────
 async function loadPayouts(){
@@ -562,8 +636,8 @@ async function saveProfile(){
   document.getElementById("set-msg").innerHTML='<div style="color:var(--acc);font-size:12px">'+Icon('check',12)+' Збережено</div>';ME=(await api("/api/auth/me")).user;setTimeout(function(){document.getElementById("set-msg").innerHTML=""},2000)}catch(e){}
 }
 
-RangePicker.init("stat-from", "stat-to");
-RangePicker.init("dr-df", "dr-dt");
+RangePicker.init("stat-from", "stat-to", {presets:[7,15,30]});
+RangePicker.init("dr-df", "dr-dt", {presets:[7,15,30]});
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>

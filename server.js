@@ -56,30 +56,70 @@ app.post("/api/auth/dev-login/:role", (req, res) => {
 // ── USERS ────────────────────────────────────────────────────────
 app.get("/api/users", authMiddleware, requireRole("admin"), (req, res) => {
   const r = req.query.role;
-  res.json({ users: r ? db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,active,created_at,last_login FROM users WHERE role=? ORDER BY name").all(r) : db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,active,created_at,last_login FROM users ORDER BY role,name").all() });
+  res.json({ users: r ? db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,active,created_at,last_login,balance FROM users WHERE role=? ORDER BY name").all(r) : db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,active,created_at,last_login,balance FROM users ORDER BY role,name").all() });
 });
+// Dropshipper leaderboard for the Дропшипери tab: order count + success% per
+// dropshipper within a date range, sorted by order count descending.
+app.get("/api/dropshippers/leaderboard", authMiddleware, requireRole("admin"), (req, res) => {
+  const df = req.query.date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const dt = req.query.date_to || new Date().toISOString().slice(0, 10);
+  const drops = db.prepare("SELECT id,username,name,discount_percent,discount_fixed,active,balance FROM users WHERE role='dropshipper' ORDER BY name").all();
+  const items = drops.map(d => {
+    const total = db.prepare("SELECT COUNT(*) as c FROM orders WHERE dropshipper_id=? AND date(created_at) BETWEEN ? AND ?").get(d.id, df, dt).c;
+    const delivered = db.prepare("SELECT COUNT(*) as c FROM orders WHERE dropshipper_id=? AND status='delivered' AND date(created_at) BETWEEN ? AND ?").get(d.id, df, dt).c;
+    return { ...d, total, delivered, success_rate: total ? Math.round(delivered / total * 1000) / 10 : 0 };
+  }).sort((a, b) => b.total - a.total);
+  res.json({ items, date_from: df, date_to: dt });
+});
+
 app.get("/api/users/:id", authMiddleware, requireRole("admin"), (req, res) => {
   const u = db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,payout_details,active FROM users WHERE id=?").get(req.params.id);
   if (!u) return res.status(404).json({ error: "Не знайдено" });
   res.json({ user: u });
 });
 app.post("/api/users", authMiddleware, requireRole("admin"), (req, res) => {
-  const { username, password, role, name, phone, email, telegram, discount_percent, discount_fixed, worker_role, worker_rate } = req.body;
+  const { username, password, role, name, phone, email, telegram, discount_percent, discount_fixed, worker_role, worker_rate, assigned_warehouse } = req.body;
   if (!username || !password || !role) return res.status(400).json({ error: "Логін, пароль і роль обов'язкові" });
   if (password.length < 4) return res.status(400).json({ error: "Мін 4 символи" });
   if (db.prepare("SELECT id FROM users WHERE username=?").get(username.trim().toLowerCase())) return res.status(409).json({ error: "Логін зайнятий" });
-  const r = db.prepare("INSERT INTO users(username,password_hash,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate)VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(username.trim().toLowerCase(),bcrypt.hashSync(password,10),role,(name||"").trim(),(phone||""),(email||""),(telegram||""),parseFloat(discount_percent)||0,parseFloat(discount_fixed)||0,worker_role||"",parseFloat(worker_rate)||0);
+  const r = db.prepare("INSERT INTO users(username,password_hash,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,assigned_warehouse)VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(username.trim().toLowerCase(),bcrypt.hashSync(password,10),role,(name||"").trim(),(phone||""),(email||""),(telegram||""),parseFloat(discount_percent)||0,parseFloat(discount_fixed)||0,worker_role||"",parseFloat(worker_rate)||0,assigned_warehouse||"");
   res.json({ ok: true, user: db.prepare("SELECT id,username,role,name FROM users WHERE id=?").get(r.lastInsertRowid) });
 });
 app.put("/api/users/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, phone, email, telegram, discount_percent, discount_fixed, worker_role, worker_rate, active, password } = req.body;
-  db.prepare("UPDATE users SET name=?,phone=?,email=?,telegram=?,discount_percent=?,discount_fixed=?,worker_role=?,worker_rate=?,active=? WHERE id=?").run((name||""),(phone||""),(email||""),(telegram||""),parseFloat(discount_percent)||0,parseFloat(discount_fixed)||0,worker_role||"",parseFloat(worker_rate)||0,active!==undefined?(active?1:0):1,req.params.id);
+  const { name, phone, email, telegram, discount_percent, discount_fixed, worker_role, worker_rate, active, password, assigned_warehouse } = req.body;
+  db.prepare("UPDATE users SET name=?,phone=?,email=?,telegram=?,discount_percent=?,discount_fixed=?,worker_role=?,worker_rate=?,active=?,assigned_warehouse=? WHERE id=?").run((name||""),(phone||""),(email||""),(telegram||""),parseFloat(discount_percent)||0,parseFloat(discount_fixed)||0,worker_role||"",parseFloat(worker_rate)||0,active!==undefined?(active?1:0):1,assigned_warehouse||"",req.params.id);
   if(password&&password.length>=4)db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(bcrypt.hashSync(password,10),req.params.id);
   res.json({ ok: true });
 });
 app.delete("/api/users/:id", authMiddleware, requireRole("admin"), (req, res) => {
   if(parseInt(req.params.id)===req.user.id)return res.status(400).json({error:"Не можна видалити себе"});
   db.prepare("DELETE FROM users WHERE id=?").run(req.params.id);res.json({ok:true});
+});
+
+// ── BALANCE ──────────────────────────────────────────────────────
+app.get("/api/users/:id/balance", authMiddleware, (req, res) => {
+  const uid = parseInt(req.params.id);
+  if (req.user.role !== "admin" && req.user.id !== uid) return res.status(403).json({ error: "Немає доступу" });
+  const u = db.prepare("SELECT balance FROM users WHERE id=?").get(uid);
+  if (!u) return res.status(404).json({ error: "Користувач не знайдений" });
+  const transactions = db.prepare("SELECT bt.*,o.id as oid,u.name as created_by_name FROM balance_transactions bt LEFT JOIN orders o ON bt.order_id=o.id LEFT JOIN users u ON bt.created_by=u.id WHERE bt.user_id=? ORDER BY bt.created_at DESC LIMIT 50").all(uid);
+  res.json({ balance: u.balance || 0, transactions });
+});
+
+app.post("/api/users/:id/balance", authMiddleware, requireRole("admin"), (req, res) => {
+  const uid = parseInt(req.params.id);
+  const { amount, type, note } = req.body;
+  if (!amount || !type) return res.status(400).json({ error: "Сума та тип обов'язкові" });
+  const amt = parseFloat(amount);
+  if (isNaN(amt) || amt === 0) return res.status(400).json({ error: "Невірна сума" });
+  const u = db.prepare("SELECT * FROM users WHERE id=?").get(uid);
+  if (!u) return res.status(404).json({ error: "Користувач не знайдений" });
+  db.transaction(() => {
+    db.prepare("INSERT INTO balance_transactions(user_id,amount,type,note,created_by)VALUES(?,?,?,?,?)").run(uid, amt, type, note || "", req.user.id);
+    db.prepare("UPDATE users SET balance=balance+? WHERE id=?").run(amt, uid);
+  })();
+  const newBalance = db.prepare("SELECT balance FROM users WHERE id=?").get(uid).balance;
+  res.json({ ok: true, balance: newBalance });
 });
 
 // ── SETTINGS ─────────────────────────────────────────────────────
@@ -213,14 +253,14 @@ app.get("/api/models/:id", authMiddleware, (req, res) => {
 });
 
 app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, category_id, category_drop_id, is_ready_product, cost_price, drop_price, drop_channel, color_ids, size_ids, print_ids, patch_ids, workers } = req.body;
+  const { name, category_id, category_drop_id, is_ready_product, cost_price, drop_price, drop_channel, main_warehouse, weight, color_ids, size_ids, print_ids, patch_ids, workers, size_grid_photo } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
   if (!color_ids?.length) return res.status(400).json({ error: "Оберіть кольори" });
   if (!size_ids?.length) return res.status(400).json({ error: "Оберіть розміри" });
   if (!is_ready_product && !print_ids?.length) return res.status(400).json({ error: "Оберіть принти" });
 
   const result = db.transaction(() => {
-    const r = db.prepare("INSERT INTO models(name,category_id,category_drop_id,is_ready_product,cost_price,drop_price,drop_channel)VALUES(?,?,?,?,?,?,?)").run(name.trim(),category_id||null,category_drop_id||null,is_ready_product?1:0,parseFloat(cost_price)||0,parseFloat(drop_price)||0,drop_channel||"hot");
+    const r = db.prepare("INSERT INTO models(name,category_id,category_drop_id,is_ready_product,cost_price,drop_price,drop_channel,size_grid_photo,main_warehouse,weight)VALUES(?,?,?,?,?,?,?,?,?,?)").run(name.trim(),category_id||null,category_drop_id||null,is_ready_product?1:0,parseFloat(cost_price)||0,parseFloat(drop_price)||0,drop_channel||"hot",size_grid_photo||"",main_warehouse||"base",parseFloat(weight)||0.3);
     const mid = r.lastInsertRowid;
     const lc=db.prepare("INSERT INTO model_colors(model_id,color_id)VALUES(?,?)");
     const ls=db.prepare("INSERT INTO model_sizes(model_id,size_id)VALUES(?,?)");
@@ -257,7 +297,7 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
 // Update model + sync names/prices to all products
 app.put("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
   const mid = parseInt(req.params.id);
-  const { name, category_id, cost_price, drop_price, active, sync_products } = req.body;
+  const { name, category_id, category_drop_id, drop_channel, main_warehouse, cost_price, drop_price, active, sync_products, size_grid_photo, weight } = req.body;
   const model = db.prepare("SELECT * FROM models WHERE id=?").get(mid);
   if (!model) return res.status(404).json({ error: "Не знайдено" });
 
@@ -265,9 +305,14 @@ app.put("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
     const s=[],v=[];
     if(name!==undefined){s.push("name=?");v.push(name.trim())}
     if(category_id!==undefined){s.push("category_id=?");v.push(category_id||null)}
+    if(category_drop_id!==undefined){s.push("category_drop_id=?");v.push(category_drop_id||null)}
+    if(drop_channel!==undefined){s.push("drop_channel=?");v.push(drop_channel)}
+    if(main_warehouse!==undefined){s.push("main_warehouse=?");v.push(main_warehouse||"base")}
     if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
     if(drop_price!==undefined){s.push("drop_price=?");v.push(parseFloat(drop_price)||0)}
     if(active!==undefined){s.push("active=?");v.push(active?1:0)}
+    if(size_grid_photo!==undefined){s.push("size_grid_photo=?");v.push(size_grid_photo||"")}
+    if(weight!==undefined){s.push("weight=?");v.push(parseFloat(weight)||0.3)}
     if(s.length){v.push(mid);db.prepare(`UPDATE models SET ${s.join(",")} WHERE id=?`).run(...v)}
 
     // Update workers
@@ -404,7 +449,7 @@ app.get("/api/base-products", authMiddleware, (req, res) => {
 });
 
 app.get("/api/base-products/:id", authMiddleware, (req, res) => {
-  const p = db.prepare("SELECT bp.*,m.name as model_name,m.cost_price,m.drop_price,m.is_ready_product,m.id as mid,c.name as color_name,c.hex_code FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id WHERE bp.id=?").get(req.params.id);
+  const p = db.prepare("SELECT bp.*,m.name as model_name,m.cost_price as model_cost_price,m.drop_price as model_drop_price,m.is_ready_product,m.id as mid,c.name as color_name,c.hex_code FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id WHERE bp.id=?").get(req.params.id);
   if (!p) return res.status(404).json({ error: "Не знайдено" });
   p.stock = db.prepare("SELECT sb.*,s.name as size_name FROM stock_base sb JOIN sizes s ON sb.size_id=s.id WHERE sb.base_product_id=? ORDER BY s.sort_order").all(p.id);
   p.variations = db.prepare("SELECT v.*,pr.name as print_name FROM variations v LEFT JOIN prints pr ON v.print_id=pr.id WHERE v.base_product_id=?").all(p.id);
@@ -435,6 +480,29 @@ app.post("/api/stock/set", authMiddleware, requireRole("admin"), (req, res) => {
   res.json({ ok: true });
 });
 
+// ── RECOUNT (переоблік) ────────────────────────────────────────────
+// Apply a batch of counted quantities, logging each real change to stock_log
+app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const { adjustments } = req.body;
+  if (!Array.isArray(adjustments) || !adjustments.length) return res.status(400).json({ error: "Немає змін" });
+  let changed = 0;
+  db.transaction(() => {
+    adjustments.forEach(a => {
+      const bpId = parseInt(a.base_product_id), sizeId = parseInt(a.size_id), actual = parseInt(a.actual_quantity);
+      if (!bpId || !sizeId || isNaN(actual)) return;
+      const row = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(bpId, sizeId);
+      const current = row ? row.quantity : 0;
+      const diff = actual - current;
+      if (diff === 0) return;
+      db.prepare("UPDATE stock_base SET quantity=? WHERE base_product_id=? AND size_id=?").run(actual, bpId, sizeId);
+      db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)")
+        .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual, req.user.id);
+      changed++;
+    });
+  })();
+  res.json({ ok: true, changed });
+});
+
 // Update model workers from product context
 app.put("/api/model-workers/:model_id", authMiddleware, requireRole("admin"), (req, res) => {
   const mid = parseInt(req.params.model_id);
@@ -452,7 +520,7 @@ app.put("/api/model-workers/:model_id", authMiddleware, requireRole("admin"), (r
 app.get("/api/variations", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
   const channel = req.query.channel;
-  let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,m.name as model_name,m.drop_price as model_drop_price,m.is_ready_product,m.category_drop_id,m.drop_channel,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
+  let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,m.name as model_name,m.drop_price as model_drop_price,m.is_ready_product,m.category_drop_id,m.drop_channel,m.size_grid_photo,m.weight as model_weight,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
   const params = [];
   if (cat) { q += " AND m.category_drop_id=?"; params.push(parseInt(cat)); }
   if (channel) { q += " AND m.drop_channel=?"; params.push(channel); }
@@ -611,6 +679,21 @@ app.post("/api/stock-cuts/incoming", authMiddleware, requireRole("admin"), (req,
   res.json({ ok: true });
 });
 
+// Directly set (edit) or clear (delete, quantity=0) a cut quantity for a
+// specific product+size+workshop combination.
+app.post("/api/stock-cuts/set", authMiddleware, requireRole("admin"), (req, res) => {
+  const { base_product_id, size_id, workshop_id, quantity } = req.body;
+  if (!base_product_id || !size_id || !workshop_id) return res.status(400).json({ error: "Всі поля обов'язкові" });
+  const qty = Math.max(0, parseInt(quantity) || 0);
+  const existing = db.prepare("SELECT id,quantity FROM stock_cuts WHERE base_product_id=? AND size_id=? AND workshop_id=?").get(base_product_id, size_id, workshop_id);
+  db.transaction(() => {
+    if (existing) db.prepare("UPDATE stock_cuts SET quantity=? WHERE id=?").run(qty, existing.id);
+    else db.prepare("INSERT INTO stock_cuts(base_product_id,size_id,workshop_id,quantity)VALUES(?,?,?,?)").run(base_product_id, size_id, workshop_id, qty);
+    db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('cut_in',?,?,?,?,?)").run(base_product_id, size_id, qty - (existing?.quantity || 0), "Ручне редагування крою", req.user.id);
+  })();
+  res.json({ ok: true });
+});
+
 // ── STOCK INCOMING (with workshop deduction from cuts) ───────────
 app.post("/api/stock/incoming-bulk", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { base_product_id, items, note, workshop_id, no_workshop } = req.body;
@@ -648,6 +731,23 @@ app.post("/api/stock/write-off", authMiddleware, requireRole("admin","warehouse"
   res.json({ ok: true });
 });
 
+// Write-off stock for multiple sizes at once (списання всіх розмірів)
+app.post("/api/stock/write-off-bulk", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const { base_product_id, items, note } = req.body;
+  if (!base_product_id || !items?.length) return res.status(400).json({ error: "Немає даних" });
+  db.transaction(() => {
+    for (const item of items) {
+      const qty = parseInt(item.quantity);
+      if (qty > 0) {
+        db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, item.size_id);
+        db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, item.size_id, -qty, "Списання: "+(note||""), req.user.id);
+        db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?)").run(base_product_id, item.size_id, qty, "Списання: "+(note||""), req.user.id);
+      }
+    }
+  })();
+  res.json({ ok: true });
+});
+
 // Swap size (заміна розміру)
 app.post("/api/stock/swap-size", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { base_product_id, from_size_id, to_size_id, quantity } = req.body;
@@ -682,9 +782,11 @@ app.get("/api/stock-log", authMiddleware, (req, res) => {
 
 app.get("/api/kits", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
+  const channel = req.query.channel;
   let q = "SELECT k.*,c.name as category_name FROM kits k LEFT JOIN categories c ON k.category_drop_id=c.id WHERE k.active=1";
   const params = [];
   if (cat) { q += " AND k.category_drop_id=?"; params.push(parseInt(cat)); }
+  if (channel) { q += " AND k.drop_channel=?"; params.push(channel); }
   q += " ORDER BY k.name";
   const kits = db.prepare(q).all(...params);
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
@@ -727,12 +829,12 @@ app.get("/api/kits/:id", authMiddleware, (req, res) => {
 });
 
 app.post("/api/kits", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, category_drop_id, drop_price, cost_price, variation_ids } = req.body;
+  const { name, photo, category_drop_id, drop_price, cost_price, weight, variation_ids } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
   if (!variation_ids?.length) return res.status(400).json({ error: "Додайте товари до комплекту" });
 
   const r = db.transaction(() => {
-    const k = db.prepare("INSERT INTO kits(name,photo,category_drop_id,drop_price,cost_price)VALUES(?,?,?,?,?)").run(name.trim(), photo||"", category_drop_id||null, parseFloat(drop_price)||0, parseFloat(cost_price)||0);
+    const k = db.prepare("INSERT INTO kits(name,photo,category_drop_id,drop_price,cost_price,weight)VALUES(?,?,?,?,?,?)").run(name.trim(), photo||"", category_drop_id||null, parseFloat(drop_price)||0, parseFloat(cost_price)||0, parseFloat(weight)||0.5);
     const addItem = db.prepare("INSERT INTO kit_items(kit_id,variation_id)VALUES(?,?)");
     variation_ids.forEach(vid => addItem.run(k.lastInsertRowid, vid));
     return k.lastInsertRowid;
@@ -741,15 +843,23 @@ app.post("/api/kits", authMiddleware, requireRole("admin"), (req, res) => {
 });
 
 app.put("/api/kits/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, category_drop_id, drop_price, cost_price, active } = req.body;
+  const { name, photo, category_drop_id, drop_price, cost_price, weight, active, variation_ids } = req.body;
   const s=[],v=[];
   if(name!==undefined){s.push("name=?");v.push(name.trim())}
   if(photo!==undefined){s.push("photo=?");v.push(photo)}
   if(category_drop_id!==undefined){s.push("category_drop_id=?");v.push(category_drop_id||null)}
   if(drop_price!==undefined){s.push("drop_price=?");v.push(parseFloat(drop_price)||0)}
   if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
+  if(weight!==undefined){s.push("weight=?");v.push(parseFloat(weight)||0.5)}
   if(active!==undefined){s.push("active=?");v.push(active?1:0)}
-  if(s.length){v.push(req.params.id);db.prepare(`UPDATE kits SET ${s.join(",")} WHERE id=?`).run(...v)}
+  db.transaction(() => {
+    if(s.length){v.push(req.params.id);db.prepare(`UPDATE kits SET ${s.join(",")} WHERE id=?`).run(...v)}
+    if(variation_ids!==undefined){
+      db.prepare("DELETE FROM kit_items WHERE kit_id=?").run(req.params.id);
+      const addItem=db.prepare("INSERT INTO kit_items(kit_id,variation_id)VALUES(?,?)");
+      variation_ids.forEach(vid=>addItem.run(req.params.id,vid));
+    }
+  })();
   res.json({ ok: true });
 });
 
@@ -766,12 +876,32 @@ app.post("/api/orders", authMiddleware, (req, res) => {
   if (!client_name?.trim()) return res.status(400).json({ error: "Вкажіть ПІБ клієнта" });
   if (!client_phone?.trim()) return res.status(400).json({ error: "Вкажіть телефон" });
 
+  const deliveryType = ["warehouse","courier","pickup"].includes(req.body.delivery_type) ? req.body.delivery_type : "warehouse";
+  if (deliveryType !== "pickup") {
+    if (!client_city?.trim()) return res.status(400).json({ error: "Вкажіть місто" });
+    if (deliveryType === "warehouse" && !client_warehouse?.trim()) return res.status(400).json({ error: "Вкажіть відділення" });
+    if (deliveryType === "courier" && !req.body.client_street?.trim()) return res.status(400).json({ error: "Вкажіть вулицю для курʼєрської доставки" });
+    if (deliveryType === "courier" && !req.body.client_house?.trim()) return res.status(400).json({ error: "Вкажіть номер будинку" });
+  }
+  const isPostomat = !!req.body.is_postomat;
+  if (isPostomat && (!req.body.parcel_width || !req.body.parcel_height || !req.body.parcel_length)) {
+    return res.status(400).json({ error: "Вкажіть розміри посилки (ШxВxД см) для поштомату" });
+  }
+
+  // Dropshipper's own TTN (shipped outside our NP account): forces full
+  // prepayment — no COD, no payout, and a receipt is mandatory. The TTN
+  // number itself is filled in later by an admin/manager, not the
+  // dropshipper, so it's left blank at creation time.
+  const ownTtn = !!req.body.own_ttn;
+  if ((ownTtn || req.body.is_prepaid) && !req.body.receipt_photo) return res.status(400).json({ error: "Завантажте скрін чеку оплати" });
+
   const dropId = req.user.role === "admin" ? (req.body.dropshipper_id || req.user.id) : req.user.id;
   // Get dropshipper discount
   const drop = db.prepare("SELECT discount_percent,discount_fixed FROM users WHERE id=?").get(dropId);
 
   const result = db.transaction(() => {
     let totalDrop = 0;
+    let totalWeight = 0;
     const orderItems = [];
 
     for (const item of items) {
@@ -786,6 +916,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         if (drop?.discount_fixed) kitPrice = Math.max(0, kitPrice - drop.discount_fixed);
         kitPrice = Math.round(kitPrice * 100) / 100;
         totalDrop += kitPrice * qty;
+        totalWeight += (kit.weight || 0.5) * qty;
 
         const kitComps = db.prepare("SELECT ki.variation_id FROM kit_items ki WHERE ki.kit_id=?").all(item.kit_id);
         for (const comp of kitComps) {
@@ -800,7 +931,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         }
       } else {
         // Regular item
-        const v = db.prepare("SELECT v.*,bp.drop_price as bp_drop,m.drop_price as m_drop FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(item.variation_id);
+        const v = db.prepare("SELECT v.*,bp.drop_price as bp_drop,m.drop_price as m_drop,m.weight as m_weight FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(item.variation_id);
         if (!v) throw new Error("Варіація не знайдена");
 
         // Check stock if negative orders not allowed
@@ -814,14 +945,21 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         if (drop?.discount_fixed) dropPrice = Math.max(0, dropPrice - drop.discount_fixed);
         dropPrice = Math.round(dropPrice * 100) / 100;
         totalDrop += dropPrice * qty;
+        totalWeight += (v.m_weight || 0.3) * qty;
 
         db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, v.base_product_id, item.size_id);
         orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: 0, kit_id: null });
       }
     }
 
-    const cod = parseFloat(cod_amount) || 0;
-    const isPrepaid = req.body.is_prepaid ? 1 : 0;
+    const cod = ownTtn ? 0 : (parseFloat(cod_amount) || 0);
+    const isPrepaid = (ownTtn || req.body.is_prepaid) ? 1 : 0;
+
+    // COD must be >= drop_price for non-prepaid orders (admin can bypass)
+    if (!isPrepaid && cod < totalDrop && req.user.role !== "admin") {
+      throw new Error("Наложка не може бути меншою за дроп ціну (" + totalDrop.toFixed(2) + "₴)");
+    }
+
     const payout = isPrepaid ? 0 : Math.round((cod - totalDrop) * 100) / 100;
 
     // Detect channel from first variation
@@ -831,19 +969,21 @@ app.post("/api/orders", authMiddleware, (req, res) => {
       orderChannel = firstVar?.drop_channel || "";
     }
 
-    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel,is_prepaid,receipt_photo,declared_value)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel, req.body.is_prepaid?1:0, req.body.receipt_photo||"", parseFloat(req.body.declared_value)||cod);
+    const orderWeight = parseFloat(req.body.weight) || Math.max(0.1, totalWeight) || 0.5;
+
+    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel,is_prepaid,receipt_photo,declared_value,own_ttn,cargo_description,weight,delivery_type,client_street,client_house,client_flat,is_postomat,parcel_width,parcel_height,parcel_length)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel, isPrepaid, req.body.receipt_photo||"", parseFloat(req.body.declared_value)||cod, ownTtn?1:0, req.body.cargo_description||"Одяг", orderWeight, deliveryType, req.body.client_street||"", req.body.client_house||"", req.body.client_flat||"", isPostomat?1:0, parseFloat(req.body.parcel_width)||0, parseFloat(req.body.parcel_height)||0, parseFloat(req.body.parcel_length)||0);
 
     const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id)VALUES(?,?,?,?,?,?,?)");
     orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id));
 
-    return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout, is_prepaid: req.body.is_prepaid?1:0 };
+    return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout, is_prepaid: isPrepaid };
   })();
 
-  // Auto-generate TTN for COD orders (not prepaid)
-  if (!result.is_prepaid && result.order_id) {
+// Auto-generate TTN for COD orders (not prepaid, not self-pickup)
+  if (!result.is_prepaid && result.order_id && deliveryType !== "pickup") {
     try {
-      const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+      const apiKey = getActiveApiKey();
       const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
       console.log("Auto-TTN check:", "key:", !!apiKey, "sender:", sender?.name, "order:", result.order_id);
       if (apiKey && sender) {
@@ -852,18 +992,8 @@ app.post("/api/orders", authMiddleware, (req, res) => {
             const o2 = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(result.order_id);
             if (!o2 || o2.ttn) { console.log("Auto-TTN skip"); return; }
             console.log("Auto-TTN for #"+o2.id, "city:", o2.client_city, "wh:", o2.client_warehouse);
-            const cityRes = await npApi(apiKey, "Address", "searchSettlements", { CityName: o2.client_city, Limit: 1 });
-            const cityData = cityRes.data?.[0]?.Addresses?.[0];
-            if (!cityData) { console.log("Auto-TTN: city not found"); return; }
-            console.log("Auto-TTN city OK:", cityData.MainDescription);
-            const whMatch = o2.client_warehouse.match(/№?\s*(\d+)/);
-            const whNum = whMatch ? whMatch[1] : "";
-            const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.DeliveryCity || cityData.Ref, FindByString: whNum || o2.client_warehouse, Limit: "5" });
-            const whData = whRes.data?.[0];
-            if (!whData) { console.log("Auto-TTN: warehouse not found"); return; }
-            console.log("Auto-TTN wh OK:", whData.Description);
-            const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o2.id).c || 1;
             const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
+            const weight = o2.weight > 0 ? o2.weight : 0.5;
 
             // Get sender city from counterparty addresses
             const senderAddrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: sender.sender_ref, CounterpartyProperty: "Sender" });
@@ -890,24 +1020,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
             const recipContact = recipRes.data[0].ContactPerson?.data?.[0]?.Ref || "";
             console.log("Auto-TTN recipient OK:", recipRef, "contact:", recipContact);
 
-            const docData = {
-              PayerType: "Recipient", PaymentMethod: "Cash",
-              DateTime: new Date().toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }),
-              CargoType: "Parcel", Weight: String(Math.max(0.5, itemsCount * 0.3)),
-              ServiceType: "WarehouseWarehouse", SeatsAmount: "1", Description: "Одяг",
-              Cost: String(o2.cod_amount || 300),
-              AfterpaymentOnGoodsCost: o2.cod_amount > 0 ? String(o2.cod_amount) : undefined,
-              CitySender: senderCity,
-              Sender: sender.sender_ref,
-              SenderAddress: sender.address_ref,
-              ContactSender: sender.contact_ref,
-              SendersPhone: cleanPhone(sender.phone),
-              CityRecipient: cityData.DeliveryCity || cityData.Ref,
-              Recipient: recipRef,
-              RecipientAddress: whData.Ref,
-              ContactRecipient: recipContact,
-              RecipientsPhone: cleanPhone(o2.client_phone),
-            };
+            const docData = await buildNpDocData(apiKey, sender, o2, senderCity, recipRef, recipContact, weight);
             console.log("Auto-TTN sending doc...");
             let r2 = await npApi(apiKey, "InternetDocument", "save", docData);
             // Retry without COD if PostPay unavailable
@@ -936,7 +1049,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 
 // List orders
 app.get("/api/orders", authMiddleware, (req, res) => {
-  const { status, limit, ready, channel, date_from, date_to, ttn_search } = req.query;
+  const { status, limit, ready, channel, date_from, date_to, ttn_search, page, page_size, warehouse } = req.query;
   let q = "SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id";
   const params = [];
   const where = [];
@@ -947,10 +1060,19 @@ app.get("/api/orders", authMiddleware, (req, res) => {
   if (date_from) { where.push("o.created_at>=?"); params.push(date_from); }
   if (date_to) { where.push("o.created_at<=?"); params.push(date_to + " 23:59:59"); }
   if (ttn_search) { where.push("(o.ttn LIKE ? OR o.return_ttn LIKE ?)"); params.push("%" + ttn_search + "%", "%" + ttn_search + "%"); }
+  // Filter by warehouse (for warehouse workers assigned to specific warehouse)
+  const wh = warehouse || (req.user.role === "warehouse" && req.user.assigned_warehouse ? req.user.assigned_warehouse : null);
+  if (wh) {
+    where.push("o.id IN (SELECT DISTINCT oi.order_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE m.main_warehouse=?)");
+    params.push(wh);
+  }
 
   if (where.length) q += " WHERE " + where.join(" AND ");
   q += " ORDER BY o.created_at DESC";
-  if (limit) { q += " LIMIT ?"; params.push(parseInt(limit)); }
+  // Legacy: a handful of pages still pass a plain `limit` for a fixed cap
+  // instead of proper pagination — keep supporting that, but only when
+  // pagination params aren't in play (they filter post-query below).
+  if (limit && !page && !page_size) { q += " LIMIT ?"; params.push(parseInt(limit)); }
 
   const orders = db.prepare(q).all(...params);
   orders.forEach(o => {
@@ -970,7 +1092,14 @@ app.get("/api/orders", authMiddleware, (req, res) => {
   if (ready === "1") filtered = orders.filter(o => o.has_ready_items);
   else if (ready === "0") filtered = orders.filter(o => !o.has_ready_items);
 
-  res.json({ orders: filtered });
+  const total = filtered.length;
+  if (page_size) {
+    const ps = Math.max(1, parseInt(page_size) || 50);
+    const p = Math.max(1, parseInt(page) || 1);
+    filtered = filtered.slice((p - 1) * ps, p * ps);
+  }
+
+  res.json({ orders: filtered, total, page: parseInt(page) || 1, page_size: parseInt(page_size) || total });
 });
 
 // Single order with items + return availability
@@ -1088,7 +1217,7 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (!o.return_ttn && !o.ttn) return res.status(400).json({ error: "Немає ТТН" });
-  const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+  const apiKey = getActiveApiKey();
   if (!apiKey) return res.status(400).json({ error: "NP API ключ не налаштований" });
   try {
     // First check original TTN for return info
@@ -1109,11 +1238,12 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Cancel order (return stock)
+// Cancel order (return stock) - only for status "new"
 app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (o.status === "cancelled") return res.status(400).json({ error: "Вже скасовано" });
+  if (o.status !== "new") return res.status(400).json({ error: "Скасувати можна тільки нові замовлення" });
 
   db.transaction(() => {
     // Return stock
@@ -1166,22 +1296,31 @@ app.get("/api/orders/by-ttn/:ttn", authMiddleware, requireRole("admin","warehous
 });
 
 // Register return for specific item (checkbox in packer UI)
+// condition: "good" (default) → goes back to stock; "damaged" → written off, not restocked
 app.post("/api/order-items/:id/return-to-stock", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
-  const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
+  const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id,v.name as var_name FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   if (item.returned_to_stock) return res.status(400).json({ error: "Вже повернуто" });
 
+  const condition = req.body.condition === "damaged" ? "damaged" : "good";
+
   db.transaction(() => {
-    if (item.print_id) {
-      // Has print → goes to returns stock as variation+size
-      db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(item.quantity, item.variation_id, item.size_id);
+    if (condition === "good") {
+      if (item.print_id) {
+        // Has print → goes to returns stock as variation+size
+        db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(item.quantity, item.variation_id, item.size_id);
+      } else {
+        // Ready product → goes back to base stock
+        db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, item.size_id);
+      }
     } else {
-      // Ready product → goes back to base stock
-      db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, item.size_id);
+      // Damaged → log write-off, do not restock
+      db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?,?)")
+        .run(item.base_product_id, item.variation_id, item.size_id, item.quantity, "Брак з повернення: " + item.var_name, req.user.id);
     }
-    db.prepare("UPDATE order_items SET returned_to_stock=1 WHERE id=?").run(item.id);
+    db.prepare("UPDATE order_items SET returned_to_stock=1,return_condition=? WHERE id=?").run(condition, item.id);
   })();
-  res.json({ ok: true });
+  res.json({ ok: true, condition });
 });
 
 // Seed test order (for testing returns)
@@ -1211,17 +1350,97 @@ async function npApi(apiKey, model, method, props) {
   });
 }
 
+// Each NP sender (contractor) can have its own API key, since different
+// contractors may be registered under different NP accounts. Falls back to
+// the global settings key for backward compatibility with senders created
+// before per-sender keys existed.
+function getActiveApiKey() {
+  const sender = db.prepare("SELECT api_key FROM np_senders WHERE is_active=1").get();
+  if (sender?.api_key) return sender.api_key;
+  return db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+}
+
+// Builds the InternetDocument payload shared by both the manual "Create TTN"
+// button and the automatic post-order TTN creation. Handles the three
+// delivery modes (warehouse pickup, courier door delivery, parcel-locker
+// postomat) since NP requires a different RecipientAddress/ServiceType and
+// (for postomats) volumetric dimensions per its API contract.
+async function buildNpDocData(apiKey, sender, o, senderCity, recipRef, recipContact, weight) {
+  const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
+  const cityRes = await npApi(apiKey, "Address", "searchSettlements", { CityName: o.client_city, Limit: 1 });
+  const cityData = cityRes.data?.[0]?.Addresses?.[0];
+  if (!cityData) throw new Error("Місто не знайдено в НП: " + o.client_city);
+
+  const docData = {
+    PayerType: "Recipient", PaymentMethod: "Cash",
+    DateTime: new Date().toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }),
+    CargoType: "Parcel", Weight: String(weight),
+    SeatsAmount: "1", Description: o.cargo_description || "Одяг",
+    Cost: String(o.cod_amount || 300),
+    AfterpaymentOnGoodsCost: o.cod_amount > 0 ? String(o.cod_amount) : undefined,
+    CitySender: senderCity,
+    Sender: sender.sender_ref,
+    SenderAddress: sender.address_ref,
+    ContactSender: sender.contact_ref,
+    SendersPhone: cleanPhone(sender.phone),
+    CityRecipient: cityData.DeliveryCity || cityData.Ref,
+    Recipient: recipRef,
+    ContactRecipient: recipContact,
+    RecipientsPhone: cleanPhone(o.client_phone),
+  };
+
+  if (o.delivery_type === "courier") {
+    const streetRes = await npApi(apiKey, "Address", "searchSettlementStreets", { SettlementRef: cityData.DeliveryCity || cityData.Ref, StreetName: o.client_street, Limit: 5 });
+    const streetData = streetRes.data?.[0];
+    if (!streetData) throw new Error("Вулицю не знайдено в НП: " + o.client_street);
+    const addrRes = await npApi(apiKey, "Address", "save", {
+      CounterpartyRef: recipRef,
+      StreetRef: streetData.Ref,
+      BuildingNumber: o.client_house || "",
+      Flat: o.client_flat || "",
+      Note: "",
+    });
+    const addrData = addrRes.data?.[0];
+    if (!addrRes.success || !addrData) throw new Error("Помилка створення адреси отримувача: " + (addrRes.errors?.join(", ") || ""));
+    docData.ServiceType = "WarehouseDoor";
+    docData.RecipientAddress = addrData.Ref;
+  } else {
+    const whMatch = (o.client_warehouse || "").match(/№?\s*(\d+)/);
+    const whNum = whMatch ? whMatch[1] : "";
+    const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.DeliveryCity || cityData.Ref, FindByString: whNum || o.client_warehouse, Limit: "5" });
+    const whData = whRes.data?.[0];
+    if (!whData) throw new Error("Відділення не знайдено: " + o.client_warehouse);
+    docData.ServiceType = "WarehouseWarehouse";
+    docData.RecipientAddress = whData.Ref;
+  }
+
+  // Postomat (parcel locker) deliveries require volumetric dimensions —
+  // without them NP rejects TTN creation for locker-type warehouses.
+  if (o.is_postomat) {
+    const w = parseFloat(o.parcel_width) || 20, h = parseFloat(o.parcel_height) || 20, l = parseFloat(o.parcel_length) || 20;
+    docData.OptionsSeat = [{
+      volumetricVolume: ((w * h * l) / 4000).toFixed(4),
+      volumetricWidth: String(w),
+      volumetricLength: String(l),
+      volumetricHeight: String(h),
+      weight: String(weight),
+    }];
+  }
+
+  return docData;
+}
+
 // NP Senders CRUD
 app.get("/api/np-senders", authMiddleware, (req, res) => {
   res.json({ senders: db.prepare("SELECT * FROM np_senders ORDER BY is_active DESC, name").all() });
 });
 
 app.post("/api/np-senders", authMiddleware, requireRole("admin"), async (req, res) => {
-  const { name, phone } = req.body;
+  const { name, phone, api_key } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
+  if (!api_key?.trim()) return res.status(400).json({ error: "Введіть API ключ НП цього контрагента" });
 
-  const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
-  if (!apiKey) return res.status(400).json({ error: "Спочатку збережіть API ключ НП в налаштуваннях" });
+  const apiKey = api_key.trim();
 
   try {
     // Auto-detect refs from NP API
@@ -1246,8 +1465,8 @@ app.post("/api/np-senders", authMiddleware, requireRole("admin"), async (req, re
     const addr = addrs.data?.[0];
 
     const isFirst = !db.prepare("SELECT id FROM np_senders LIMIT 1").get();
-    const r = db.prepare("INSERT INTO np_senders(name,phone,sender_ref,address_ref,contact_ref,address_description,is_active)VALUES(?,?,?,?,?,?,?)").run(
-      name.trim(), phone || "", sender.ref, addr?.Ref || "", sender.contact, addr?.Description || "", isFirst ? 1 : 0
+    const r = db.prepare("INSERT INTO np_senders(name,phone,sender_ref,address_ref,contact_ref,address_description,api_key,is_active)VALUES(?,?,?,?,?,?,?,?)").run(
+      name.trim(), phone || "", sender.ref, addr?.Ref || "", sender.contact, addr?.Description || "", apiKey, isFirst ? 1 : 0
     );
     res.json({ ok: true, id: r.lastInsertRowid });
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1264,36 +1483,68 @@ app.delete("/api/np-senders/:id", authMiddleware, requireRole("admin"), (req, re
   res.json({ ok: true });
 });
 
+// ── ORDER STATUSES ───────────────────────────────────────────────────
+app.get("/api/order-statuses", authMiddleware, (req, res) => {
+  const statuses = db.prepare("SELECT * FROM order_statuses ORDER BY sort_order, id").all();
+  res.json({ statuses });
+});
+
+app.post("/api/order-statuses", authMiddleware, requireRole("admin"), (req, res) => {
+  const { code, name, color } = req.body;
+  if (!code || !name) return res.status(400).json({ error: "Код та назва обов'язкові" });
+  const maxSort = db.prepare("SELECT MAX(sort_order) as m FROM order_statuses").get().m || 0;
+  try {
+    const r = db.prepare("INSERT INTO order_statuses(code,name,color,sort_order,is_system)VALUES(?,?,?,?,0)").run(code.toLowerCase().replace(/\s+/g, "_"), name, color || "#888888", maxSort + 1);
+    res.json({ id: r.lastInsertRowid });
+  } catch (e) {
+    if (e.message.includes("UNIQUE")) return res.status(400).json({ error: "Код вже існує" });
+    throw e;
+  }
+});
+
+app.put("/api/order-statuses/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  const { name, color, sort_order, active } = req.body;
+  const st = db.prepare("SELECT * FROM order_statuses WHERE id=?").get(req.params.id);
+  if (!st) return res.status(404).json({ error: "Статус не знайдено" });
+  const updates = [];
+  const params = [];
+  if (name !== undefined) { updates.push("name=?"); params.push(name); }
+  if (color !== undefined) { updates.push("color=?"); params.push(color); }
+  if (sort_order !== undefined) { updates.push("sort_order=?"); params.push(sort_order); }
+  if (active !== undefined) { updates.push("active=?"); params.push(active ? 1 : 0); }
+  if (updates.length) {
+    params.push(req.params.id);
+    db.prepare("UPDATE order_statuses SET " + updates.join(",") + " WHERE id=?").run(...params);
+  }
+  res.json({ ok: true });
+});
+
+app.delete("/api/order-statuses/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  const st = db.prepare("SELECT * FROM order_statuses WHERE id=?").get(req.params.id);
+  if (!st) return res.status(404).json({ error: "Статус не знайдено" });
+  if (st.is_system) return res.status(400).json({ error: "Системний статус не можна видалити" });
+  db.prepare("DELETE FROM order_statuses WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
 // Create TTN for an order
 app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, res) => {
   try {
-    const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.order_id);
+const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.order_id);
     if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
     if (o.ttn) return res.status(400).json({ error: "ТТН вже створено: " + o.ttn });
+    if (o.delivery_type === "pickup") return res.status(400).json({ error: "Самовивіз — ТТН не потрібне" });
 
-    const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    const apiKey = getActiveApiKey();
     if (!apiKey) return res.status(400).json({ error: "Налаштуйте API ключ НП" });
 
     // Get active sender
     const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
     if (!sender) return res.status(400).json({ error: "Додайте контрагента НП і позначте його активним" });
 
-    // Find recipient city
-    const cityRes = await npApi(apiKey, "Address", "searchSettlements", { CityName: o.client_city, Limit: 1 });
-    const cityData = cityRes.data?.[0]?.Addresses?.[0];
-    if (!cityData) return res.status(400).json({ error: "Місто не знайдено в НП: " + o.client_city });
-
-    // Find recipient warehouse
-    const whMatch = o.client_warehouse.match(/№?\s*(\d+)/);
-    const whNum = whMatch ? whMatch[1] : "";
-    const whRes = await npApi(apiKey, "Address", "getWarehouses", { CityRef: cityData.DeliveryCity || cityData.Ref, FindByString: whNum || o.client_warehouse, Limit: "5" });
-    const whData = whRes.data?.[0];
-    if (!whData) return res.status(400).json({ error: "Відділення не знайдено: " + o.client_warehouse });
-
-    // Get items count and weight
-    const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 1;
-    const weight = Math.max(0.5, itemsCount * 0.3);
     const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
+    const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 1;
+    const weight = o.weight > 0 ? o.weight : Math.max(0.5, itemsCount * 0.3);
 
     // Get sender city from counterparty addresses
     const senderAddrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: sender.sender_ref, CounterpartyProperty: "Sender" });
@@ -1317,25 +1568,7 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
     const recipRef = recipRes.data[0].Ref;
     const recipContact = recipRes.data[0].ContactPerson?.data?.[0]?.Ref || "";
 
-    // Create internet document
-    const docData = {
-      PayerType: "Recipient", PaymentMethod: "Cash",
-      DateTime: new Date().toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }),
-      CargoType: "Parcel", Weight: String(weight),
-      ServiceType: "WarehouseWarehouse", SeatsAmount: "1", Description: "Одяг",
-      Cost: String(o.cod_amount || 300),
-      AfterpaymentOnGoodsCost: o.cod_amount > 0 ? String(o.cod_amount) : undefined,
-      CitySender: senderCity,
-      Sender: sender.sender_ref,
-      SenderAddress: sender.address_ref,
-      ContactSender: sender.contact_ref,
-      SendersPhone: cleanPhone(sender.phone),
-      CityRecipient: cityData.DeliveryCity || cityData.Ref,
-      Recipient: recipRef,
-      RecipientAddress: whData.Ref,
-      ContactRecipient: recipContact,
-      RecipientsPhone: cleanPhone(o.client_phone),
-    };
+    const docData = await buildNpDocData(apiKey, sender, o, senderCity, recipRef, recipContact, weight);
 
     const result = await npApi(apiKey, "InternetDocument", "save", docData);
     if (!result.success || !result.data?.[0]) {
@@ -1357,14 +1590,14 @@ app.get("/api/nova-poshta/print/:order_id", authMiddleware, (req, res) => {
   const o = db.prepare("SELECT ttn,np_ref FROM orders WHERE id=?").get(req.params.order_id);
   if (!o || !o.np_ref) return res.status(400).json({ error: "ТТН не створено" });
   // NP print URL format
-  const printUrl = `https://my.novaposhta.ua/orders/printMarkings/orders[]/${o.np_ref}/type/pdf/apiKey/${db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value || ""}`;
+  const printUrl = `https://my.novaposhta.ua/orders/printMarkings/orders[]/${o.np_ref}/type/pdf/apiKey/${getActiveApiKey() || ""}`;
   res.json({ url: printUrl });
 });
 
 // Track all shipped orders and update statuses
 app.post("/api/nova-poshta/track-all", authMiddleware, async (req, res) => {
   try {
-    const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    const apiKey = getActiveApiKey();
     if (!apiKey) return res.status(400).json({ error: "Немає API ключа" });
 
     const orders = db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status NOT IN ('cancelled')").all();
@@ -1401,7 +1634,7 @@ app.post("/api/nova-poshta/track-all", authMiddleware, async (req, res) => {
 // Search NP cities
 app.post("/api/nova-poshta/search-city", authMiddleware, async (req, res) => {
   try {
-    const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    const apiKey = getActiveApiKey();
     if (!apiKey) return res.status(400).json({ error: "Немає API ключа" });
     const r = await npApi(apiKey, "Address", "searchSettlements", { CityName: req.body.query, Limit: 10 });
     res.json({ cities: r.data?.[0]?.Addresses || [] });
@@ -1411,7 +1644,7 @@ app.post("/api/nova-poshta/search-city", authMiddleware, async (req, res) => {
 // Search NP warehouses
 app.post("/api/nova-poshta/search-warehouse", authMiddleware, async (req, res) => {
   try {
-    const apiKey = db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    const apiKey = getActiveApiKey();
     if (!apiKey) return res.status(400).json({ error: "Немає API ключа" });
     // Try CityRef first, then SettlementRef for villages
     let r = await npApi(apiKey, "Address", "getWarehouses", { CityRef: req.body.city_ref, FindByString: req.body.query || "", Limit: 20 });
@@ -1720,7 +1953,9 @@ app.get("/api/payouts/my", authMiddleware, (req, res) => {
 
 // Create or add to payout request
 app.post("/api/payouts/request", authMiddleware, (req, res) => {
-  const uid = req.user.id;
+  // Admin can generate a payout on behalf of a specific dropshipper;
+  // everyone else can only generate their own.
+  const uid = (req.user.role === "admin" && req.body.dropshipper_id) ? parseInt(req.body.dropshipper_id) : req.user.id;
   const { comment } = req.body;
   // Find or create active request
   let pr = db.prepare(`SELECT * FROM payout_requests WHERE dropshipper_id=? AND status='pending' ORDER BY id DESC LIMIT 1`).get(uid);
@@ -1765,7 +2000,21 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
   else if (period === "month") dateFilter = "AND created_at>=datetime('now','localtime','-30 days')";
 
   if (req.user.role === "admin") {
-    res.json({ dropshippers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='dropshipper' AND active=1").get().c, warehouse_workers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='warehouse' AND active=1").get().c, models: db.prepare("SELECT COUNT(*) as c FROM models WHERE active=1").get().c, base_products: db.prepare("SELECT COUNT(*) as c FROM base_products WHERE active=1").get().c, variations: db.prepare("SELECT COUNT(*) as c FROM variations WHERE active=1").get().c, orders_today: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime')").get().c, orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='new'").get().c });
+    const threshold = parseInt(db.prepare("SELECT value FROM settings WHERE key='stock_warning_threshold'").get()?.value) || 3;
+    const lowStock = db.prepare(`SELECT bp.id as base_product_id, bp.name, bp.photo, m.name as model_name, s.name as size_name, sb.quantity
+      FROM stock_base sb JOIN base_products bp ON sb.base_product_id=bp.id JOIN models m ON bp.model_id=m.id JOIN sizes s ON sb.size_id=s.id
+      WHERE bp.active=1 AND sb.quantity<? ORDER BY sb.quantity ASC LIMIT 40`).all(threshold);
+    res.json({
+      dropshippers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='dropshipper' AND active=1").get().c,
+      warehouse_workers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='warehouse' AND active=1").get().c,
+      models: db.prepare("SELECT COUNT(*) as c FROM models WHERE active=1").get().c,
+      base_products: db.prepare("SELECT COUNT(*) as c FROM base_products WHERE active=1").get().c,
+      variations: db.prepare("SELECT COUNT(*) as c FROM variations WHERE active=1").get().c,
+      orders_today: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime')").get().c,
+      orders_yesterday: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime','-1 day')").get().c,
+      orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='new'").get().c,
+      low_stock: lowStock
+    });
   } else if (req.user.role === "dropshipper") {
     const uid = req.user.id;
     res.json({
@@ -1782,15 +2031,61 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
   }
 });
 
+// Product popularity leaderboard for dashboard (units sold in period, by base_product)
+app.get("/api/dashboard/popularity", authMiddleware, requireRole("admin"), (req, res) => {
+  const df = req.query.date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const dt = req.query.date_to || new Date().toISOString().slice(0, 10);
+  const rows = db.prepare(`
+    SELECT bp.id as base_product_id, bp.name, bp.photo, m.name as model_name, c.name as color_name, SUM(oi.quantity) as qty
+    FROM order_items oi
+    JOIN variations v ON oi.variation_id=v.id
+    JOIN base_products bp ON v.base_product_id=bp.id
+    JOIN models m ON bp.model_id=m.id
+    LEFT JOIN colors c ON bp.color_id=c.id
+    JOIN orders o ON oi.order_id=o.id
+    WHERE date(o.created_at) BETWEEN ? AND ?
+    GROUP BY bp.id ORDER BY qty DESC LIMIT 30
+  `).all(df, dt);
+  res.json({ items: rows, date_from: df, date_to: dt });
+});
+
+// Daily accounting: delivered sums, refused count, shipped count per day
+app.get("/api/dashboard/accounting", authMiddleware, requireRole("admin"), (req, res) => {
+  const df = req.query.date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const dt = req.query.date_to || new Date().toISOString().slice(0, 10);
+  const delivered = db.prepare(`SELECT date(updated_at) as day, COUNT(*) as c, COALESCE(SUM(cod_amount),0) as cod, COALESCE(SUM(total_drop_price),0) as drop_sum
+    FROM orders WHERE status='delivered' AND date(updated_at) BETWEEN ? AND ? GROUP BY day`).all(df, dt);
+  const refused = db.prepare(`SELECT date(updated_at) as day, COUNT(*) as c
+    FROM orders WHERE status IN ('refused','cancelled') AND date(updated_at) BETWEEN ? AND ? GROUP BY day`).all(df, dt);
+  const shipped = db.prepare(`SELECT date(created_at) as day, COUNT(*) as c
+    FROM orders WHERE ttn!='' AND date(created_at) BETWEEN ? AND ? GROUP BY day`).all(df, dt);
+  const byDay = {};
+  const ensure = (d) => byDay[d] = byDay[d] || { day: d, delivered: 0, cod: 0, drop_sum: 0, refused: 0, shipped: 0 };
+  delivered.forEach(r => { ensure(r.day).delivered = r.c; ensure(r.day).cod = r.cod; ensure(r.day).drop_sum = r.drop_sum; });
+  refused.forEach(r => { ensure(r.day).refused = r.c; });
+  shipped.forEach(r => { ensure(r.day).shipped = r.c; });
+  res.json({ days: Object.values(byDay).sort((a, b) => b.day.localeCompare(a.day)), date_from: df, date_to: dt });
+});
+
 // Edit order (admin)
 app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), (req, res) => {
-  const { client_name, client_phone, client_city, client_warehouse, cod_amount, declared_value, note } = req.body;
+  const { client_name, client_phone, client_city, client_warehouse, cod_amount, declared_value, note, weight, delivery_type, client_street, client_house, client_flat, is_postomat, parcel_width, parcel_height, parcel_length } = req.body;
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Not found" });
   const cod = parseFloat(cod_amount) ?? o.cod_amount;
   const payout = o.is_prepaid ? 0 : Math.round((cod - o.total_drop_price) * 100) / 100;
-  db.prepare("UPDATE orders SET client_name=?,client_phone=?,client_city=?,client_warehouse=?,cod_amount=?,declared_value=?,note=?,payout_amount=?,updated_at=datetime('now','localtime') WHERE id=?")
-    .run(client_name||o.client_name, client_phone||o.client_phone, client_city||o.client_city, client_warehouse||o.client_warehouse, cod, parseFloat(declared_value)||o.declared_value, note??o.note, payout, o.id);
+  db.prepare("UPDATE orders SET client_name=?,client_phone=?,client_city=?,client_warehouse=?,cod_amount=?,declared_value=?,note=?,payout_amount=?,weight=?,delivery_type=?,client_street=?,client_house=?,client_flat=?,is_postomat=?,parcel_width=?,parcel_height=?,parcel_length=?,updated_at=datetime('now','localtime') WHERE id=?")
+    .run(client_name||o.client_name, client_phone||o.client_phone, client_city||o.client_city, client_warehouse||o.client_warehouse, cod, parseFloat(declared_value)||o.declared_value, note??o.note, payout,
+      weight!==undefined?(parseFloat(weight)||o.weight):o.weight,
+      delivery_type||o.delivery_type,
+      client_street!==undefined?client_street:o.client_street,
+      client_house!==undefined?client_house:o.client_house,
+      client_flat!==undefined?client_flat:o.client_flat,
+      is_postomat!==undefined?(is_postomat?1:0):o.is_postomat,
+      parcel_width!==undefined?(parseFloat(parcel_width)||0):o.parcel_width,
+      parcel_height!==undefined?(parseFloat(parcel_height)||0):o.parcel_height,
+      parcel_length!==undefined?(parseFloat(parcel_length)||0):o.parcel_length,
+      o.id);
   res.json({ ok: true });
 });
 
@@ -1809,7 +2104,7 @@ app.get("*",(req,res)=>{if(req.path.startsWith("/api/"))return res.status(404).j
 // Auto-track NP statuses every 15 minutes
 async function autoTrackNP(){
   try{
-    const apiKey=db.prepare("SELECT value FROM settings WHERE key='np_api_key'").get()?.value;
+    const apiKey=getActiveApiKey();
     if(!apiKey)return;
     const orders=db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status NOT IN ('cancelled')").all();
     if(!orders.length)return;

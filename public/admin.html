@@ -58,13 +58,46 @@
     <a data-p="payouts"><i data-icon="wallet" data-size="15"></i> Виплати</a>
     <a data-p="adm-returns"><i data-icon="undo2" data-size="15"></i> Повернення</a>
     <a data-p="stocklog"><i data-icon="barChart3" data-size="15"></i> Рух товару</a>
+    <a data-p="recount"><i data-icon="checkCheck" data-size="15"></i> Переоблік</a>
+    <a data-p="accounting"><i data-icon="banknote" data-size="15"></i> Бухгалтерія</a>
     <a data-p="settings"><i data-icon="settings" data-size="15"></i> Налаштування</a>
   </div>
   <div class="side-bottom"><div class="side-user"><b id="u-name">—</b></div><button class="btn-out" onclick="logout()">Вийти</button></div>
 </div>
 <div class="main">
 
-<div class="page on" id="pg-dash"><div class="pt"><i data-icon="layoutDashboard" data-size="17"></i> Дашборд</div><div class="sg" id="dash-s"></div></div>
+<div class="page on" id="pg-dash">
+<div class="pt"><i data-icon="layoutDashboard" data-size="17"></i> Дашборд</div>
+<div class="sg" id="dash-s"></div>
+
+<div id="dash-lowstock-sec" style="margin-top:8px;display:none">
+  <div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px;display:flex;align-items:center;gap:8px"><i data-icon="alertTriangle" data-size="15" style="color:var(--warn)"></i> Товари, що закінчуються</div>
+  <div class="cards" id="dash-lowstock"></div>
+</div>
+
+<div style="margin-top:24px">
+  <div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px">Відправки по днях</div>
+  <div id="dash-chart-ship" style="overflow-x:auto"></div>
+</div>
+<div style="margin-top:20px">
+  <div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px">Повернення прийнято по днях</div>
+  <div id="dash-chart-ret" style="overflow-x:auto"></div>
+</div>
+
+<div style="margin-top:24px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:14px;font-weight:600;color:var(--th)">Популярні товари</div>
+    <div class="acts" style="margin-bottom:0">
+      <button class="stab" id="dpop-7" onclick="setDashPopPeriod(7)">7д</button>
+      <button class="stab" id="dpop-15" onclick="setDashPopPeriod(15)">15д</button>
+      <button class="stab on" id="dpop-30" onclick="setDashPopPeriod(30)">30д</button>
+      <input type="date" id="dpop-df"><input type="date" id="dpop-dt">
+      <button class="btn btn-sm btn-p" onclick="loadDashPopularity()">OK</button>
+    </div>
+  </div>
+  <div class="cards" id="dash-popularity"></div>
+</div>
+</div>
 
 <div class="page" id="pg-dirs"><div class="pt"><i data-icon="bookOpen" data-size="17"></i> Довідники</div>
 <div class="acts">
@@ -117,7 +150,7 @@
 
 <!-- Cut incoming modal -->
 <div class="modal-bg" id="cut-modal"><div class="modal" style="max-width:500px"><h3>+ Додати крій</h3>
-<div class="fld"><label>Товар</label><select id="cut-bp" style="width:100%;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff" onchange="loadCutSizes()"></select></div>
+<div class="fld"><label>Товар</label><div class="popup-sel"><input class="popup-sel-input" id="cut-bp-search" placeholder="Почніть вводити назву товару..." oninput="filterCutBp(this.value)" onfocus="document.getElementById('cut-bp-dd').classList.add('open')"><div class="popup-dd" id="cut-bp-dd"></div></div><input type="hidden" id="cut-bp"></div>
 <div class="fld"><label>Цех</label><select id="cut-ws" style="width:100%;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"></select></div>
 <div id="cut-sizes"></div>
 <div class="fld"><label>Примітка</label><input id="cut-note"></div>
@@ -132,21 +165,26 @@
 </div></div>
 
 <div class="page" id="pg-orders"><div class="pt"><i data-icon="clipboardList" data-size="17"></i> Замовлення</div>
-<div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';loadAdmOrders(admOrdFilter)"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';loadAdmOrders(admOrdFilter)"><i data-icon="check" data-size="15"></i> Готові товари</button></div>
-<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button></div>
-<div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadAdmOrders(admOrdFilter)"></div>
+<button class="btn-new" onclick="openAdmNewOrder()">＋ Створити замовлення</button>
+<div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="check" data-size="15"></i> Готові товари</button></div>
+<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="admOrdPage=0;loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button><div style="display:flex;gap:3px;margin-left:auto"><button class="stab" id="adm-p-7" onclick="setAdmDatePeriod(7)">7д</button><button class="stab" id="adm-p-15" onclick="setAdmDatePeriod(15)">15д</button><button class="stab on" id="adm-p-30" onclick="setAdmDatePeriod(30)">30д</button></div></div>
+<div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="admOrdPage=0;loadAdmOrders(admOrdFilter)"></div>
 <div class="acts" style="flex-wrap:wrap;gap:4px">
-  <button class="btn" onclick="loadAdmOrders('')" id="ao-all">Всі</button>
-  <button class="btn" onclick="loadAdmOrders('new')" id="ao-new">Нові</button>
-  <button class="btn" onclick="loadAdmOrders('in_progress')" id="ao-in_progress">В роботі</button>
-  <button class="btn" onclick="loadAdmOrders('packed')" id="ao-packed">Готові</button>
-  <button class="btn" onclick="loadAdmOrders('shipped')" id="ao-shipped">Відправлені</button>
-  <button class="btn" onclick="loadAdmOrders('delivered')" id="ao-delivered">Отримані</button>
-  <button class="btn" onclick="loadAdmOrders('refused')" id="ao-refused">Відмови</button>
-  <button class="btn" onclick="loadAdmOrders('cancelled')" id="ao-cancelled">Скасовані</button>
+  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('')" id="ao-all">Всі</button>
+  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('new')" id="ao-new">Нові</button>
+  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('in_progress')" id="ao-in_progress">В роботі</button>
+  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('packed')" id="ao-packed">Готові</button>
+  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('shipped')" id="ao-shipped">Відправлені</button>
+  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('delivered')" id="ao-delivered">Отримані</button>
+  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('refused')" id="ao-refused">Відмови</button>
+  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('cancelled')" id="ao-cancelled">Скасовані</button>
 </div>
-<div style="text-align:right;margin-bottom:6px"><button id="adm-track-btn" class="btn btn-sm" onclick="admTrackNP()" style="border-color:rgba(66,165,245,.3);color:var(--blue);font-size:11px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button></div>
+<div style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+  <div style="font-size:11px;color:var(--td);display:flex;align-items:center;gap:6px">На сторінці: <select id="adm-ord-pagesize" onchange="admOrdPage=0;loadAdmOrders(admOrdFilter)" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><option value="20">20</option><option value="40">40</option><option value="50" selected>50</option></select></div>
+  <button id="adm-track-btn" class="btn btn-sm" onclick="admTrackNP()" style="border-color:rgba(66,165,245,.3);color:var(--blue);font-size:11px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button>
+</div>
 <div id="adm-orders"></div>
+<div class="pagi" id="adm-ord-pagi"></div>
 </div>
 
 <div class="page" id="pg-returns"><div class="pt"><i data-icon="packageOpen" data-size="17"></i> Склад повернень</div>
@@ -157,7 +195,16 @@
 </div>
 
 <div class="page" id="pg-drops"><div class="pt"><i data-icon="users" data-size="17"></i> Дропшипери</div>
-<div class="acts"><button class="btn btn-p" onclick="openUM('dropshipper')">+ Додати</button></div><div id="drop-list"></div></div>
+<div class="acts">
+  <button class="btn btn-p" onclick="openUM('dropshipper')">+ Додати</button>
+  <button class="stab" id="dl-7" onclick="setDropsPeriod(7)">7д</button>
+  <button class="stab" id="dl-15" onclick="setDropsPeriod(15)">15д</button>
+  <button class="stab on" id="dl-30" onclick="setDropsPeriod(30)">30д</button>
+  <input type="date" id="dl-df"><input type="date" id="dl-dt">
+  <button class="btn btn-sm btn-p" onclick="loadDrops()">OK</button>
+</div>
+<div class="acts"><input class="search-bar" id="dl-search" placeholder="Пошук за ім'ям або логіном..." oninput="renderDropsList()"></div>
+<div class="cards" id="drop-list"></div></div>
 
 <div class="page" id="pg-workers"><div class="pt"><i data-icon="hardHat" data-size="17"></i> Працівники</div>
 <div class="acts" style="margin-bottom:10px"><button class="btn btn-p" onclick="openAddWorker()">+ Додати працівника</button></div>
@@ -224,20 +271,55 @@
 <div id="stocklog-list"></div>
 </div>
 
+<div class="page" id="pg-recount"><div class="pt"><i data-icon="checkCheck" data-size="17"></i> Переоблік</div>
+<div style="font-size:11px;color:var(--td);margin-bottom:8px">Оберіть категорію, впишіть фактичну кількість для кожного розміру. Змінені значення підсвічуються, і при збереженні різниця логується в "Рух товару".</div>
+<div id="rc-bread" class="bread"></div>
+<div id="rc-cats" class="cards" style="margin-bottom:8px"></div>
+<div style="margin-bottom:8px"><input id="rc-search" placeholder="Пошук товару..." oninput="searchRecount(this.value)" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"></div>
+<div id="rc-list"></div>
+<div style="position:sticky;bottom:0;background:var(--bg);padding:10px 0;margin-top:10px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--brd)">
+  <div id="rc-changes" style="font-size:12px;color:var(--td)">Немає змін</div>
+  <button class="btn btn-p" onclick="applyRecount()"><i data-icon="checkCheck" data-size="14"></i> Зберегти переоблік</button>
+</div>
+</div>
+
+<div class="page" id="pg-accounting"><div class="pt"><i data-icon="banknote" data-size="17"></i> Бухгалтерія</div>
+<div class="acts">
+  <button class="stab" id="ac-7" onclick="setAccPeriod(7)">7д</button>
+  <button class="stab" id="ac-15" onclick="setAccPeriod(15)">15д</button>
+  <button class="stab on" id="ac-30" onclick="setAccPeriod(30)">30д</button>
+  <input type="date" id="ac-df"><input type="date" id="ac-dt">
+  <button class="btn btn-sm btn-p" onclick="loadAccounting()">OK</button>
+</div>
+<div id="accounting-list"></div>
+</div>
+
 <div class="page" id="pg-settings"><div class="pt"><i data-icon="settings" data-size="17"></i> Налаштування</div>
 <div style="max-width:420px">
   <div class="fld"><label>Назва компанії</label><input id="s-company_name"></div>
   <div class="fld"><label>Поріг залишку</label><input id="s-stock_warning_threshold" type="number"></div>
   <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)"><div class="pt" style="font-size:14px"><i data-icon="truck" data-size="15"></i> Нова Пошта</div></div>
-  <div class="fld"><label>API Ключ</label><input id="s-np_api_key" placeholder="Отримайте в кабінеті НП"></div>
+  <div class="fld"><label>API Ключ (запасний)</label><input id="s-np_api_key" placeholder="Використовується, якщо у контрагента немає свого ключа"></div>
   <div style="margin-top:10px;font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Контрагенти (відправники):</div>
+  <div style="font-size:11px;color:var(--td);margin-bottom:8px">У кожного контрагента свій API-ключ НП — під час активного контрагента запити йдуть саме через його ключ.</div>
   <div id="np-senders-list"></div>
   <div class="fld-row" style="margin-top:8px">
     <div class="fld"><label>Назва</label><input id="np-add-name" placeholder="Назва контрагента"></div>
     <div class="fld"><label>Телефон</label><input id="np-add-phone" placeholder="+380..."></div>
   </div>
+  <div class="fld"><label>API Ключ цього контрагента</label><input id="np-add-key" placeholder="Ключ з кабінету НП цього контрагента"></div>
   <button class="btn btn-sm" style="border-color:rgba(124,134,255,.2);color:var(--acc);margin-bottom:10px" onclick="addNpSender()">+ Додати контрагента</button>
   <div id="np-msg" style="font-size:11px;margin-bottom:8px"></div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)"><div class="pt" style="font-size:14px"><i data-icon="tag" data-size="15"></i> Статуси замовлень</div></div>
+  <div style="font-size:11px;color:var(--td);margin-bottom:8px">Системні статуси не можна видаляти. Можете додавати власні статуси.</div>
+  <div id="order-statuses-list"></div>
+  <div class="fld-row" style="margin-top:8px">
+    <div class="fld"><label>Код</label><input id="st-add-code" placeholder="new_status" style="text-transform:lowercase"></div>
+    <div class="fld"><label>Назва</label><input id="st-add-name" placeholder="Новий статус"></div>
+    <div class="fld" style="width:80px"><label>Колір</label><input id="st-add-color" type="color" value="#888888"></div>
+  </div>
+  <button class="btn btn-sm" style="border-color:rgba(124,134,255,.2);color:var(--acc);margin-bottom:10px" onclick="addOrderStatus()">+ Додати статус</button>
+  <div id="st-msg" style="font-size:11px;margin-bottom:8px"></div>
   <button class="btn btn-p" onclick="saveSets()"><i data-icon="save" data-size="15"></i> Зберегти</button><div id="set-msg" style="margin-top:6px"></div>
 </div></div>
 
@@ -263,7 +345,7 @@
 <div class="fld"><label>Ім'я</label><input id="um-name"></div>
 <div class="fld-row"><div class="fld"><label>Телефон</label><input id="um-phone"></div><div class="fld"><label>Telegram</label><input id="um-tg"></div></div>
 <div id="um-drop" style="display:none"><div class="fld-row"><div class="fld"><label>Знижка %</label><input id="um-dp" type="number" value="0"></div><div class="fld"><label>Знижка ₴</label><input id="um-df" type="number" value="0"></div></div></div>
-<div id="um-wrk" style="display:none"><div class="fld"><label>Роль</label><select id="um-wr"><option value="">—</option><option value="packer">Пакувальник</option><option value="printer">Принтувальник</option><option value="sewer">Нашивальник</option><option value="distributor">Видавач</option></select></div><div class="fld"><label>Ставка ₴</label><input id="um-wrt" type="number" value="0"></div></div>
+<div id="um-wrk" style="display:none"><div class="fld"><label>Роль</label><select id="um-wr"><option value="">—</option><option value="packer">Пакувальник</option><option value="printer">Принтувальник</option><option value="sewer">Нашивальник</option><option value="distributor">Видавач</option></select></div><div class="fld"><label>Ставка ₴</label><input id="um-wrt" type="number" value="0"></div><div class="fld"><label>Склад</label><select id="um-wh"><option value="">Всі склади</option><option value="base">Склад База</option><option value="molod">Склад Молодіжна</option></select></div></div>
 <div id="um-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveUser()">Зберегти</button><button class="btn" onclick="closeM('user-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="um-del" style="display:none;margin-left:auto" onclick="delUser()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
@@ -273,8 +355,11 @@
 <div class="fld"><label>Категорія (склад база)</label><select id="mm-cat"><option value="">—</option></select></div>
 <div class="fld"><label>Категорія (склад дроп)</label><select id="mm-cat-drop"><option value="">—</option></select></div>
 <div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="hot">HOT DROP</option><option value="ads">ADS DROP</option></select></div>
+<div class="fld"><label>Основний склад</label><select id="mm-warehouse"><option value="base">Склад База</option><option value="molod">Склад Молодіжна</option></select></div>
 <div class="sw"><div class="swb" id="mm-ready" onclick="this.classList.toggle('on');document.getElementById('mm-pw').style.display=this.classList.contains('on')?'none':'block'"></div><label>Готовий товар</label></div>
 <div class="fld-row"><div class="fld"><label>Собівартість ₴</label><input id="mm-cost" type="number" value="0"></div><div class="fld"><label>Дроп-ціна ₴</label><input id="mm-drop" type="number" value="0"></div></div>
+<div class="fld"><label>Вага одиниці товару (кг)</label><input id="mm-weight" type="number" step="0.1" value="0.3"></div>
+<div class="fld"><label>Розмірна сітка (фото)</label><div style="display:flex;gap:6px;align-items:center"><div id="mm-sizegrid-preview" style="width:60px;height:60px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('mm-sizegrid-fi').click()"><i data-icon="ruler" data-size="13"></i> Завантажити</button><input type="file" id="mm-sizegrid-fi" accept="image/*" style="display:none" onchange="uploadModelSizeGrid(event)"></div></div>
 <div class="fld"><label>Кольори</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук кольорів..." onfocus="openPS(this,'mm-colors-dd')" oninput="filterPS(this,'mm-colors-dd')"><div class="popup-dd" id="mm-colors-dd"></div></div><div class="sel-tags" id="mm-colors-tags"></div></div>
 <div class="fld"><label>Розміри</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук розмірів..." onfocus="openPS(this,'mm-sizes-dd')" oninput="filterPS(this,'mm-sizes-dd')"><div class="popup-dd" id="mm-sizes-dd"></div></div><div class="sel-tags" id="mm-sizes-tags"></div></div>
 <div id="mm-pw">
@@ -342,6 +427,7 @@
 <div class="fld-row">
   <div class="fld"><label>Собівартість ₴</label><input id="kit-cost" type="number" value="0"></div>
   <div class="fld"><label>Дроп-ціна ₴</label><input id="kit-drop" type="number" value="0"></div>
+  <div class="fld"><label>Вага (кг)</label><input id="kit-weight" type="number" step="0.1" value="0.5"></div>
 </div>
 <div class="fld"><label>Категорія (дроп)</label><select id="kit-cat"><option value="">—</option></select></div>
 <div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="kit-photo-preview" style="width:80px;height:80px;background:var(--bg);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('kit-photo-input').click()"><i data-icon="camera" data-size="13"></i> Обрати</button><input type="file" id="kit-photo-input" accept="image/*" style="display:none" onchange="uploadKitPhoto(event)"></div></div>
@@ -355,7 +441,7 @@
 
 <div class="modal-bg" id="wo-modal"><div class="modal"><h3><i data-icon="upload" data-size="16"></i> Списати товар</h3>
 <div class="fld"><label>Товар</label><select id="wo-bp" onchange="loadWoSizes()"></select></div>
-<div class="fld-row"><div class="fld"><label>Розмір</label><select id="wo-size"></select></div><div class="fld"><label>Кількість</label><input id="wo-qty" type="number" min="1" value="1"></div></div>
+<div id="wo-sz"></div>
 <div class="fld"><label>Причина</label><input id="wo-note" placeholder="Необов'язково"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-d" onclick="saveWriteOff()"><i data-icon="upload" data-size="15"></i> Списати</button><button class="btn" onclick="closeM('wo-modal')">Скасувати</button></div>
 </div></div>
@@ -372,7 +458,8 @@
 <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><input type="date" id="ds-from" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff"><span style="color:var(--td)">—</span><input type="date" id="ds-to" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadDropStats()">OK</button></div>
 <div id="ds-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:12px"></div>
 <div id="ds-chart" style="overflow-x:auto;margin-bottom:10px"></div>
-<div style="text-align:right"><button class="btn" onclick="closeM('drop-stats-modal')">Закрити</button></div>
+<div id="ds-payout-msg" style="margin-bottom:8px"></div>
+<div style="display:flex;justify-content:space-between;gap:6px"><button class="btn btn-p" onclick="genDropPayout()"><i data-icon="banknote" data-size="14"></i> Сформувати виплату</button><button class="btn" onclick="closeM('drop-stats-modal')">Закрити</button></div>
 </div></div>
 
 <!-- Edit order modal -->
@@ -381,15 +468,78 @@
 <div class="fld"><label>Телефон</label><input id="eo-phone"></div>
 <div class="fld-row"><div class="fld"><label>Місто</label><input id="eo-city"></div><div class="fld"><label>Відділення</label><input id="eo-wh"></div></div>
 <div class="fld-row"><div class="fld"><label>Наложка ₴</label><input id="eo-cod" type="number"></div><div class="fld"><label>Оціночна вартість ₴</label><input id="eo-dval" type="number"></div></div>
+<div class="fld"><label>Вага посилки (кг)</label><input id="eo-weight" type="number" step="0.1"></div>
 <div class="fld"><label>Примітка</label><input id="eo-note"></div>
 <div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveEditOrder()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('eo-modal')">Скасувати</button></div>
+</div></div>
+
+<!-- Admin new order modal -->
+<div class="modal-bg" id="ano-modal"><div class="modal" style="max-width:560px">
+<h3><i data-icon="plus" data-size="16"></i> Нове замовлення</h3>
+<div class="fld"><label>Дропшипер</label><select id="ano-drop" onchange="anoCalc()"></select></div>
+<div class="fld"><label>Товари в замовленні</label><div id="ano-items"><div style="color:var(--td);font-size:11px">Натисніть "Додати товар" щоб обрати</div></div></div>
+<button class="btn" onclick="openAnoCatPicker()" style="width:100%;margin-bottom:10px;border-color:rgba(124,134,255,.2);color:var(--acc)"><i data-icon="package" data-size="13"></i> Додати товар з каталогу</button>
+<div class="fld"><label>ПІБ клієнта</label><input id="ano-name"></div>
+<div class="fld"><label>Телефон</label><input id="ano-phone" placeholder="+380..."></div>
+<div class="fld"><label>Тип доставки</label><div style="display:flex;gap:4px" id="ano-dt-tabs"><button type="button" class="stab on" onclick="setAnoDeliveryType('warehouse',this)">Відділення</button><button type="button" class="stab" onclick="setAnoDeliveryType('courier',this)">Кур'єр</button><button type="button" class="stab" onclick="setAnoDeliveryType('pickup',this)">Самовивіз</button></div></div>
+<div id="ano-city-wrap"><div class="fld"><label>Місто</label><input id="ano-city" placeholder="Введіть місто..." oninput="searchAnoCity(this.value)" onfocus="if(!this.value)searchAnoCity('Київ')"><div id="ano-city-dd" style="max-height:150px;overflow-y:auto"></div></div></div>
+<div id="ano-wh-wrap"><div class="fld"><label>Відділення НП</label><input id="ano-wh" placeholder="Введіть № відділення..." oninput="searchAnoWh(this.value)" onfocus="if(!this.value&&anoCityRef)searchAnoWh('')"><div id="ano-wh-dd" style="max-height:150px;overflow-y:auto"></div></div></div>
+<div id="ano-postomat-wrap" style="display:none;padding:8px;background:rgba(124,134,255,.08);border:1px solid rgba(124,134,255,.25);border-radius:8px;margin-bottom:10px"><div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:6px">Поштомат — вкажіть розміри посилки (см)</div><div class="fld-row"><div class="fld"><label>Ширина</label><input id="ano-pw" type="number" value="20"></div><div class="fld"><label>Висота</label><input id="ano-ph" type="number" value="20"></div><div class="fld"><label>Довжина</label><input id="ano-pl" type="number" value="20"></div></div></div>
+<div id="ano-courier-wrap" style="display:none"><div class="fld"><label>Вулиця</label><input id="ano-street" placeholder="Назва вулиці"></div><div class="fld-row"><div class="fld"><label>Будинок</label><input id="ano-house"></div><div class="fld"><label>Квартира</label><input id="ano-flat"></div></div></div>
+<div class="fld"><label>Вага посилки (кг)</label><input id="ano-weight" type="number" step="0.1" value="0.5" onchange="anoWeightManual=true"></div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:rgba(193,127,78,.08);border:1px solid rgba(193,127,78,.25);border-radius:8px"><input type="checkbox" id="ano-own-ttn" onchange="toggleAnoOwnTtn()" style="width:18px;height:18px;accent-color:#c17f4e"><label style="font-size:12px;color:#c17f4e;margin:0;cursor:pointer;font-weight:600" onclick="document.getElementById('ano-own-ttn').click()">Це ТТН дропера (не наша доставка)</label></div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px"><input type="checkbox" id="ano-prepaid" onchange="toggleAnoPrepaid()" style="width:18px;height:18px;accent-color:var(--acc)"><label style="font-size:12px;color:var(--th);margin:0;cursor:pointer" onclick="document.getElementById('ano-prepaid').disabled||document.getElementById('ano-prepaid').click()">Повна оплата (без наложки)</label></div>
+<div id="ano-cod-wrap"><div class="fld"><label>Наложка ₴</label><input id="ano-cod" type="number" oninput="anoCalc()"></div></div>
+<div id="ano-prepaid-wrap" style="display:none">
+  <div class="fld"><label>Оціночна вартість ₴</label><input id="ano-dval" type="number" value="0"></div>
+  <div class="fld"><label>Скрін чеку оплати</label><div style="display:flex;gap:6px;align-items:center"><div id="ano-receipt-preview" style="width:60px;height:60px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ano-receipt-fi').click()"><i data-icon="camera" data-size="12"></i> Завантажити</button><input type="file" id="ano-receipt-fi" accept="image/*" style="display:none" onchange="uploadAnoReceipt(event)"></div></div>
+</div>
+<div id="ano-pay" style="font-size:12px;margin:4px 0;color:var(--th)"></div>
+<div class="fld"><label>Примітка</label><input id="ano-note"></div>
+<div class="fld"><label>Опис посилки (для НП)</label><input id="ano-cargo-desc" value="Одяг"></div>
+<div id="ano-err" class="msg msg-err" style="display:none"></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="submitAdmOrder()"><i data-icon="check" data-size="14"></i> Створити</button><button class="btn" onclick="closeM('ano-modal')">Скасувати</button></div>
+</div></div>
+
+<!-- Admin catalog picker modal -->
+<div class="modal-bg" id="ano-cat-modal"><div class="modal" style="max-width:600px">
+<h3><i data-icon="package" data-size="16"></i> Оберіть товар</h3>
+<div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn on" id="anoc-hot" onclick="anoChannel='hot';loadAnoCatalog()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="btn" id="anoc-ads" onclick="anoChannel='ads';loadAnoCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS</button></div>
+<div style="margin-bottom:8px"><input id="ano-cat-search" placeholder="Пошук..." oninput="filterAnoCatalog(this.value)" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"></div>
+<div id="ano-cat-list" style="max-height:400px;overflow-y:auto"></div>
+</div></div>
+
+<!-- Admin kit size picker modal -->
+<div class="modal-bg" id="ano-kit-modal"><div class="modal" style="max-width:500px">
+<h3 id="ano-kit-title"><i data-icon="gift" data-size="15"></i> Оберіть розміри</h3>
+<div id="ano-kit-body"></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="confirmAnoKit()"><i data-icon="check" data-size="14"></i> Додати</button><button class="btn" onclick="closeM('ano-kit-modal')">Скасувати</button></div>
+</div></div>
+
+<div class="modal-bg" id="bal-modal"><div class="modal" style="max-width:450px">
+<h3 id="bal-title"><i data-icon="wallet" data-size="16"></i> Баланс</h3>
+<div id="bal-info" style="text-align:center;margin-bottom:12px">
+  <div style="font-family:JetBrains Mono,monospace;font-size:32px;font-weight:700;color:var(--acc)" id="bal-amount">0₴</div>
+  <div style="font-size:10px;color:var(--td)">поточний баланс</div>
+</div>
+<div class="fld-row">
+  <div class="fld"><label>Сума</label><input id="bal-sum" type="number" placeholder="100"></div>
+  <div class="fld"><label>Тип</label><select id="bal-type"><option value="deposit">Поповнення</option><option value="withdraw">Списання</option></select></div>
+</div>
+<div class="fld"><label>Примітка</label><input id="bal-note" placeholder="необов'язково"></div>
+<button class="btn btn-p" style="width:100%;margin-bottom:10px" onclick="submitBalance()"><i data-icon="check" data-size="14"></i> Провести</button>
+<div id="bal-err" class="msg msg-err" style="display:none"></div>
+<div style="font-size:12px;font-weight:600;color:var(--th);margin-top:10px;margin-bottom:6px">Історія:</div>
+<div id="bal-history" style="max-height:200px;overflow-y:auto"></div>
+<div style="margin-top:10px;text-align:right"><button class="btn" onclick="closeM('bal-modal')">Закрити</button></div>
 </div></div>
 
 <script>
 let ME,CC={colors:[],sizes:[],prints:[],patches:[],cats:[]};
 let curDir="colors",editDirId=null,editCatId=null,catPhoto="";
 let editUID=null,editUR=null,editBpId=null,editVarId=null;
-let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let modelOps=[];
+let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let modelOps=[];let mmSizeGridPhoto="";
+async function uploadModelSizeGrid(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});mmSizeGridPhoto=d.url;document.getElementById("mm-sizegrid-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
 function addModelOp(){var r=document.getElementById("mm-op-role").value;var c=parseInt(document.getElementById("mm-op-count").value)||1;if(!r)return;var rl={"seamstress":Icon('shirt',13)+" Швея","printer":Icon('printer',13)+" Принтувальник"};if(modelOps.find(function(o){return o.worker_role===r}))return;modelOps.push({worker_role:r,operations_count:c});renderModelOps();document.getElementById("mm-op-role").value=""}
 function renderModelOps(){document.getElementById("mm-ops").innerHTML=modelOps.map(function(o,i){var rl={"seamstress":Icon('shirt',13)+" Швея (нашивки)","printer":Icon('printer',13)+" Принтувальник (принти)"};return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+rl[o.worker_role]+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="modelOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="modelOps.splice('+i+',1);renderModelOps()">'+Icon('x',12)+'</button></div>'}).join("")}
 
@@ -398,7 +548,7 @@ async function init(){try{ME=(await api("/api/auth/me")).user;document.getElemen
   if(navBtn)navBtn.click();else loadDash();
 }catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
-function ttnColor(o){var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
+function ttnColor(o){if(o.own_ttn)return'#c17f4e';var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.textContent=t+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Помилка");return d}
@@ -410,7 +560,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>loadAdmOrders(''),returns:loadReturns,drops:loadDrops,workers:loadWorkers,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,drops:loadDrops,workers:loadWorkers,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -419,7 +569,58 @@ document.addEventListener("click",e=>{if(!e.target.closest(".popup-sel"))documen
 async function refreshCC(){const[a,b,c,d,e,f]=await Promise.all([api("/api/colors"),api("/api/sizes"),api("/api/prints"),api("/api/patches"),api("/api/categories?scope=base"),api("/api/categories?scope=drop")]);CC.colors=a.items;CC.sizes=b.items;CC.prints=c.items;CC.patches=d.items;CC.cats_base=e.flat;CC.cats_drop=f.flat;CC.cats=[...e.flat,...f.flat]}
 
 // ── Dashboard ────────────────────────────────────────────────────
-async function loadDash(){const d=await api("/api/dashboard");document.getElementById("dash-s").innerHTML=`<div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div><div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div><div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div><div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div>`}
+async function loadDash(){
+  const d=await api("/api/dashboard");
+  document.getElementById("dash-s").innerHTML=`<div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div><div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div><div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div><div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div><div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_today||0}</div><div class="sl">замовлень сьогодні</div></div><div class="sc"><div class="sv" style="color:var(--td)">${d.orders_yesterday||0}</div><div class="sl">замовлень вчора</div></div>`;
+  const lowSec=document.getElementById("dash-lowstock-sec");
+  if(d.low_stock&&d.low_stock.length){
+    lowSec.style.display="block";
+    document.getElementById("dash-lowstock").innerHTML=d.low_stock.map(function(p){
+      return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.model_name)+' · '+esc(p.name)+'</div><div class="pcard-sub">Розмір '+esc(p.size_name)+'</div><div class="stock-row"><div class="stock-sz '+(p.quantity<=0?"zero":"low")+'"><b>'+p.quantity+'</b><br>шт</div></div></div></div>';
+    }).join("");
+  } else { lowSec.style.display="none"; }
+  loadDashCharts();
+  loadDashPopularity();
+}
+async function loadDashCharts(){
+  try{
+    var r=await api("/api/scan/stats");
+    var byDayShip=(r.byDay||[]).filter(function(x){return x.scan_type==="shipment"}).slice(0,30).reverse();
+    var byDayRet=(r.byDay||[]).filter(function(x){return x.scan_type==="return"}).slice(0,30).reverse();
+    renderDashBarChart("dash-chart-ship",byDayShip,"rgba(124,134,255,.5)","#7c86ff");
+    renderDashBarChart("dash-chart-ret",byDayRet,"rgba(52,211,153,.5)","#34d399");
+  }catch(e){}
+}
+function renderDashBarChart(elId,data,fill,textColor){
+  var el=document.getElementById(elId);
+  if(!data.length){el.innerHTML='<div style="color:var(--td);font-size:11px;padding:10px">Немає даних</div>';return}
+  var max=Math.max.apply(null,data.map(function(d){return d.c}))||1;
+  var bw=Math.max(30,Math.min(55,560/data.length));var gap=6;var cw=data.length*(bw+gap)+30;
+  var svg='<svg viewBox="0 0 '+cw+' 160" style="width:'+cw+'px;height:160px">';
+  data.forEach(function(d,i){var x=i*(bw+gap)+15;var h=d.c/max*100;
+    svg+='<rect x="'+x+'" y="'+(120-h)+'" width="'+bw+'" height="'+h+'" rx="3" fill="'+fill+'"/>';
+    svg+='<text x="'+(x+bw/2)+'" y="'+(115-h-4)+'" fill="'+textColor+'" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono,monospace">'+d.c+'</text>';
+    svg+='<text x="'+(x+bw/2)+'" y="140" fill="#f1f1f8" font-size="11" text-anchor="middle" font-family="Inter,sans-serif">'+(d.day||"").slice(5)+'</text>';
+  });svg+='</svg>';el.innerHTML=svg;
+}
+function setDashPopPeriod(days){
+  document.querySelectorAll('#dpop-7,#dpop-15,#dpop-30').forEach(function(b){b.classList.remove("on")});
+  document.getElementById("dpop-"+days).classList.add("on");
+  var end=new Date();var start=new Date(end.getTime()-(days-1)*86400000);
+  function fmt(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+  document.getElementById("dpop-df").value=fmt(start);
+  document.getElementById("dpop-dt").value=fmt(end);
+  loadDashPopularity();
+}
+async function loadDashPopularity(){
+  var df=document.getElementById("dpop-df").value,dt=document.getElementById("dpop-dt").value;
+  try{
+    var r=await api("/api/dashboard/popularity"+(df&&dt?"?date_from="+df+"&date_to="+dt:""));
+    document.getElementById("dash-popularity").innerHTML=r.items.length?r.items.map(function(p){
+      return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.model_name)+(p.color_name?' · '+esc(p.color_name):'')+'</div><div class="pcard-price">'+p.qty+' шт продано</div></div></div>';
+    }).join(""):'<div style="color:var(--td);font-size:12px;padding:10px">Немає продажів за цей період</div>';
+  }catch(e){}
+}
 
 // ── Directories ──────────────────────────────────────────────────
 function showDir(t){curDir=t;document.querySelectorAll("[id^=dt-]").forEach(b=>b.className="btn");document.getElementById("dt-"+t).className="btn btn-a";document.getElementById("dir-search").value="";loadDir()}
@@ -494,26 +695,33 @@ async function editModelFields(id){
   document.getElementById("mm-name").value=m.name;
   document.getElementById("mm-cost").value=m.cost_price;
   document.getElementById("mm-drop").value=m.drop_price;
+  document.getElementById("mm-weight").value=m.weight||0.3;
+  mmSizeGridPhoto=m.size_grid_photo||"";
+  document.getElementById("mm-sizegrid-preview").innerHTML=mmSizeGridPhoto?'<img src="'+mmSizeGridPhoto+'" style="width:100%;height:100%;object-fit:cover">':"—";
   document.getElementById("mm-ready").classList.toggle("on",!!m.is_ready_product);
   document.getElementById("mm-pw").style.display=m.is_ready_product?"none":"block";
-  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';CC.cats.forEach(c=>cs.innerHTML+=`<option value="${c.id}"${c.id==m.category_id?" selected":""}>${esc(c.name)}</option>`);
+  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';(CC.cats_base||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}"${c.id==m.category_id?" selected":""}>${esc(c.name)}</option>`);
+  const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}"${c.id==m.category_drop_id?" selected":""}>${esc(c.name)}</option>`);
+  document.getElementById("mm-channel").value=m.drop_channel||"hot";
+  document.getElementById("mm-warehouse").value=m.main_warehouse||"base";
   // Pre-select attributes
   mmSel={colors:new Set(m.colors.map(c=>c.id)),sizes:new Set(m.sizes.map(s=>s.id)),prints:new Set(m.prints.map(p=>p.id)),patches:new Set(m.patches.map(p=>p.id))};
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();
-  // Workers
-  modelOps=[];renderModelOps(); // ops loaded separately
-  const ws=document.getElementById("mm-wadd");ws.innerHTML='<option value="">+ працівник</option>';
-  (await api("/api/users?role=warehouse")).users.forEach(u=>ws.innerHTML+=`<option value="${u.id}">${esc(u.name)}</option>`);
-  // worker ops handled via modelOps
+  // Workers — load existing per-model operation rates
+  try{var opsR=await api("/api/product-worker-ops/"+id);modelOps=(opsR.ops||[]).map(function(o){return{worker_role:o.worker_role,operations_count:o.operations_count}})}catch(e){modelOps=[]}
+  renderModelOps();
   document.getElementById("mm-err").style.display="none";
   openM("model-modal");
 }
 
 async function saveModelEdit(){
   const err=document.getElementById("mm-err");err.style.display="none";
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,sync_products:true};
-  try{await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});closeM("model-modal");editModelId=null;loadModels();
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,main_warehouse:document.getElementById("mm-warehouse").value,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,weight:document.getElementById("mm-weight").value,sync_products:true,size_grid_photo:mmSizeGridPhoto};
+  try{
+    await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});
+    await api("/api/product-worker-ops/"+editModelId,{method:"POST",body:JSON.stringify({ops:modelOps})});
+    closeM("model-modal");editModelId=null;loadModels();
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
@@ -530,11 +738,13 @@ async function openNewModel(){
   editModelId=null;
   await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};modelOps=[];renderModelOps();
   document.getElementById("mdl-t").textContent="Нова модель";
-  document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";
+  document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";document.getElementById("mm-weight").value="0.3";
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
   document.getElementById("mm-err").style.display="none";
+  mmSizeGridPhoto="";document.getElementById("mm-sizegrid-preview").innerHTML="—";
   const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';(CC.cats_base||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
   const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
+  document.getElementById("mm-channel").value="hot";document.getElementById("mm-warehouse").value="base";
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();renderModelOps();
   openM("model-modal");
@@ -559,7 +769,7 @@ async function saveModel(){
   if(editModelId) return saveModelEdit();
   const err=document.getElementById("mm-err");err.style.display="none";
   const isReady=document.getElementById("mm-ready").classList.contains("on");
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches]};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,main_warehouse:document.getElementById("mm-warehouse").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,weight:document.getElementById("mm-weight").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],size_grid_photo:mmSizeGridPhoto};
   try{
     const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});
     if(modelOps.length&&r.model_id)try{await api("/api/product-worker-ops/"+r.model_id,{method:"POST",body:JSON.stringify({ops:modelOps})})}catch(e){}
@@ -633,8 +843,8 @@ function renderSDrop(items){
   el.innerHTML=items.map(v=>{
     const szs=sdSizes.filter(s=>v.stock[s.id]!==undefined);
     const kitBadge=v.is_kit?'<span class="tag tag-y" style="margin-left:4px">'+Icon('gift',11)+' Комплект</span>':"";
-    const editBtn=v.is_kit?'<button class="btn btn-sm btn-d" onclick="deleteKit('+v.id+')">'+Icon('trash2',13)+'</button>':'<button class="btn btn-sm btn-a" onclick="openEditVar('+v.id+')">'+Icon('pencil',13)+'</button>';
-    return`<div class="pcard" style="${v.is_kit?"border-color:rgba(255,167,38,.3)":""}"><div class="pcard-img" onclick="${v.is_kit?"":"openEditVar("+v.id+")"}">${v.photo||v.print_photo?`<img src="${v.photo||v.print_photo}">`:Icon('camera',28)}</div><div class="pcard-body">
+    const editBtn=v.is_kit?'<button class="btn btn-sm btn-a" onclick="openEditKit('+v.id+')">'+Icon('pencil',13)+'</button> <button class="btn btn-sm btn-d" onclick="deleteKit('+v.id+')">'+Icon('trash2',13)+'</button>':'<button class="btn btn-sm btn-a" onclick="openEditVar('+v.id+')">'+Icon('pencil',13)+'</button>';
+    return`<div class="pcard" style="${v.is_kit?"border-color:rgba(255,167,38,.3)":""}"><div class="pcard-img" onclick="${v.is_kit?"openEditKit("+v.id+")":"openEditVar("+v.id+")"}">${v.photo||v.print_photo?`<img src="${v.photo||v.print_photo}">`:Icon('camera',28)}</div><div class="pcard-body">
     <div class="pcard-name">${esc(v.name)}${kitBadge}</div>
     <div class="pcard-sub">${v.print_name?'Принт: '+esc(v.print_name):""} ${v.color_name?'· '+esc(v.color_name):""} ${v.is_kit&&v.items?'('+v.items.length+' товарів)':""}</div>
     <div class="pcard-prices"><span class="pp tag tag-g">${v.drop_price}₴</span></div>
@@ -762,30 +972,37 @@ async function saveEditVar(){
 async function deleteEditVar(){if(!confirm("Видалити варіацію?"))return;await api(`/api/variations/${editVarId}`,{method:"DELETE"});closeM("edit-var-modal");loadSDrop()}
 
 // ── Incoming ─────────────────────────────────────────────────────
-async function openInc(){const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;const s=document.getElementById("inc-bp");s.innerHTML=sbProducts.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");var ws=await api("/api/workshops");document.getElementById("inc-ws").innerHTML=ws.workshops.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join("");document.getElementById("inc-no-ws").checked=false;document.getElementById("inc-ws").disabled=false;document.getElementById("inc-ws").style.opacity="1";loadIncSz();openM("inc-modal")}
+async function openInc(){const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;const s=document.getElementById("inc-bp");s.innerHTML='<option value="">— Оберіть товар —</option>'+sbProducts.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");var ws=await api("/api/workshops");document.getElementById("inc-ws").innerHTML=ws.workshops.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join("");document.getElementById("inc-no-ws").checked=false;document.getElementById("inc-ws").disabled=false;document.getElementById("inc-ws").style.opacity="1";document.getElementById("inc-sz").innerHTML="";openM("inc-modal")}
 function loadIncSz(){const id=parseInt(document.getElementById("inc-bp").value);const p=sbProducts.find(x=>x.id===id);if(!p)return;document.getElementById("inc-sz").innerHTML=sbSizes.filter(s=>p.stock[s.id]!==undefined).map(s=>`<div class="fld-row" style="margin-bottom:4px"><div style="padding:6px 0;font-size:11px">${s.name} <span style="color:var(--td)">(${p.stock[s.id]||0})</span></div><div><input type="number" data-sid="${s.id}" value="0" min="0" style="padding:6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;width:70px"></div></div>`).join("")}
-async function saveInc(){const id=parseInt(document.getElementById("inc-bp").value);const noWs=document.getElementById("inc-no-ws").checked;const wsId=noWs?null:parseInt(document.getElementById("inc-ws").value);const items=[...document.querySelectorAll("#inc-sz input[data-sid]")].map(el=>({size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})).filter(i=>i.quantity>0);if(!items.length){alert("Кількість");return}try{await api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:id,items,note:document.getElementById("inc-note").value,workshop_id:wsId,no_workshop:noWs})});closeM("inc-modal");loadSBase()}catch(e){alert(e.message)}}
+async function saveInc(){const idVal=document.getElementById("inc-bp").value;if(!idVal){alert("Оберіть товар");return}const id=parseInt(idVal);const noWs=document.getElementById("inc-no-ws").checked;const wsId=noWs?null:parseInt(document.getElementById("inc-ws").value);const items=[...document.querySelectorAll("#inc-sz input[data-sid]")].map(el=>({size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})).filter(i=>i.quantity>0);if(!items.length){alert("Кількість");return}try{await api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:id,items,note:document.getElementById("inc-note").value,workshop_id:wsId,no_workshop:noWs})});closeM("inc-modal");loadSBase()}catch(e){alert(e.message)}}
 
 // Write-off
 async function openWriteOff(){
   const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;
-  document.getElementById("wo-bp").innerHTML=sbProducts.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("");
-  loadWoSizes();openM("wo-modal");
+  document.getElementById("wo-bp").innerHTML='<option value="">— Оберіть товар —</option>'+sbProducts.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("");
+  document.getElementById("wo-sz").innerHTML="";openM("wo-modal");
 }
 function loadWoSizes(){
   const id=parseInt(document.getElementById("wo-bp").value);const p=sbProducts.find(x=>x.id===id);if(!p)return;
-  document.getElementById("wo-size").innerHTML=sbSizes.filter(s=>p.stock[s.id]!==undefined).map(s=>'<option value="'+s.id+'">'+s.name+' ('+( p.stock[s.id]||0)+')</option>').join("");
+  document.getElementById("wo-sz").innerHTML='<div style="display:flex;justify-content:flex-end;margin-bottom:4px"><button type="button" class="btn btn-sm" style="font-size:10px" onclick="woFillAll()">Списати все</button></div>'+
+    sbSizes.filter(s=>p.stock[s.id]!==undefined).map(s=>'<div class="fld-row" style="margin-bottom:4px"><div style="padding:6px 0;font-size:11px">'+s.name+' <span style="color:var(--td)">('+(p.stock[s.id]||0)+')</span></div><div><input type="number" data-sid="'+s.id+'" data-max="'+(p.stock[s.id]||0)+'" value="0" min="0" style="padding:6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;width:70px"></div></div>').join("");
+}
+function woFillAll(){
+  [...document.querySelectorAll("#wo-sz input[data-sid]")].forEach(el=>el.value=el.dataset.max);
 }
 async function saveWriteOff(){
-  const data={base_product_id:parseInt(document.getElementById("wo-bp").value),size_id:parseInt(document.getElementById("wo-size").value),quantity:parseInt(document.getElementById("wo-qty").value),note:document.getElementById("wo-note").value};
-  try{await api("/api/stock/write-off",{method:"POST",body:JSON.stringify(data)});closeM("wo-modal");loadSBase()}catch(e){alert(e.message)}
+  const idVal=document.getElementById("wo-bp").value;if(!idVal){alert("Оберіть товар");return}
+  const items=[...document.querySelectorAll("#wo-sz input[data-sid]")].map(el=>({size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})).filter(i=>i.quantity>0);
+  if(!items.length){alert("Кількість");return}
+  const data={base_product_id:parseInt(idVal),items,note:document.getElementById("wo-note").value};
+  try{await api("/api/stock/write-off-bulk",{method:"POST",body:JSON.stringify(data)});closeM("wo-modal");loadSBase()}catch(e){alert(e.message)}
 }
 
 // Swap size
 async function openSwapSize(){
   const d=await api("/api/base-products");sbProducts=d.products;sbSizes=d.sizes;
-  document.getElementById("sw-bp").innerHTML=sbProducts.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("");
-  loadSwSizes();openM("swap-modal");
+  document.getElementById("sw-bp").innerHTML='<option value="">— Оберіть товар —</option>'+sbProducts.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("");
+  document.getElementById("sw-from").innerHTML="";document.getElementById("sw-to").innerHTML="";openM("swap-modal");
 }
 function loadSwSizes(){
   const id=parseInt(document.getElementById("sw-bp").value);const p=sbProducts.find(x=>x.id===id);if(!p)return;
@@ -793,22 +1010,43 @@ function loadSwSizes(){
   document.getElementById("sw-from").innerHTML=opts;document.getElementById("sw-to").innerHTML=opts;
 }
 async function saveSwapSize(){
+  if(!document.getElementById("sw-bp").value){alert("Оберіть товар");return}
   const data={base_product_id:parseInt(document.getElementById("sw-bp").value),from_size_id:parseInt(document.getElementById("sw-from").value),to_size_id:parseInt(document.getElementById("sw-to").value),quantity:parseInt(document.getElementById("sw-qty").value)};
   try{await api("/api/stock/swap-size",{method:"POST",body:JSON.stringify(data)});closeM("swap-modal");loadSBase();}catch(e){alert(e.message)}
 }
 
 // ── Kits ─────────────────────────────────────────────────────────
-let kitVarList=[],kitSelected=[],kitPhoto="";
+let kitVarList=[],kitSelected=[],kitPhoto="",editKitId=null;
 async function openKitModal(){
+  editKitId=null;
   kitSelected=[];kitPhoto="";
-  document.getElementById("kit-name").value="";document.getElementById("kit-cost").value="0";document.getElementById("kit-drop").value="0";
+  document.getElementById("kit-name").value="";document.getElementById("kit-cost").value="0";document.getElementById("kit-drop").value="0";document.getElementById("kit-weight").value="0.5";
   document.getElementById("kit-err").style.display="none";
   document.getElementById("kit-photo-preview").innerHTML="—";
+  document.querySelector('#kit-modal h3').innerHTML=Icon('gift',16)+' Сформувати комплект';
+  document.querySelector('#kit-modal .btn-p').innerHTML=Icon('rocket',15)+' Створити комплект';
   // Load categories
   await refreshCC();
   const cs=document.getElementById("kit-cat");cs.innerHTML='<option value="">—</option>';
   (CC.cats_drop||[]).forEach(c=>cs.innerHTML+='<option value="'+c.id+'">'+esc(c.name)+'</option>');
   // Load all variations for selection
+  const d=await api("/api/variations");kitVarList=d.variations;
+  renderKitVarDD("");renderKitItems();
+  openM("kit-modal");
+  document.getElementById("kit-var-search").addEventListener("focus",function(){document.getElementById("kit-var-dd").classList.add("open")});
+}
+async function openEditKit(id){
+  editKitId=id;
+  const{kit:k}=await api("/api/kits/"+id);
+  kitSelected=k.items.map(function(i){return i.vid});kitPhoto=k.photo||"";
+  document.getElementById("kit-name").value=k.name;document.getElementById("kit-cost").value=k.cost_price||0;document.getElementById("kit-drop").value=k.drop_price||0;document.getElementById("kit-weight").value=k.weight||0.5;
+  document.getElementById("kit-err").style.display="none";
+  document.getElementById("kit-photo-preview").innerHTML=k.photo?'<img src="'+k.photo+'" style="width:100%;height:100%;object-fit:cover">':"—";
+  document.querySelector('#kit-modal h3').innerHTML=Icon('gift',16)+' Редагувати комплект';
+  document.querySelector('#kit-modal .btn-p').innerHTML=Icon('save',15)+' Зберегти';
+  await refreshCC();
+  const cs=document.getElementById("kit-cat");cs.innerHTML='<option value="">—</option>';
+  (CC.cats_drop||[]).forEach(c=>cs.innerHTML+='<option value="'+c.id+'"'+(c.id==k.category_drop_id?" selected":"")+'>'+esc(c.name)+'</option>');
   const d=await api("/api/variations");kitVarList=d.variations;
   renderKitVarDD("");renderKitItems();
   openM("kit-modal");
@@ -828,16 +1066,18 @@ async function uploadKitPhoto(e){const f=e.target.files[0];if(!f)return;const r=
 async function saveKit(){
   const err=document.getElementById("kit-err");err.style.display="none";
   if(!kitSelected.length){err.textContent="Додайте товари";err.style.display="block";return}
+  const data={name:document.getElementById("kit-name").value,cost_price:document.getElementById("kit-cost").value,drop_price:document.getElementById("kit-drop").value,weight:document.getElementById("kit-weight").value,category_drop_id:document.getElementById("kit-cat").value||null,variation_ids:kitSelected,photo:kitPhoto};
   try{
-    await api("/api/kits",{method:"POST",body:JSON.stringify({name:document.getElementById("kit-name").value,cost_price:document.getElementById("kit-cost").value,drop_price:document.getElementById("kit-drop").value,category_drop_id:document.getElementById("kit-cat").value||null,variation_ids:kitSelected,photo:kitPhoto})});
-    closeM("kit-modal");loadSDrop();;
+    if(editKitId)await api("/api/kits/"+editKitId,{method:"PUT",body:JSON.stringify(data)});
+    else await api("/api/kits",{method:"POST",body:JSON.stringify(data)});
+    closeM("kit-modal");loadSDrop();
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
 // ── Admin Orders (big cards like warehouse) ──────────────────────
 const OSL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
 const OSC={new:"tag-g",in_progress:"tag-b",packed:"tag-g",shipped:"tag-y",delivering:"tag-y",delivered:"tag-g",refused:"tag-r",cancelled:"tag-r"};
-let admOrdFilter="",admReady="",admCh="";
+let admOrdFilter="",admReady="",admCh="",admOrdPage=0;
 
 // ── CUTS (Крій) ──────────────────────────────────────────────────
 let cutShowAll=false,cutWsFilter=0;
@@ -853,16 +1093,44 @@ async function loadCuts(){
     // Collect all workshops for this product
     var allWs={};for(var sid in p.cuts){p.cuts[sid].workshops.forEach(function(w){if(!allWs[w.id])allWs[w.id]={name:w.name,qty:0};allWs[w.id].qty+=w.qty})}
     var wsLine=Object.values(allWs).map(function(w){return Icon('factory',12)+' '+esc(w.name)}).join(' · ');
-    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div><div style="font-size:11px;color:var(--warn)">'+wsLine+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">'+szs.map(function(s){var cd=p.cuts[s.id];if(!cd||cd.total<=0)return"";return '<div style="background:var(--bg);border-radius:8px;padding:6px 10px;text-align:center;min-width:50px"><div style="font-size:13px;font-weight:700;color:var(--th)">'+s.name+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+cd.total+'</div></div>'}).join("")+'</div></div>'
+    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div><div style="font-size:11px;color:var(--warn)">'+wsLine+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">'+szs.map(function(s){var cd=p.cuts[s.id];if(!cd||cd.total<=0)return"";
+      var editCtl=cutWsFilter?'<div style="display:flex;gap:2px;margin-top:4px;justify-content:center"><button style="background:none;border:none;color:var(--acc);cursor:pointer;padding:1px" onclick="editCutQty('+p.id+','+s.id+','+cutWsFilter+','+cd.total+')">'+Icon('pencil',11)+'</button><button style="background:none;border:none;color:var(--red);cursor:pointer;padding:1px" onclick="deleteCutQty('+p.id+','+s.id+','+cutWsFilter+')">'+Icon('trash2',11)+'</button></div>':'';
+      return '<div style="background:var(--bg);border-radius:8px;padding:6px 10px;text-align:center;min-width:50px"><div style="font-size:13px;font-weight:700;color:var(--th)">'+s.name+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+cd.total+'</div>'+editCtl+'</div>'}).join("")+'</div></div>'
   }).join(""):'<div class="empty"><span class="ic">'+Icon('scissors',40)+'</span>'+(cutShowAll?'Немає товарів':'Немає крою')+'</div>'}catch(e){}
 }
+async function editCutQty(bpId,sizeId,wsId,current){
+  var v=prompt("Нова кількість крою для цього розміру:",current);
+  if(v===null)return;var qty=parseInt(v);if(isNaN(qty)||qty<0)return;
+  try{await api("/api/stock-cuts/set",{method:"POST",body:JSON.stringify({base_product_id:bpId,size_id:sizeId,workshop_id:wsId,quantity:qty})});loadCuts()}catch(e){alert(e.message)}
+}
+async function deleteCutQty(bpId,sizeId,wsId){
+  if(!confirm("Обнулити крій цього розміру в цьому цеху?"))return;
+  try{await api("/api/stock-cuts/set",{method:"POST",body:JSON.stringify({base_product_id:bpId,size_id:sizeId,workshop_id:wsId,quantity:0})});loadCuts()}catch(e){alert(e.message)}
+}
+var cutBpList=[];
 async function openCutModal(){
   var bps=await api("/api/base-products?all=1");
-  document.getElementById("cut-bp").innerHTML=bps.products.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join("");
+  cutBpList=bps.products;
+  document.getElementById("cut-bp").value="";document.getElementById("cut-bp-search").value="";
+  document.getElementById("cut-sizes").innerHTML="";
+  renderCutBpDD("");
   var ws=await api("/api/workshops");
   document.getElementById("cut-ws").innerHTML=ws.workshops.map(function(w){return '<option value="'+w.id+'">'+esc(w.name)+'</option>'}).join("");
   if(!ws.workshops.length)document.getElementById("cut-ws").innerHTML='<option value="">Спочатку додайте цех</option>';
-  loadCutSizes();openM("cut-modal");
+  openM("cut-modal");
+}
+function filterCutBp(q){document.getElementById("cut-bp-dd").classList.add("open");renderCutBpDD(q)}
+function renderCutBpDD(q){
+  var filtered=q?cutBpList.filter(function(p){return p.name.toLowerCase().includes(q.toLowerCase())}):cutBpList;
+  document.getElementById("cut-bp-dd").innerHTML=filtered.slice(0,30).map(function(p){
+    return '<div class="popup-dd-item" onclick="pickCutBp('+p.id+',\''+esc(p.name).replace(/'/g,"")+'\')">'+esc(p.name)+'</div>';
+  }).join("")||'<div style="padding:8px;color:var(--td);font-size:11px">Нічого не знайдено</div>';
+}
+function pickCutBp(id,name){
+  document.getElementById("cut-bp").value=id;
+  document.getElementById("cut-bp-search").value=name;
+  document.getElementById("cut-bp-dd").classList.remove("open");
+  loadCutSizes();
 }
 async function loadCutSizes(){
   var bpId=document.getElementById("cut-bp").value;if(!bpId)return;
@@ -884,6 +1152,15 @@ async function openWorkshopMgr(){
 async function addWorkshop(){var n=document.getElementById("ws-name").value.trim();if(!n)return;try{await api("/api/workshops",{method:"POST",body:JSON.stringify({name:n})});document.getElementById("ws-name").value="";openWorkshopMgr()}catch(e){}}
 async function delWorkshop(id){if(!confirm("Видалити цех?"))return;try{await api("/api/workshops/"+id,{method:"DELETE"});openWorkshopMgr()}catch(e){}}
 
+function setAdmDatePeriod(days){
+  var to=new Date();var from=new Date(to);from.setDate(from.getDate()-(days-1));
+  document.getElementById("adm-df").value=from.toISOString().slice(0,10);
+  document.getElementById("adm-dt").value=to.toISOString().slice(0,10);
+  document.querySelectorAll("[id^=adm-p-]").forEach(b=>b.classList.remove("on"));
+  document.getElementById("adm-p-"+days)?.classList.add("on");
+  admOrdPage=0;loadAdmOrders(admOrdFilter);
+}
+
 async function admTrackNP(){var b=document.getElementById("adm-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></div>Оновлення...';try{await fetch("/api/nova-poshta/track-all",{method:"POST",headers:{"Content-Type":"application/json"}});b.innerHTML=Icon('check',12)+' Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false;loadAdmOrders(admOrdFilter)},1500)}catch(e){b.innerHTML=Icon('x',12)+' Помилка';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false},2000)}}
 async function loadAdmOrders(status){document.getElementById("adm-orders").innerHTML='<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   admOrdFilter=status;
@@ -891,16 +1168,17 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
   const btn=document.getElementById("ao-"+(status||"all"));if(btn)btn.className="btn btn-a";
   document.querySelectorAll("[id^=ar-]").forEach(b=>{b.className="btn";if(b.id==="ar-"+(admReady||"all"))b.className="btn btn-a"});
   document.querySelectorAll("[id^=ac-]").forEach(b=>{b.className="btn";if(b.id==="ac-"+(admCh||"all"))b.className="btn btn-a"});
-  let url="/api/orders?limit=50";
+  var admPp=parseInt(document.getElementById("adm-ord-pagesize")?.value)||50;
+  let url="/api/orders?page="+((admOrdPage||0)+1)+"&page_size="+admPp;
   if(status)url+="&status="+status;
   if(admReady)url+="&ready="+admReady;
   if(admCh)url+="&channel="+admCh;
   var df=document.getElementById("adm-df")?.value||"",dt=document.getElementById("adm-dt")?.value||"";
   if(df)url+="&date_from="+df;if(dt)url+="&date_to="+dt;
   var ttn=document.getElementById("adm-ttn")?.value||"";if(ttn)url+="&ttn_search="+ttn;
-  const{orders}=await api(url);
+  const r=await api(url);const orders=r.orders;
   const el=document.getElementById("adm-orders");
-  if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('clipboardList',40)+'</span>Немає замовлень</div>';return}
+  if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('clipboardList',40)+'</span>Немає замовлень</div>';document.getElementById("adm-ord-pagi").innerHTML="";return}
   let html="";
   for(const o of orders){
     const{order}=await api("/api/orders/"+o.id);
@@ -911,10 +1189,11 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
     html+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div></div>';
     html+='<div style="text-align:right"><div style="font-size:10px;color:var(--blue)">'+esc(o.drop_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
     // TTN block
-    html+='<div style="padding:8px 14px;display:flex;gap:6px;align-items:center">';
-    if(o.ttn)html+='<div style="flex:1;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">'+Icon('package',11)+' '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div>';
-    html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="Вставте ТТН..." readonly style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;opacity:.7"><button id="ttn-edit-'+o.id+'" class="btn btn-sm" onclick="editTtn('+o.id+')" style="font-size:10px">'+Icon('pencil',11)+'</button><button id="ttn-save-'+o.id+'" class="btn btn-sm btn-p" onclick="saveTtn('+o.id+')" style="font-size:10px;display:none">'+Icon('save',11)+'</button>';
-    if(!o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+')">'+Icon('package',13)+' Створити ТТН</button>';
+    html+='<div style="padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+    if(o.own_ttn)html+='<div style="width:100%;font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+Icon('alertTriangle',10)+' ТТН дропера — не наша доставка'+(o.receipt_photo?' · <a href="'+o.receipt_photo+'" target="_blank" style="color:#c17f4e;text-decoration:underline">'+Icon('image',10)+' чек</a>':' · <span style="color:var(--red)">чек не завантажено</span>')+'</div>';
+    if(o.ttn)html+='<div style="flex:1;background:'+(o.own_ttn?'rgba(193,127,78,.1)':'rgba(255,167,38,.06)')+';border:1px solid '+(o.own_ttn?'rgba(193,127,78,.3)':'rgba(255,167,38,.15)')+';border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">'+Icon('package',11)+' '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div>';
+    html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="'+(o.own_ttn?"Вставте ТТН дропера сюди...":"Вставте ТТН...")+'" readonly style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid '+(o.own_ttn&&!o.ttn?'#c17f4e':'var(--brd)')+';border-radius:6px;color:#fff;opacity:.7"><button id="ttn-edit-'+o.id+'" class="btn btn-sm" onclick="editTtn('+o.id+')" style="font-size:10px">'+Icon('pencil',11)+'</button><button id="ttn-save-'+o.id+'" class="btn btn-sm btn-p" onclick="saveTtn('+o.id+')" style="font-size:10px;display:none">'+Icon('save',11)+'</button>';
+    if(!o.ttn&&!o.own_ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+')">'+Icon('package',13)+' Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="window.open(\'https://my.novaposhta.ua/orders/printMarkings/orders[]/\'+document.getElementById(\'ttn-\'+'+o.id+').value+\'/type/pdf\',\'_blank\')">'+Icon('printer',13)+'</button>';
     html+='</div>';
     // Items
@@ -942,6 +1221,8 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
     html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button></div></div></div>';
   }
   el.innerHTML=html;
+  var admPages=Math.max(1,Math.ceil(r.total/admPp));admOrdPage=Math.min(admOrdPage||0,admPages-1);
+  if(admPages>1){var ph="";for(var p=0;p<admPages;p++)ph+='<button class="'+(p===admOrdPage?"on":"")+'" onclick="admOrdPage='+p+';loadAdmOrders(admOrdFilter)">'+(p+1)+'</button>';document.getElementById("adm-ord-pagi").innerHTML=ph}else document.getElementById("adm-ord-pagi").innerHTML="";
 }
 async function chAdmSt(id,st){try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){}}
@@ -953,12 +1234,146 @@ async function openEditOrder(id){
   document.getElementById("eo-name").value=o.client_name;document.getElementById("eo-phone").value=o.client_phone;
   document.getElementById("eo-city").value=o.client_city;document.getElementById("eo-wh").value=o.client_warehouse;
   document.getElementById("eo-cod").value=o.cod_amount;document.getElementById("eo-dval").value=o.declared_value||0;
+  document.getElementById("eo-weight").value=o.weight||0.5;
   document.getElementById("eo-note").value=o.note||"";openM("eo-modal")}catch(e){}
 }
 async function saveEditOrder(){
-  try{await api("/api/orders/"+editOrderId+"/edit",{method:"PUT",body:JSON.stringify({client_name:document.getElementById("eo-name").value,client_phone:document.getElementById("eo-phone").value,client_city:document.getElementById("eo-city").value,client_warehouse:document.getElementById("eo-wh").value,cod_amount:document.getElementById("eo-cod").value,declared_value:document.getElementById("eo-dval").value,note:document.getElementById("eo-note").value})});
+  try{await api("/api/orders/"+editOrderId+"/edit",{method:"PUT",body:JSON.stringify({client_name:document.getElementById("eo-name").value,client_phone:document.getElementById("eo-phone").value,client_city:document.getElementById("eo-city").value,client_warehouse:document.getElementById("eo-wh").value,cod_amount:document.getElementById("eo-cod").value,declared_value:document.getElementById("eo-dval").value,weight:document.getElementById("eo-weight").value,note:document.getElementById("eo-note").value})});
   closeM("eo-modal");loadAdmOrders(admOrdFilter)}catch(e){}
 }
+
+// ── ADMIN NEW ORDER ────────────────────────────────────────────────
+let anoItems=[],anoDrops=[],anoCatalog=[],anoChannel="hot",anoCityRef="",anoSettleRef="",anoReceipt="",anoKitPending=null;
+let anoDeliveryType="warehouse",anoIsPostomat=false,anoWeightManual=false;
+function setAnoDeliveryType(type,btn){
+  anoDeliveryType=type;
+  document.querySelectorAll("#ano-dt-tabs .stab").forEach(function(b){b.classList.remove("on")});
+  if(btn)btn.classList.add("on");
+  document.getElementById("ano-city-wrap").style.display=type==="pickup"?"none":"";
+  document.getElementById("ano-wh-wrap").style.display=type==="warehouse"?"":"none";
+  document.getElementById("ano-courier-wrap").style.display=type==="courier"?"":"none";
+  if(type!=="warehouse"){anoIsPostomat=false;document.getElementById("ano-postomat-wrap").style.display="none"}
+}
+function calcAnoWeight(){
+  if(anoWeightManual)return;
+  var w=anoItems.reduce(function(s,it){return s+(it.weight||0)*it.quantity},0);
+  document.getElementById("ano-weight").value=(Math.max(0.1,w)||0.5).toFixed(1);
+}
+async function openAdmNewOrder(){
+  anoItems=[];anoCityRef="";anoSettleRef="";anoReceipt="";
+  document.getElementById("ano-items").innerHTML='<div style="color:var(--td);font-size:11px">Натисніть "Додати товар" щоб обрати</div>';
+  document.getElementById("ano-name").value="";document.getElementById("ano-phone").value="";
+  document.getElementById("ano-city").value="";document.getElementById("ano-wh").value="";
+  document.getElementById("ano-cod").value="";document.getElementById("ano-dval").value="0";
+  document.getElementById("ano-note").value="";document.getElementById("ano-cargo-desc").value="Одяг";document.getElementById("ano-own-ttn").checked=false;
+  document.getElementById("ano-street").value="";document.getElementById("ano-house").value="";document.getElementById("ano-flat").value="";
+  document.getElementById("ano-pw").value="20";document.getElementById("ano-ph").value="20";document.getElementById("ano-pl").value="20";
+  document.getElementById("ano-weight").value="0.5";anoWeightManual=false;anoIsPostomat=false;
+  document.getElementById("ano-postomat-wrap").style.display="none";
+  setAnoDeliveryType("warehouse",document.querySelector("#ano-dt-tabs .stab"));
+  document.getElementById("ano-prepaid").checked=false;document.getElementById("ano-prepaid").disabled=false;
+  document.getElementById("ano-cod-wrap").style.display="";document.getElementById("ano-prepaid-wrap").style.display="none";
+  document.getElementById("ano-receipt-preview").innerHTML="—";document.getElementById("ano-pay").textContent="";
+  document.getElementById("ano-err").style.display="none";document.getElementById("ano-city-dd").innerHTML="";document.getElementById("ano-wh-dd").innerHTML="";
+  try{var r=await api("/api/users?role=dropshipper");anoDrops=r.users.filter(u=>u.active);
+  document.getElementById("ano-drop").innerHTML=anoDrops.map(u=>'<option value="'+u.id+'">'+esc(u.name||u.username)+' (ID:'+u.id+')</option>').join("")}catch(e){}
+  openM("ano-modal");
+}
+function renderAnoItems(){
+  if(!anoItems.length){document.getElementById("ano-items").innerHTML='<div style="color:var(--td);font-size:11px">Натисніть "Додати товар" щоб обрати</div>';return}
+  document.getElementById("ano-items").innerHTML=anoItems.map((it,i)=>{
+    var ph=it.photo||"";
+    return '<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--brd)">'+(ph?'<img src="'+ph+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'<div style="width:40px;height:40px;background:var(--bg);border-radius:6px"></div>')+
+    '<div style="flex:1;font-size:12px"><div style="color:var(--th);font-weight:600">'+esc(it.name)+'</div><div style="color:var(--acc)">'+esc(it.size_name)+' × '+it.quantity+'</div>'+(it.kit_id?'<div style="font-size:10px;color:var(--td)">Комплект</div>':'')+'</div>'+
+    '<div style="font-size:12px;font-weight:600;color:var(--th)">'+it.drop_price+'₴</div>'+
+    '<button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="removeAnoItem('+i+')">'+Icon('x',14)+'</button></div>'
+  }).join("");
+  anoCalc();calcAnoWeight();
+}
+function removeAnoItem(i){anoItems.splice(i,1);renderAnoItems();calcAnoWeight()}
+function anoCalc(){
+  var total=anoItems.reduce((s,it)=>s+it.drop_price*it.quantity,0);
+  var cod=parseFloat(document.getElementById("ano-cod").value)||0;
+  var isPrepaid=document.getElementById("ano-prepaid").checked;
+  var payout=isPrepaid?0:Math.round((cod-total)*100)/100;
+  document.getElementById("ano-pay").innerHTML='<div style="display:flex;justify-content:space-between"><span>Дроп ціна:</span><span style="color:var(--acc);font-weight:600">'+total.toFixed(2)+'₴</span></div>'+
+    (isPrepaid?'':'<div style="display:flex;justify-content:space-between"><span>Виплата дропу:</span><span style="color:'+(payout>=0?'var(--th)':'var(--red)')+';font-weight:600">'+payout.toFixed(2)+'₴</span></div>');
+}
+function toggleAnoPrepaid(){
+  var ch=document.getElementById("ano-prepaid").checked;
+  document.getElementById("ano-cod-wrap").style.display=ch?"none":"";
+  document.getElementById("ano-prepaid-wrap").style.display=ch?"":"none";
+  anoCalc();
+}
+function toggleAnoOwnTtn(){
+  var ch=document.getElementById("ano-own-ttn").checked;
+  if(ch){document.getElementById("ano-prepaid").checked=true;document.getElementById("ano-prepaid").disabled=true;toggleAnoPrepaid()}
+  else{document.getElementById("ano-prepaid").disabled=false}
+}
+async function uploadAnoReceipt(e){
+  var f=e.target.files[0];if(!f)return;var r=new FileReader;
+  r.onload=async function(){try{var d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});anoReceipt=d.url;document.getElementById("ano-receipt-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){alert(e.message)}};
+  r.readAsDataURL(f);e.target.value=""
+}
+// NP search for admin order
+var anoNpT=null;
+async function searchAnoCity(q){
+  clearTimeout(anoNpT);if(!q||q.length<2){document.getElementById("ano-city-dd").innerHTML="";return}
+  anoNpT=setTimeout(async()=>{try{var r=await api("/api/nova-poshta/search-city",{method:"POST",body:JSON.stringify({query:q})});
+  document.getElementById("ano-city-dd").innerHTML=r.cities.map(c=>'<div class="popup-dd-item" onclick="pickAnoCity(\''+(c.DeliveryCity||c.Ref)+'\',\''+c.Ref+'\',\''+esc(c.Present||c.MainDescription)+'\')">'+esc(c.Present||c.MainDescription)+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
+}
+function pickAnoCity(ref,settle,name){anoCityRef=ref;anoSettleRef=settle;document.getElementById("ano-city").value=name;document.getElementById("ano-city-dd").innerHTML="";document.getElementById("ano-wh").value="";document.getElementById("ano-wh-dd").innerHTML=""}
+async function searchAnoWh(q){
+  clearTimeout(anoNpT);if(!anoCityRef){document.getElementById("ano-wh-dd").innerHTML='<div style="padding:6px;color:var(--td);font-size:11px">Спочатку оберіть місто</div>';return}
+  anoNpT=setTimeout(async()=>{try{var r=await api("/api/nova-poshta/search-warehouse",{method:"POST",body:JSON.stringify({city_ref:anoCityRef,settle_ref:anoSettleRef,query:q||""})});
+  document.getElementById("ano-wh-dd").innerHTML=r.warehouses.slice(0,10).map(w=>'<div class="popup-dd-item" onclick="pickAnoWh(\''+esc(w.Description)+'\','+(w.CategoryOfWarehouse==="Postomat")+')">'+esc(w.Description)+(w.CategoryOfWarehouse==="Postomat"?' <span style="color:var(--acc);font-size:9px">(поштомат)</span>':'')+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
+}
+function pickAnoWh(name,isPostomat){document.getElementById("ano-wh").value=name;document.getElementById("ano-wh-dd").innerHTML="";anoIsPostomat=!!isPostomat;document.getElementById("ano-postomat-wrap").style.display=anoIsPostomat?"":"none"}
+// Catalog picker for admin order
+async function openAnoCatPicker(){
+  document.getElementById("ano-cat-search").value="";
+  anoChannel="hot";document.getElementById("anoc-hot").classList.add("on");document.getElementById("anoc-ads").classList.remove("on");
+  await loadAnoCatalog();openM("ano-cat-modal");
+}
+async function loadAnoCatalog(){
+  document.getElementById("ano-cat-list").innerHTML='<div style="text-align:center;padding:20px;color:var(--td)">Завантаження...</div>';
+  document.getElementById("anoc-hot").classList.toggle("on",anoChannel==="hot");
+  document.getElementById("anoc-ads").classList.toggle("on",anoChannel==="ads");
+  try{var r=await api("/api/variations?channel="+anoChannel);anoCatalog=r.variations;filterAnoCatalog("")}catch(e){}
+}
+function filterAnoCatalog(q){
+  q=q.toLowerCase();var list=q?anoCatalog.filter(v=>(v.name||"").toLowerCase().includes(q)||(v.base_name||"").toLowerCase().includes(q)||(v.model_name||"").toLowerCase().includes(q)):anoCatalog;
+  document.getElementById("ano-cat-list").innerHTML=list.length?list.map(v=>{
+    var ph=v.photo||v.print_photo||"";var price=v.drop_price_override||v.drop_price||v.model_drop_price||0;
+    var stockArr=Object.entries(v.stock||{}).filter(([k,qty])=>qty>0);
+    return '<div style="display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--brd);align-items:flex-start">'+(ph?'<img src="'+ph+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>')+
+    '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(v.name||v.base_name)+'</div><div style="font-size:11px;color:var(--td)">'+esc(v.model_name||"")+'</div><div style="font-size:13px;font-weight:700;color:var(--acc);margin-top:2px">'+price+'₴</div>'+
+    (stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(([sid,qty])=>{var sz=CC.sizes.find(s=>s.id==sid);return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px" onclick="addAnoItem('+v.id+','+sid+',\''+esc(sz?.name||sid)+'\',\''+esc(v.name||v.base_name)+'\','+price+',\''+esc(ph)+'\','+(v.model_weight||0.3)+')">'+esc(sz?.name||sid)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>')+
+    '</div></div>'
+  }).join(""):'<div style="padding:20px;text-align:center;color:var(--td)">Не знайдено</div>';
+}
+function addAnoItem(varId,sizeId,sizeName,name,price,photo,weight){
+  var existing=anoItems.find(it=>it.variation_id===varId&&it.size_id===sizeId);
+  if(existing){existing.quantity++;renderAnoItems();closeM("ano-cat-modal");return}
+  anoItems.push({variation_id:varId,size_id:sizeId,size_name:sizeName,name:name,drop_price:price,photo:photo,quantity:1,kit_id:null,weight:weight||0.3});
+  renderAnoItems();closeM("ano-cat-modal");
+}
+async function submitAdmOrder(){
+  var el=document.getElementById("ano-err");el.style.display="none";
+  if(!anoItems.length){el.textContent="Додайте товари";el.style.display="";return}
+  var name=document.getElementById("ano-name").value.trim();if(!name){el.textContent="Вкажіть ПІБ";el.style.display="";return}
+  var phone=document.getElementById("ano-phone").value.trim();if(!phone){el.textContent="Вкажіть телефон";el.style.display="";return}
+  var isPrepaid=document.getElementById("ano-prepaid").checked;
+  var ownTtn=document.getElementById("ano-own-ttn").checked;
+  if((isPrepaid||ownTtn)&&!anoReceipt){el.textContent="Завантажте скрін чеку";el.style.display="";return}
+  if(anoDeliveryType!=="pickup"&&!document.getElementById("ano-city").value){el.textContent="Вкажіть місто";el.style.display="";return}
+  if(anoDeliveryType==="warehouse"&&!document.getElementById("ano-wh").value){el.textContent="Вкажіть відділення";el.style.display="";return}
+  if(anoDeliveryType==="courier"&&!document.getElementById("ano-street").value){el.textContent="Вкажіть вулицю";el.style.display="";return}
+  if(anoDeliveryType==="courier"&&!document.getElementById("ano-house").value){el.textContent="Вкажіть номер будинку";el.style.display="";return}
+  var data={dropshipper_id:parseInt(document.getElementById("ano-drop").value),items:anoItems.map(it=>({variation_id:it.variation_id,size_id:it.size_id,quantity:it.quantity,kit_id:it.kit_id})),client_name:name,client_phone:phone,client_city:document.getElementById("ano-city").value,client_warehouse:document.getElementById("ano-wh").value,cod_amount:parseFloat(document.getElementById("ano-cod").value)||0,is_prepaid:isPrepaid,own_ttn:ownTtn,receipt_photo:anoReceipt,declared_value:parseFloat(document.getElementById("ano-dval").value)||0,note:document.getElementById("ano-note").value,cargo_description:document.getElementById("ano-cargo-desc").value||"Одяг",weight:parseFloat(document.getElementById("ano-weight").value)||0.5,delivery_type:anoDeliveryType,client_street:document.getElementById("ano-street").value,client_house:document.getElementById("ano-house").value,client_flat:document.getElementById("ano-flat").value,is_postomat:anoIsPostomat,parcel_width:parseFloat(document.getElementById("ano-pw").value)||0,parcel_height:parseFloat(document.getElementById("ano-ph").value)||0,parcel_length:parseFloat(document.getElementById("ano-pl").value)||0};
+  try{await api("/api/orders",{method:"POST",body:JSON.stringify(data)});closeM("ano-modal");loadAdmOrders(admOrdFilter)}catch(e){el.textContent=e.message;el.style.display=""}
+}
+
 async function fetchRetCost(id){
   try{var r=await api("/api/orders/"+id+"/fetch-return-cost",{method:"POST"});
   var msg="Зворотня ТТН: "+(r.return_ttn||"не знайдена")+"\nСума повернення: "+r.return_cost+"₴";
@@ -1034,8 +1449,7 @@ function renderReturns(orders){
       '<div style="padding:4px 14px 10px">'+o.items.map(function(it){var ph=it.var_photo||it.print_photo||it.bp_photo;
         return '<div style="display:flex;gap:8px;padding:4px 0;align-items:center;border-top:1px solid var(--brd);">'+(ph?'<img src="'+ph+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+
         '<div style="flex:1;font-size:11px;color:var(--th)">'+esc(it.var_name)+' <b style="color:var(--acc)">'+esc(it.size_name)+'</b></div>'+
-        '<div style="font-size:10px;color:'+(it.returned_to_stock?'var(--acc)':'var(--red)')+'">'+(it.returned_to_stock?Icon('check',11)+' На складі':Icon('refreshCw',11)+' Очікує')+'</div>'+
-        (!it.returned_to_stock?'<button class="btn btn-sm btn-p" onclick="admRetItem('+it.id+',this)" style="font-size:9px">'+Icon('package',10)+' На склад</button>':'')+
+        (it.returned_to_stock?'<div style="font-size:10px;color:'+(it.return_condition==="damaged"?"var(--red)":"var(--acc)")+'">'+Icon('check',11)+' '+(it.return_condition==="damaged"?"Брак списано":"На складі")+'</div>':'<div style="display:flex;gap:4px"><button class="btn btn-sm btn-p" onclick="admRetItem('+it.id+',this,\'good\')" style="font-size:9px">'+Icon('check',10)+' Придатний</button><button class="btn btn-sm btn-d" onclick="admRetItem('+it.id+',this,\'damaged\')" style="font-size:9px">'+Icon('x',10)+' Брак</button></div>')+
         '</div>'}).join("")+'</div></div>'
   }).join(""):'<div class="empty"><span class="ic">'+Icon('undo2',40)+'</span>Немає повернень</div>';
 }
@@ -1046,14 +1460,97 @@ async function admScanReturn(ttn){
   el.innerHTML='<div class="msg msg-ok">'+Icon('check',13)+' Повернення #'+o.id+' · '+esc(o.client_name)+' зареєстровано</div>';
   loadAdmReturns()}catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
 }
-async function admRetItem(id,btn){try{await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({})});btn.parentElement.querySelector("div:nth-child(3)").innerHTML=Icon('check',11)+' На складі';btn.parentElement.querySelector("div:nth-child(3)").style.color='var(--acc)';btn.remove()}catch(e){}}
+async function admRetItem(id,btn,condition){
+  try{
+    await api("/api/order-items/"+id+"/return-to-stock",{method:"POST",body:JSON.stringify({condition:condition})});
+    var wrap=btn.parentElement;
+    wrap.outerHTML='<div style="font-size:10px;color:'+(condition==="damaged"?"var(--red)":"var(--acc)")+'">'+Icon('check',11)+' '+(condition==="damaged"?"Брак списано":"На складі")+'</div>';
+  }catch(e){}
+}
+
+function setAccPeriod(days){
+  document.querySelectorAll('#ac-7,#ac-15,#ac-30').forEach(function(b){b.classList.remove("on")});
+  document.getElementById("ac-"+days).classList.add("on");
+  var end=new Date();var start=new Date(end.getTime()-(days-1)*86400000);
+  function fmt(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+  document.getElementById("ac-df").value=fmt(start);
+  document.getElementById("ac-dt").value=fmt(end);
+  loadAccounting();
+}
+async function loadAccounting(){
+  var df=document.getElementById("ac-df").value,dt=document.getElementById("ac-dt").value;
+  try{
+    var r=await api("/api/dashboard/accounting"+(df&&dt?"?date_from="+df+"&date_to="+dt:""));
+    document.getElementById("accounting-list").innerHTML=r.days.length?'<table class="tbl"><tr><th>Дата</th><th>Доставлено</th><th>Наложка</th><th>Дроп ціна</th><th>Заробіток</th><th>Відмов</th><th>Відправлено</th></tr>'+r.days.map(function(d){
+      return '<tr><td style="color:var(--th);font-weight:600">'+d.day+'</td>'+
+        '<td class="mono">'+d.delivered+'</td>'+
+        '<td class="mono" style="color:var(--th)">'+d.cod.toFixed(2)+'₴</td>'+
+        '<td class="mono" style="color:var(--td)">'+d.drop_sum.toFixed(2)+'₴</td>'+
+        '<td class="mono" style="color:var(--acc);font-weight:600">'+(d.cod-d.drop_sum).toFixed(2)+'₴</td>'+
+        '<td class="mono" style="color:var(--red)">'+d.refused+'</td>'+
+        '<td class="mono" style="color:var(--blue)">'+d.shipped+'</td></tr>';
+    }).join("")+'</table>':'<div class="empty"><span class="ic">'+Icon('banknote',40)+'</span>Немає даних за цей період</div>';
+  }catch(e){}
+}
 
 var slFilter='';
 async function loadStockLog(){
   try{const{logs}=await api("/api/stock-log"+(slFilter?"?type="+slFilter:""));
-  var tl={incoming:Icon('download',13)+" Прихід",writeoff:Icon('upload',13)+" Списання",swap:Icon('refreshCw',13)+" Заміна",cut_in:Icon('scissors',13)+" Крій +",cut_out:Icon('scissors',13)+" Крій →"};
-  var tc={incoming:"var(--acc)",writeoff:"var(--red)",swap:"var(--warn)",cut_in:"var(--blue)",cut_out:"var(--warn)"};
+  var tl={incoming:Icon('download',13)+" Прихід",writeoff:Icon('upload',13)+" Списання",swap:Icon('refreshCw',13)+" Заміна",cut_in:Icon('scissors',13)+" Крій +",cut_out:Icon('scissors',13)+" Крій →",recount:Icon('clipboardList',13)+" Переоблік"};
+  var tc={incoming:"var(--acc)",writeoff:"var(--red)",swap:"var(--warn)",cut_in:"var(--blue)",cut_out:"var(--warn)",recount:"var(--acc)"};
   document.getElementById("stocklog-list").innerHTML=logs.length?'<table class="tbl"><tr><th>Дата</th><th>Тип</th><th>Товар</th><th>Розмір</th><th>Кіл.</th><th>Примітка</th><th>Хто</th></tr>'+logs.map(function(l){return '<tr><td style="font-size:10px;color:var(--td);white-space:nowrap">'+(l.created_at?.slice(0,16)||"")+'</td><td style="color:'+( tc[l.type]||"var(--t)")+';font-weight:600;font-size:11px">'+(tl[l.type]||l.type)+'</td><td style="color:var(--th);font-size:11px">'+esc(l.product_name||"—")+'</td><td style="color:var(--acc);font-weight:600">'+esc(l.size_name||"—")+'</td><td style="font-family:JetBrains Mono,monospace;font-weight:700;color:'+(l.type==="writeoff"?"var(--red)":"var(--th)")+'">'+l.quantity+'</td><td style="font-size:10px;color:var(--td)">'+esc(l.note||"")+'</td><td style="font-size:10px;color:var(--blue)">'+esc(l.user_name||"")+'</td></tr>'}).join("")+'</table>':'<div class="empty"><span class="ic">'+Icon('barChart3',40)+'</span>Немає записів</div>'}catch(e){}
+}
+
+// ── Переоблік (recount) ──────────────────────────────────────────
+let rcProducts=[],rcSizes=[],rcCatP=null,rcChanges={};
+async function loadRecount(){
+  rcChanges={};renderRcChanges();
+  const cd=await api(`/api/categories?parent_id=${rcCatP||""}&scope=base`);
+  let bc='<div class="bread"><a onclick="rcCatP=null;loadRecount()">'+Icon('package',13)+' Всі товари</a>';
+  cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="rcCatP=${b.id};loadRecount()">${esc(b.name)}</a>`});
+  bc+="</div>";document.getElementById("rc-bread").innerHTML=bc;
+  document.getElementById("rc-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="rcCatP=${c.id};loadRecount()">
+    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:Icon('folder',28)}</div>
+    <div class="crd-body"><div class="crd-name">${esc(c.name)}</div></div></div>`).join("");
+  const url=rcCatP?"/api/base-products?category_id="+rcCatP:"/api/base-products";
+  const d=await api(url);rcProducts=d.products;rcSizes=d.sizes;
+  document.getElementById("rc-search").value="";
+  renderRecount(rcProducts);
+}
+function renderRecount(products){
+  const el=document.getElementById("rc-list");
+  if(!products.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('package',40)+'</span>Порожньо</div>';return}
+  el.innerHTML=products.map(p=>{
+    const szs=rcSizes.filter(s=>p.stock[s.id]!==undefined);
+    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:center">'+
+      (p.photo?'<img src="'+p.photo+'" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:48px;height:48px;border-radius:8px;background:var(--bg);flex-shrink:0"></div>')+
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+szs.map(function(s){
+        const q=p.stock[s.id]||0;
+        return '<div style="text-align:center"><div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(s.name)+'</div><input type="number" value="'+q+'" data-bp="'+p.id+'" data-size="'+s.id+'" data-orig="'+q+'" style="width:56px;padding:5px;font-size:12px;text-align:center;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff" onchange="rcMarkChange(this)"></div>';
+      }).join("")+'</div></div></div>';
+  }).join("");
+}
+function searchRecount(q){if(!q){renderRecount(rcProducts);return}renderRecount(rcProducts.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())))}
+function rcMarkChange(input){
+  const bp=input.dataset.bp,size=input.dataset.size,orig=parseInt(input.dataset.orig),val=parseInt(input.value)||0;
+  const key=bp+"_"+size;
+  if(val===orig){delete rcChanges[key];input.style.borderColor="var(--brd)";input.style.color="#fff"}
+  else{rcChanges[key]={base_product_id:parseInt(bp),size_id:parseInt(size),actual_quantity:val,orig:orig};input.style.borderColor="var(--warn)";input.style.color="var(--warn)"}
+  renderRcChanges();
+}
+function renderRcChanges(){
+  const n=Object.keys(rcChanges).length;
+  document.getElementById("rc-changes").innerHTML=n?'<span style="color:var(--warn);font-weight:600">'+n+' зміна(-и) не збережено</span>':'Немає змін';
+}
+async function applyRecount(){
+  const adjustments=Object.values(rcChanges).map(function(c){return{base_product_id:c.base_product_id,size_id:c.size_id,actual_quantity:c.actual_quantity}});
+  if(!adjustments.length){alert("Немає змін для збереження");return}
+  try{
+    const r=await api("/api/recount/apply",{method:"POST",body:JSON.stringify({adjustments:adjustments})});
+    alert("Збережено: "+r.changed+" змін(и)");
+    loadRecount();
+  }catch(e){alert(e.message)}
 }
 
 // Admin create TTN
@@ -1113,8 +1610,18 @@ const WL={packer:"Пакувальник",printer:"Принтувальник",s
 let dsDropId=null;
 async function viewDropStats(id,name){
   dsDropId=id;document.getElementById("ds-title").textContent=name;
+  document.getElementById("ds-payout-msg").innerHTML="";
   var d=new Date();document.getElementById("ds-to").value=d.toISOString().slice(0,10);d.setDate(d.getDate()-30);document.getElementById("ds-from").value=d.toISOString().slice(0,10);
   openM("drop-stats-modal");loadDropStats();
+}
+async function genDropPayout(){
+  if(!dsDropId)return;
+  var msg=document.getElementById("ds-payout-msg");
+  msg.innerHTML='<span style="color:var(--td);font-size:11px">'+Icon('refreshCw',12)+' Формування...</span>';
+  try{
+    var r=await api("/api/payouts/request",{method:"POST",body:JSON.stringify({dropshipper_id:dsDropId})});
+    msg.innerHTML='<span style="color:var(--acc);font-size:12px">'+Icon('check',13)+' Виплату сформовано: '+r.total.toFixed(2)+'₴</span>';
+  }catch(e){msg.innerHTML='<span style="color:var(--red);font-size:11px">'+Icon('x',12)+' '+esc(e.message)+'</span>'}
 }
 async function loadDropStats(){
   if(!dsDropId)return;var df=document.getElementById("ds-from").value;var dt=document.getElementById("ds-to").value;
@@ -1129,7 +1636,41 @@ async function loadDropStats(){
   }catch(e){document.getElementById("ds-grid").innerHTML='<div style="color:var(--red)">Помилка</div>'}
 }
 
-async function loadDrops(){const{users:u}=await api("/api/users?role=dropshipper");document.getElementById("drop-list").innerHTML=!u.length?'<div class="empty"><span class="ic">'+Icon('shoppingCart',40)+'</span>Немає</div>':`<table class="tbl"><tr><th>Ім'я</th><th>Логін</th><th>Знижка</th><th>Стан</th><th></th></tr>${u.map(x=>`<tr style="cursor:pointer" onclick="viewDropStats(${x.id},'${esc(x.name).replace(/'/g,"")}')"><td style="color:var(--th)">${esc(x.name)}</td><td class="mono">${esc(x.username)}</td><td>${x.discount_percent?x.discount_percent+"%":""}${x.discount_fixed?" "+x.discount_fixed+"₴":""}</td><td>${x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>'}</td><td><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editU(${x.id},'dropshipper')">${Icon('pencil',13)}</button></td></tr>`).join("")}</table>`}
+var dropsLeaderboard=[];
+function setDropsPeriod(days){
+  document.querySelectorAll('#dl-7,#dl-15,#dl-30').forEach(function(b){b.classList.remove("on")});
+  document.getElementById("dl-"+days).classList.add("on");
+  var end=new Date();var start=new Date(end.getTime()-(days-1)*86400000);
+  function fmt(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+  document.getElementById("dl-df").value=fmt(start);
+  document.getElementById("dl-dt").value=fmt(end);
+  loadDrops();
+}
+async function loadDrops(){
+  var df=document.getElementById("dl-df").value,dt=document.getElementById("dl-dt").value;
+  try{
+    var r=await api("/api/dropshippers/leaderboard"+(df&&dt?"?date_from="+df+"&date_to="+dt:""));
+    dropsLeaderboard=r.items;
+    renderDropsList();
+  }catch(e){}
+}
+function renderDropsList(){
+  var q=(document.getElementById("dl-search")?.value||"").toLowerCase();
+  var list=dropsLeaderboard.filter(function(x){return !q||x.name.toLowerCase().includes(q)||x.username.toLowerCase().includes(q)});
+  document.getElementById("drop-list").innerHTML=!list.length?'<div class="empty"><span class="ic">'+Icon('shoppingCart',40)+'</span>Немає</div>':list.map(function(x){
+    var srClass=x.success_rate>=70?"":(x.success_rate>=40?"low":"zero");
+    return '<div class="pcard" style="cursor:pointer" onclick="viewDropStats('+x.id+',\''+esc(x.name).replace(/'/g,"")+'\')">'+
+      '<div class="pcard-body">'+
+      '<div class="pcard-name">'+esc(x.name)+' <span style="color:var(--td);font-size:10px;font-weight:400">#'+x.id+'</span></div>'+
+      '<div class="pcard-sub">@'+esc(x.username)+' · '+(x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>')+((x.balance||0)>0?' · <span style="color:var(--acc);font-weight:700">Баланс: '+(x.balance||0).toFixed(0)+'₴</span>':'')+'</div>'+
+      '<div class="stock-row" style="margin-top:8px">'+
+        '<div class="stock-sz"><b>'+x.total+'</b><br>замовлень</div>'+
+        '<div class="stock-sz '+srClass+'"><b>'+x.success_rate+'%</b><br>успішних</div>'+
+      '</div>'+
+      '<div style="margin-top:8px;text-align:right"><button class="btn btn-sm" onclick="event.stopPropagation();openDropBalance('+x.id+',\''+esc(x.name).replace(/'/g,"")+'\')">'+Icon('wallet',13)+'</button> <button class="btn btn-sm btn-a" onclick="event.stopPropagation();editU('+x.id+',\'dropshipper\')">'+Icon('pencil',13)+'</button></div>'+
+      '</div></div>';
+  }).join("");
+}
 var ROLES={packer:Icon('hardHat',12)+" Пакувальник",finalizer:Icon('package',12)+" Пакувальниця",seamstress:Icon('shirt',12)+" Швея",printer:Icon('printer',12)+" Принтувальник"};
 async function loadWorkers(){
   try{var r=await api("/api/workers");
@@ -1173,28 +1714,73 @@ async function openWorkerDetail(id){
   document.getElementById("wkd-title").textContent=w.name;document.getElementById("wkd-body").innerHTML=html;openM("wk-detail-modal")}catch(e){}
 }
 async function payWorker(id){if(!confirm("Виплатити?"))return;try{await api("/api/workers/"+id+"/pay",{method:"POST"});closeM("wk-detail-modal");loadWorkers()}catch(e){}}
-function openUM(role){editUID=null;editUR=role;document.getElementById("um-t").textContent=role==="dropshipper"?"Новий дроп":"Новий працівник";["um-user","um-pass","um-name","um-phone","um-tg"].forEach(id=>document.getElementById(id).value="");document.getElementById("um-user").disabled=false;document.getElementById("um-drop").style.display=role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=role==="warehouse"?"block":"none";document.getElementById("um-del").style.display="none";document.getElementById("um-err").style.display="none";openM("user-modal")}
-async function editU(id,role){const{user:u}=await api("/api/users/"+id);editUID=id;editUR=role||u.role;document.getElementById("um-t").textContent=u.name;document.getElementById("um-user").value=u.username;document.getElementById("um-user").disabled=true;document.getElementById("um-pass").value="";document.getElementById("um-name").value=u.name;document.getElementById("um-phone").value=u.phone;document.getElementById("um-tg").value=u.telegram;document.getElementById("um-drop").style.display=u.role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=u.role==="warehouse"?"block":"none";if(u.role==="dropshipper"){document.getElementById("um-dp").value=u.discount_percent;document.getElementById("um-df").value=u.discount_fixed}if(u.role==="warehouse"){document.getElementById("um-wr").value=u.worker_role;document.getElementById("um-wrt").value=u.worker_rate}document.getElementById("um-del").style.display="block";document.getElementById("um-err").style.display="none";openM("user-modal")}
-async function saveUser(){const err=document.getElementById("um-err");err.style.display="none";const d={username:document.getElementById("um-user").value,password:document.getElementById("um-pass").value,role:editUR,name:document.getElementById("um-name").value,phone:document.getElementById("um-phone").value,telegram:document.getElementById("um-tg").value,discount_percent:parseFloat(document.getElementById("um-dp")?.value)||0,discount_fixed:parseFloat(document.getElementById("um-df")?.value)||0,worker_role:document.getElementById("um-wr")?.value||"",worker_rate:parseFloat(document.getElementById("um-wrt")?.value)||0,active:1};try{if(editUID)await api("/api/users/"+editUID,{method:"PUT",body:JSON.stringify(d)});else await api("/api/users",{method:"POST",body:JSON.stringify(d)});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}}
+function openUM(role){editUID=null;editUR=role;document.getElementById("um-t").textContent=role==="dropshipper"?"Новий дроп":"Новий працівник";["um-user","um-pass","um-name","um-phone","um-tg"].forEach(id=>document.getElementById(id).value="");document.getElementById("um-user").disabled=false;document.getElementById("um-drop").style.display=role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=role==="warehouse"?"block":"none";if(role==="warehouse"){document.getElementById("um-wr").value="";document.getElementById("um-wrt").value="0";document.getElementById("um-wh").value=""}document.getElementById("um-del").style.display="none";document.getElementById("um-err").style.display="none";openM("user-modal")}
+async function editU(id,role){const{user:u}=await api("/api/users/"+id);editUID=id;editUR=role||u.role;document.getElementById("um-t").textContent=u.name;document.getElementById("um-user").value=u.username;document.getElementById("um-user").disabled=true;document.getElementById("um-pass").value="";document.getElementById("um-name").value=u.name;document.getElementById("um-phone").value=u.phone;document.getElementById("um-tg").value=u.telegram;document.getElementById("um-drop").style.display=u.role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=u.role==="warehouse"?"block":"none";if(u.role==="dropshipper"){document.getElementById("um-dp").value=u.discount_percent;document.getElementById("um-df").value=u.discount_fixed}if(u.role==="warehouse"){document.getElementById("um-wr").value=u.worker_role;document.getElementById("um-wrt").value=u.worker_rate;document.getElementById("um-wh").value=u.assigned_warehouse||""}document.getElementById("um-del").style.display="block";document.getElementById("um-err").style.display="none";openM("user-modal")}
+async function saveUser(){const err=document.getElementById("um-err");err.style.display="none";const d={username:document.getElementById("um-user").value,password:document.getElementById("um-pass").value,role:editUR,name:document.getElementById("um-name").value,phone:document.getElementById("um-phone").value,telegram:document.getElementById("um-tg").value,discount_percent:parseFloat(document.getElementById("um-dp")?.value)||0,discount_fixed:parseFloat(document.getElementById("um-df")?.value)||0,worker_role:document.getElementById("um-wr")?.value||"",worker_rate:parseFloat(document.getElementById("um-wrt")?.value)||0,assigned_warehouse:document.getElementById("um-wh")?.value||"",active:1};try{if(editUID)await api("/api/users/"+editUID,{method:"PUT",body:JSON.stringify(d)});else await api("/api/users",{method:"POST",body:JSON.stringify(d)});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}}
 async function delUser(){if(!editUID||!confirm("Видалити?"))return;await api("/api/users/"+editUID,{method:"DELETE"});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}
 
+var balUserId=null;
+async function openDropBalance(id,name){
+  balUserId=id;
+  document.getElementById("bal-title").innerHTML=Icon('wallet',16)+' Баланс: '+esc(name);
+  document.getElementById("bal-sum").value="";document.getElementById("bal-type").value="deposit";document.getElementById("bal-note").value="";
+  document.getElementById("bal-err").style.display="none";
+  try{var r=await api("/api/users/"+id+"/balance");
+  document.getElementById("bal-amount").textContent=(r.balance||0).toFixed(0)+"₴";
+  document.getElementById("bal-history").innerHTML=r.transactions.length?r.transactions.map(function(t){
+    var col=t.amount>0?"var(--acc)":"var(--red)";
+    return '<div style="padding:6px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;display:flex;justify-content:space-between"><div><div style="font-size:11px;color:var(--th)">'+(t.type==="deposit"?"Поповнення":t.type==="withdraw"?"Списання":t.type==="order"?"Замовлення #"+t.oid:t.type)+'</div><div style="font-size:9px;color:var(--td)">'+(t.note?esc(t.note)+" · ":"")+(t.created_at?.slice(0,16)||"")+'</div></div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:'+col+'">'+(t.amount>0?"+":"")+t.amount.toFixed(0)+'₴</div></div>'
+  }).join(""):'<div style="font-size:11px;color:var(--td)">Немає транзакцій</div>'}catch(e){}
+  openM("bal-modal");
+}
+async function submitBalance(){
+  var err=document.getElementById("bal-err");err.style.display="none";
+  var sum=parseFloat(document.getElementById("bal-sum").value);
+  if(!sum||sum<=0){err.textContent="Введіть суму";err.style.display="block";return}
+  var type=document.getElementById("bal-type").value;
+  var amount=type==="withdraw"?-sum:sum;
+  try{var r=await api("/api/users/"+balUserId+"/balance",{method:"POST",body:JSON.stringify({amount:amount,type:type,note:document.getElementById("bal-note").value})});
+  document.getElementById("bal-amount").textContent=(r.balance||0).toFixed(0)+"₴";
+  document.getElementById("bal-sum").value="";document.getElementById("bal-note").value="";
+  openDropBalance(balUserId,"");loadDrops()}catch(e){err.textContent=e.message;err.style.display="block"}
+}
+
 // ── Settings ─────────────────────────────────────────────────────
-async function loadSets(){try{const{settings:s}=await api("/api/settings");Object.entries(s).forEach(([k,v])=>{const el=document.getElementById("s-"+k);if(el)el.value=v})}catch(e){}loadNpSenders()}
+async function loadSets(){try{const{settings:s}=await api("/api/settings");Object.entries(s).forEach(([k,v])=>{const el=document.getElementById("s-"+k);if(el)el.value=v})}catch(e){}loadNpSenders();loadOrderStatuses()}
 async function loadNpSenders(){
   try{const{senders}=await api("/api/np-senders");
   document.getElementById("np-senders-list").innerHTML=senders.length?senders.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px;border:1px solid '+(s.is_active?'var(--acc)':'var(--brd)')+'"><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+(s.is_active?' <span class="tag tag-g">активний</span>':'')+'</div><div style="font-size:10px;color:var(--td)">'+esc(s.phone)+' · '+esc(s.address_description||"")+'</div></div>'+(s.is_active?'':'<button class="btn btn-sm btn-p" onclick="activateNpSender('+s.id+')" style="font-size:9px">'+Icon('check',10)+' Активувати</button>')+'<button class="btn btn-sm btn-d" onclick="deleteNpSender('+s.id+')" style="font-size:9px">'+Icon('x',10)+'</button></div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає контрагентів</div>'}catch(e){}
 }
 async function addNpSender(){
-  const name=document.getElementById("np-add-name").value;const phone=document.getElementById("np-add-phone").value;
+  const name=document.getElementById("np-add-name").value;const phone=document.getElementById("np-add-phone").value;const api_key=document.getElementById("np-add-key").value;
   const msg=document.getElementById("np-msg");msg.innerHTML='<span style="color:var(--blue)">'+Icon('refreshCw',12)+' Пошук контрагента в НП...</span>';
-  try{await api("/api/np-senders",{method:"POST",body:JSON.stringify({name,phone})});document.getElementById("np-add-name").value="";document.getElementById("np-add-phone").value="";msg.innerHTML='<span style="color:var(--acc)">'+Icon('check',13)+' Додано</span>';loadNpSenders()}catch(e){msg.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
+  try{await api("/api/np-senders",{method:"POST",body:JSON.stringify({name,phone,api_key})});document.getElementById("np-add-name").value="";document.getElementById("np-add-phone").value="";document.getElementById("np-add-key").value="";msg.innerHTML='<span style="color:var(--acc)">'+Icon('check',13)+' Додано</span>';loadNpSenders()}catch(e){msg.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
 }
 async function activateNpSender(id){await api("/api/np-senders/"+id+"/activate",{method:"PUT"});loadNpSenders()}
 async function deleteNpSender(id){if(!confirm("Видалити?"))return;await api("/api/np-senders/"+id,{method:"DELETE"});loadNpSenders()}
+async function loadOrderStatuses(){
+  try{const{statuses}=await api("/api/order-statuses");
+  document.getElementById("order-statuses-list").innerHTML=statuses.length?statuses.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px"><div style="width:18px;height:18px;border-radius:4px;background:'+esc(s.color)+'"></div><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+' <span style="color:var(--td);font-size:10px;font-weight:normal">('+esc(s.code)+')</span>'+(s.is_system?' <span class="tag" style="background:var(--brd);color:var(--td)">system</span>':'')+'</div></div>'+(s.is_system?'':'<button class="btn btn-sm btn-d" onclick="deleteOrderStatus('+s.id+')" style="font-size:9px">'+Icon('x',10)+'</button>')+'</div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає статусів</div>'}catch(e){}
+}
+async function addOrderStatus(){
+  const code=document.getElementById("st-add-code").value.trim().toLowerCase().replace(/\s+/g,"_");
+  const name=document.getElementById("st-add-name").value.trim();
+  const color=document.getElementById("st-add-color").value;
+  const msg=document.getElementById("st-msg");
+  if(!code||!name){msg.innerHTML='<span style="color:var(--red)">Код та назва обов\'язкові</span>';return}
+  try{await api("/api/order-statuses",{method:"POST",body:JSON.stringify({code,name,color})});document.getElementById("st-add-code").value="";document.getElementById("st-add-name").value="";document.getElementById("st-add-color").value="#888888";msg.innerHTML='<span style="color:var(--acc)">'+Icon('check',13)+' Додано</span>';loadOrderStatuses()}catch(e){msg.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
+}
+async function deleteOrderStatus(id){if(!confirm("Видалити статус?"))return;try{await api("/api/order-statuses/"+id,{method:"DELETE"});loadOrderStatuses()}catch(e){alert(e.message)}}
 async function saveSets(){const ks=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];const d={};ks.forEach(k=>{const el=document.getElementById("s-"+k);if(el)d[k]=el.value});try{await api("/api/settings",{method:"PUT",body:JSON.stringify(d)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">'+Icon('check',13)+'</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2e3)}catch(e){}}
 
-RangePicker.init("adm-df", "adm-dt");
-RangePicker.init("ds-from", "ds-to");
+RangePicker.init("adm-df", "adm-dt", {presets:[7,15,30]});
+RangePicker.init("ds-from", "ds-to", {presets:[7,15,30]});
+RangePicker.init("dpop-df", "dpop-dt", {presets:[7,15,30]});
+setDashPopPeriod(30);
+RangePicker.init("dl-df", "dl-dt", {presets:[7,15,30]});
+setDropsPeriod(30);
+RangePicker.init("ac-df", "ac-dt", {presets:[7,15,30]});
+setAccPeriod(30);
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
