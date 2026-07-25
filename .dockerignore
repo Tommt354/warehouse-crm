@@ -7,3 +7,4 @@ photos
 .gitignore
 thoughts
 *.log
+.env

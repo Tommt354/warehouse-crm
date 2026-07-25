@@ -35,6 +35,24 @@ app.get("/api/auth/me", authMiddleware, (req, res) => {
 });
 app.post("/api/auth/logout", (req, res) => { res.clearCookie("token"); res.json({ ok: true }); });
 
+// ── DEV QUICK LOGIN (local testing only) ──────────────────────────
+// Gated behind DEV_QUICK_LOGIN=1, which is only set in local .env
+// (gitignored, never deployed). Lets you switch between roles from the
+// login screen without typing credentials each time.
+app.get("/api/auth/dev-login-enabled", (req, res) => {
+  res.json({ enabled: process.env.DEV_QUICK_LOGIN === "1" });
+});
+app.post("/api/auth/dev-login/:role", (req, res) => {
+  if (process.env.DEV_QUICK_LOGIN !== "1") return res.status(404).json({ error: "Not found" });
+  const user = db.prepare("SELECT * FROM users WHERE role=? AND active=1 ORDER BY id LIMIT 1").get(req.params.role);
+  if (!user) return res.status(404).json({ error: "Немає користувача з такою роллю" });
+  db.prepare("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?").run(user.id);
+  res.cookie("token", createToken(user), { httpOnly: true, maxAge: 7*24*3600000, sameSite: "lax" });
+  let redirect = {admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse"}[user.role] || "/login";
+  if (user.role === "warehouse" && user.worker_role === "finalizer") redirect = "/finalizer";
+  res.json({ ok: true, redirect });
+});
+
 // ── USERS ────────────────────────────────────────────────────────
 app.get("/api/users", authMiddleware, requireRole("admin"), (req, res) => {
   const r = req.query.role;

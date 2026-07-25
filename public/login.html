@@ -25,6 +25,13 @@ html,body{display:flex;align-items:center;justify-content:center}
 .error{color:var(--error);font-size:12px;text-align:center;margin-top:16px;min-height:20px}
 .sp{display:inline-block;width:16px;height:16px;border:2px solid rgba(8,10,15,.3);border-top-color:var(--bg-deep);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* Dev quick-login — only rendered when the server has DEV_QUICK_LOGIN=1 */
+.dev-login{margin-top:20px;padding-top:20px;border-top:1px dashed var(--border-strong)}
+.dev-login-label{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;justify-content:center}
+.dev-login-label b{color:var(--warning);border:1px solid rgba(245,158,11,.3);background:var(--warning-soft);padding:2px 6px;border-radius:4px;font-size:9px}
+.dev-login-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.dev-login-btns button{flex:1;min-width:90px;padding:10px 12px;font-size:12px;font-family:inherit;font-weight:500;background:var(--bg-card);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-secondary);cursor:pointer;transition:all var(--duration-fast)}
+.dev-login-btns button:hover{color:var(--text-primary);border-color:var(--accent);background:var(--accent-soft)}
 </style>
 <script src="/public/icons.js"></script>
 </head>
@@ -39,10 +46,28 @@ html,body{display:flex;align-items:center;justify-content:center}
     <div class="field"><label>Пароль</label><input id="password" type="password" placeholder="Введіть пароль" autocomplete="current-password"></div>
     <button class="login-btn" id="login-btn" onclick="doLogin()">Увійти</button>
     <div class="error" id="error"></div>
+    <div class="dev-login" id="dev-login" style="display:none">
+      <div class="dev-login-label"><b>DEV</b> Швидкий вхід без пароля</div>
+      <div class="dev-login-btns">
+        <button onclick="devLogin('admin')">Адмін</button>
+        <button onclick="devLogin('dropshipper')">Дроп</button>
+        <button onclick="devLogin('warehouse')">Склад</button>
+      </div>
+    </div>
   </div>
 </div>
 <script>
 fetch("/api/auth/me").then(r=>{if(r.ok)return r.json();throw 0}).then(d=>{window.location.href="/"}).catch(()=>{});
+fetch("/api/auth/dev-login-enabled").then(r=>r.json()).then(d=>{if(d.enabled)document.getElementById("dev-login").style.display="block"}).catch(()=>{});
+async function devLogin(role){
+  const err=document.getElementById("error");err.textContent="";
+  try{
+    const r=await fetch("/api/auth/dev-login/"+role,{method:"POST"});
+    const d=await r.json();
+    if(!r.ok){err.textContent=d.error;return}
+    window.location.href=d.redirect||"/";
+  }catch(e){err.textContent="Помилка з'єднання"}
+}
 document.getElementById("password").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin()});
 document.getElementById("username").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("password").focus()});
 async function doLogin(){
