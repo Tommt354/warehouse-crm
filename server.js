@@ -442,7 +442,7 @@ app.post("/api/models/:id/add-color", authMiddleware, requireRole("admin"), (req
 app.get("/api/base-products", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
   const isReady = req.query.is_ready;
-  let q = `SELECT bp.*,m.name as model_name,m.is_ready_product,m.drop_channel,m.category_id,c.name as color_name,c.hex_code,cat.name as category_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN categories cat ON m.category_id=cat.id WHERE bp.active=1`;
+  let q = `SELECT bp.*,m.name as model_name,m.is_ready_product,m.drop_channel,m.category_id,m.main_warehouse,c.name as color_name,c.hex_code,cat.name as category_name FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN categories cat ON m.category_id=cat.id WHERE bp.active=1`;
   const params = [];
   if (cat) { q += " AND m.category_id=?"; params.push(parseInt(cat)); }
   if (isReady === "1") { q += " AND m.is_ready_product=1"; }
