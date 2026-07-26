@@ -481,6 +481,16 @@ addCol("orders","is_prepaid","INTEGER DEFAULT 0");
 addCol("orders","receipt_photo","TEXT DEFAULT ''");
 addCol("orders","declared_value","REAL DEFAULT 0");
 addCol("np_senders","api_key","TEXT DEFAULT ''");
+// A sender that ships from an NP branch (the overwhelmingly common case for
+// a business account) needs InternetDocument.SenderAddress to be that
+// branch's Warehouse ref, not a Counterparty custom-address ref — those are
+// two different NP object types and getCounterpartyAddresses only ever
+// returns the latter (empty for accounts that never set up a personal
+// pickup address). These columns store the admin's explicit branch pick.
+addCol("np_senders","sender_city_ref","TEXT DEFAULT ''");
+addCol("np_senders","sender_city_name","TEXT DEFAULT ''");
+addCol("np_senders","sender_warehouse_ref","TEXT DEFAULT ''");
+addCol("np_senders","sender_warehouse_desc","TEXT DEFAULT ''");
 addCol("orders","own_ttn","INTEGER DEFAULT 0");
 addCol("models","size_grid_photo","TEXT DEFAULT ''");
 addCol("orders","cargo_description","TEXT DEFAULT 'Одяг'");

@@ -1022,11 +1022,13 @@ app.post("/api/orders", authMiddleware, (req, res) => {
             const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
             const weight = o2.weight > 0 ? o2.weight : 0.5;
 
-            // Get sender city from counterparty addresses
-            const senderAddrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: sender.sender_ref, CounterpartyProperty: "Sender" });
-            const senderAddr = senderAddrs.data?.find(a => a.Ref === sender.address_ref) || senderAddrs.data?.[0];
-            const senderCity = senderAddr?.CityRef || "";
-            console.log("Auto-TTN sender city:", senderCity, senderAddr?.Description);
+            // Sender ships from an NP branch, so its city/warehouse are the
+            // ones the admin explicitly picked for this contractor — not
+            // something derivable from Counterparty.getCounterpartyAddresses
+            // (that call only ever returns custom courier-pickup addresses).
+            const senderCity = sender.sender_city_ref || "";
+            if (!senderCity || !sender.sender_warehouse_ref) { console.log("Auto-TTN skip: contractor has no sender city/warehouse set"); return; }
+            console.log("Auto-TTN sender city:", senderCity, sender.sender_warehouse_desc);
 
             // Create recipient counterparty
             const nameParts = o2.client_name.trim().split(/\s+/);
@@ -1427,7 +1429,7 @@ async function buildNpDocData(apiKey, sender, o, senderCity, recipRef, recipCont
     AfterpaymentOnGoodsCost: o.cod_amount > 0 ? String(o.cod_amount) : undefined,
     CitySender: senderCity,
     Sender: sender.sender_ref,
-    SenderAddress: sender.address_ref,
+    SenderAddress: sender.sender_warehouse_ref,
     ContactSender: sender.contact_ref,
     SendersPhone: cleanPhone(sender.phone),
     CityRecipient: cityData.DeliveryCity || cityData.Ref,
@@ -1559,14 +1561,31 @@ app.put("/api/np-senders/:id/resync", authMiddleware, requireRole("admin"), asyn
       match = { ref: c.Ref, contact: contacts.data?.[0]?.Ref || "" };
     }
 
-    const addrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: match.ref, CounterpartyProperty: "Sender" });
-    const addr = addrs.data?.[0];
-    if (!addr) return res.status(400).json({ error: "Не знайдено адресу відправника в НП для цього контрагента" });
+    // A custom courier-pickup address (getCounterpartyAddresses) is optional
+    // and no longer required — most business accounts ship from a branch
+    // instead, which is set separately via PUT /:id/warehouse.
+    let addrDesc = s.address_description || "";
+    try {
+      const addrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: match.ref, CounterpartyProperty: "Sender" });
+      if (addrs.data?.[0]) addrDesc = addrs.data[0].Description || "";
+    } catch (e) { /* no custom address — fine, sender ships from a branch */ }
 
-    db.prepare("UPDATE np_senders SET sender_ref=?,address_ref=?,contact_ref=?,address_description=?,api_key=? WHERE id=?")
-      .run(match.ref, addr.Ref, match.contact, addr.Description || "", apiKey, s.id);
-    res.json({ ok: true, address_description: addr.Description || "" });
+    db.prepare("UPDATE np_senders SET sender_ref=?,contact_ref=?,address_description=?,api_key=? WHERE id=?")
+      .run(match.ref, match.contact, addrDesc, apiKey, s.id);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }) }
+});
+
+// Sets which NP branch this contractor ships from — required for TTN
+// creation (see SenderAddress note on buildNpDocData above).
+app.put("/api/np-senders/:id/warehouse", authMiddleware, requireRole("admin"), (req, res) => {
+  const { city_ref, city_name, warehouse_ref, warehouse_desc } = req.body;
+  if (!city_ref || !warehouse_ref) return res.status(400).json({ error: "Оберіть місто і відділення" });
+  const s = db.prepare("SELECT id FROM np_senders WHERE id=?").get(req.params.id);
+  if (!s) return res.status(404).json({ error: "Контрагента не знайдено" });
+  db.prepare("UPDATE np_senders SET sender_city_ref=?,sender_city_name=?,sender_warehouse_ref=?,sender_warehouse_desc=? WHERE id=?")
+    .run(city_ref, city_name || "", warehouse_ref, warehouse_desc || "", req.params.id);
+  res.json({ ok: true });
 });
 
 // ── ORDER STATUSES ───────────────────────────────────────────────────
@@ -1627,15 +1646,15 @@ const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u 
     // Get active sender
     const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
     if (!sender) return res.status(400).json({ error: "Додайте контрагента НП і позначте його активним" });
+    if (!sender.sender_city_ref || !sender.sender_warehouse_ref) return res.status(400).json({ error: "У контрагента не вказано відділення відправлення — додайте його в Налаштуваннях" });
 
     const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
     const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 1;
     const weight = o.weight > 0 ? o.weight : Math.max(0.5, itemsCount * 0.3);
 
-    // Get sender city from counterparty addresses
-    const senderAddrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: sender.sender_ref, CounterpartyProperty: "Sender" });
-    const senderAddr = senderAddrs.data?.find(a => a.Ref === sender.address_ref) || senderAddrs.data?.[0];
-    const senderCity = senderAddr?.CityRef || "";
+    // Sender ships from an NP branch — its city/warehouse are whatever the
+    // admin explicitly picked for this contractor in Налаштування.
+    const senderCity = sender.sender_city_ref;
 
     // Create recipient counterparty
     const nameParts = o.client_name.trim().split(/\s+/);

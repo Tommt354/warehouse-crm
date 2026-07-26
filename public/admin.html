@@ -275,6 +275,15 @@
 <div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveTask()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('task-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="task-del-btn" style="display:none;margin-left:auto" onclick="deleteTask()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
 
+<!-- NP sender warehouse modal -->
+<div class="modal-bg" id="np-wh-modal"><div class="modal" style="max-width:420px"><h3><i data-icon="truck" data-size="16"></i> Відділення відправлення</h3>
+<div style="font-size:11px;color:var(--td);margin-bottom:8px" id="np-wh-sender-name"></div>
+<div class="fld"><label>Місто</label><input id="npwh2-city" placeholder="Місто..." oninput="searchNpwh2City(this.value)"><div id="npwh2-city-dd" style="max-height:130px;overflow-y:auto"></div></div>
+<div class="fld"><label>Відділення</label><input id="npwh2-wh" placeholder="№ відділення..." oninput="searchNpwh2Wh(this.value)" disabled><div id="npwh2-wh-dd" style="max-height:130px;overflow-y:auto"></div></div>
+<div id="npwh2-err" class="msg msg-err" style="display:none"></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveNpWarehouse()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('np-wh-modal')">Скасувати</button></div>
+</div></div>
+
 <div class="page" id="pg-payouts"><div class="pt"><i data-icon="wallet" data-size="17"></i> Виплати</div>
 <div style="margin-bottom:10px"><input id="pay-search" placeholder="Пошук по дропшиперу..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="filterPayouts()"></div>
 <div id="adm-payouts"></div>
@@ -347,6 +356,8 @@
     <div class="fld"><label>Телефон</label><input id="np-add-phone" placeholder="+380..."></div>
   </div>
   <div class="fld"><label>API Ключ цього контрагента</label><input id="np-add-key" placeholder="Ключ з кабінету НП цього контрагента"></div>
+  <div class="fld"><label>Відділення відправлення (звідки їдуть посилки)</label><input id="np-add-city" placeholder="Місто..." oninput="searchNpwhCity(this.value)"><div id="np-add-city-dd" style="max-height:130px;overflow-y:auto"></div></div>
+  <div class="fld"><input id="np-add-wh" placeholder="№ відділення..." oninput="searchNpwhWh(this.value)" disabled><div id="np-add-wh-dd" style="max-height:130px;overflow-y:auto"></div></div>
   <button class="btn btn-sm" style="border-color:rgba(124,134,255,.2);color:var(--acc);margin-bottom:10px" onclick="addNpSender()">+ Додати контрагента</button>
   <div id="np-msg" style="font-size:11px;margin-bottom:8px"></div>
   <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)"><div class="pt" style="font-size:14px"><i data-icon="tag" data-size="15"></i> Статуси замовлень</div></div>
@@ -1405,13 +1416,14 @@ async function uploadAnoReceipt(e){
   r.readAsDataURL(f);e.target.value=""
 }
 // NP search for admin order
-var anoNpT=null;
+var anoNpT=null,anoCityResults=[];
 async function searchAnoCity(q){
   clearTimeout(anoNpT);if(!q||q.length<2){document.getElementById("ano-city-dd").innerHTML="";return}
   anoNpT=setTimeout(async()=>{try{var r=await api("/api/nova-poshta/search-city",{method:"POST",body:JSON.stringify({query:q})});
-  document.getElementById("ano-city-dd").innerHTML=r.cities.map(c=>'<div class="popup-dd-item" onclick="pickAnoCity(\''+(c.DeliveryCity||c.Ref)+'\',\''+c.Ref+'\',\''+esc(c.Present||c.MainDescription)+'\')">'+esc(c.Present||c.MainDescription)+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
+  anoCityResults=r.cities;
+  document.getElementById("ano-city-dd").innerHTML=r.cities.map((c,i)=>'<div class="popup-dd-item" onclick="pickAnoCity('+i+')">'+esc(c.Present||c.MainDescription)+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
 }
-function pickAnoCity(ref,settle,name){anoCityRef=ref;anoSettleRef=settle;document.getElementById("ano-city").value=name;document.getElementById("ano-city-dd").innerHTML="";document.getElementById("ano-wh").value="";document.getElementById("ano-wh-dd").innerHTML=""}
+function pickAnoCity(i){const c=anoCityResults[i];if(!c)return;anoCityRef=c.DeliveryCity||c.Ref;anoSettleRef=c.Ref;document.getElementById("ano-city").value=c.Present||c.MainDescription;document.getElementById("ano-city-dd").innerHTML="";document.getElementById("ano-wh").value="";document.getElementById("ano-wh-dd").innerHTML=""}
 let anoWhResults=[];
 async function searchAnoWh(q){
   clearTimeout(anoNpT);if(!anoCityRef){document.getElementById("ano-wh-dd").innerHTML='<div style="padding:6px;color:var(--td);font-size:11px">Спочатку оберіть місто</div>';return}
@@ -1963,17 +1975,77 @@ async function submitBalance(){
 async function loadSets(){try{const{settings:s}=await api("/api/settings");Object.entries(s).forEach(([k,v])=>{const el=document.getElementById("s-"+k);if(el)el.value=v})}catch(e){}loadNpSenders();loadOrderStatuses()}
 async function loadNpSenders(){
   try{const{senders}=await api("/api/np-senders");
-  document.getElementById("np-senders-list").innerHTML=senders.length?senders.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px;border:1px solid '+(s.is_active?'var(--acc)':'var(--brd)')+'"><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+(s.is_active?' <span class="tag tag-g">активний</span>':'')+(s.address_ref?'':' <span class="tag" style="background:var(--red-soft,#4a1a1a);color:var(--red)">адреса не синхронізована</span>')+'</div><div style="font-size:10px;color:var(--td)">'+esc(s.phone)+' · '+esc(s.address_description||"немає адреси — натисніть Оновити")+'</div></div><button class="btn btn-sm" onclick="resyncNpSender('+s.id+',this)" style="font-size:9px" title="Оновити ref-и з НП за поточним ключем">'+Icon('refreshCw',10)+' Оновити</button>'+(s.is_active?'':'<button class="btn btn-sm btn-p" onclick="activateNpSender('+s.id+')" style="font-size:9px">'+Icon('check',10)+' Активувати</button>')+'<button class="btn btn-sm btn-d" onclick="deleteNpSender('+s.id+')" style="font-size:9px">'+Icon('x',10)+'</button></div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає контрагентів</div>'}catch(e){}
+  document.getElementById("np-senders-list").innerHTML=senders.length?senders.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px;border:1px solid '+(s.is_active?'var(--acc)':'var(--brd)')+'"><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+(s.is_active?' <span class="tag tag-g">активний</span>':'')+(s.sender_warehouse_ref?'':' <span class="tag" style="background:var(--red-soft,#4a1a1a);color:var(--red)">немає відділення відправлення</span>')+'</div><div style="font-size:10px;color:var(--td)">'+esc(s.phone)+' · '+esc(s.sender_warehouse_desc||"відділення не вказано")+'</div></div><button class="btn btn-sm" onclick="openNpWhModal('+s.id+',\''+esc(s.name).replace(/'/g,"")+'\')" style="font-size:9px" title="Вказати відділення відправлення">'+Icon('truck',10)+' Відділення</button><button class="btn btn-sm" onclick="resyncNpSender('+s.id+',this)" style="font-size:9px" title="Оновити ref-и з НП за поточним ключем">'+Icon('refreshCw',10)+' Оновити</button>'+(s.is_active?'':'<button class="btn btn-sm btn-p" onclick="activateNpSender('+s.id+')" style="font-size:9px">'+Icon('check',10)+' Активувати</button>')+'<button class="btn btn-sm btn-d" onclick="deleteNpSender('+s.id+')" style="font-size:9px">'+Icon('x',10)+'</button></div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає контрагентів</div>'}catch(e){}
 }
 async function resyncNpSender(id,btn){
   const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<div style="display:inline-block;width:10px;height:10px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div>';
   try{await api("/api/np-senders/"+id+"/resync",{method:"PUT"});loadNpSenders()}
   catch(e){alert("Помилка: "+e.message);btn.disabled=false;btn.innerHTML=old}
 }
+
+// Sender-city/warehouse picker — shared between "add contractor" (prefix
+// "np-add") and the retrofit modal for existing ones (prefix "npwh2").
+var npwhState={};
+async function searchNpwhCityGeneric(prefix,q){
+  if(!q||q.length<2){document.getElementById(prefix+"-city-dd").innerHTML="";return}
+  try{var r=await api("/api/nova-poshta/search-city",{method:"POST",body:JSON.stringify({query:q})});
+  npwhState[prefix]=npwhState[prefix]||{};npwhState[prefix].cityResults=r.cities;
+  document.getElementById(prefix+"-city-dd").innerHTML=r.cities.map((c,i)=>'<div class="popup-dd-item" onclick="pickNpwhCity(\''+prefix+'\','+i+')">'+esc(c.Present||c.MainDescription)+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'
+  }catch(e){}
+}
+function pickNpwhCity(prefix,i){
+  var st=npwhState[prefix];var c=st?.cityResults?.[i];if(!c)return;
+  st.cityRef=c.DeliveryCity||c.Ref;st.settleRef=c.Ref;st.cityName=c.Present||c.MainDescription;
+  document.getElementById(prefix+"-city").value=st.cityName;document.getElementById(prefix+"-city-dd").innerHTML="";
+  var wh=document.getElementById(prefix+"-wh");wh.disabled=false;wh.value="";document.getElementById(prefix+"-wh-dd").innerHTML="";
+}
+async function searchNpwhWhGeneric(prefix,q){
+  var st=npwhState[prefix];if(!st?.cityRef)return;
+  try{var r=await api("/api/nova-poshta/search-warehouse",{method:"POST",body:JSON.stringify({city_ref:st.cityRef,settle_ref:st.settleRef,query:q||""})});
+  st.whResults=r.warehouses.slice(0,10);
+  document.getElementById(prefix+"-wh-dd").innerHTML=st.whResults.map((w,i)=>'<div class="popup-dd-item" onclick="pickNpwhWh(\''+prefix+'\','+i+')">'+esc(w.Description)+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'
+  }catch(e){}
+}
+function pickNpwhWh(prefix,i){
+  var st=npwhState[prefix];var w=st?.whResults?.[i];if(!w)return;
+  st.whRef=w.Ref;st.whDesc=w.Description;
+  document.getElementById(prefix+"-wh").value=w.Description;document.getElementById(prefix+"-wh-dd").innerHTML="";
+}
+function searchNpwhCity(q){searchNpwhCityGeneric("np-add",q)}
+function searchNpwhWh(q){searchNpwhWhGeneric("np-add",q)}
+function searchNpwh2City(q){searchNpwhCityGeneric("npwh2",q)}
+function searchNpwh2Wh(q){searchNpwhWhGeneric("npwh2",q)}
+
+var npWhModalSenderId=null;
+function openNpWhModal(id,name){
+  npWhModalSenderId=id;
+  document.getElementById("np-wh-sender-name").textContent=name;
+  document.getElementById("npwh2-city").value="";document.getElementById("npwh2-city-dd").innerHTML="";
+  document.getElementById("npwh2-wh").value="";document.getElementById("npwh2-wh").disabled=true;document.getElementById("npwh2-wh-dd").innerHTML="";
+  npwhState["npwh2"]={};
+  document.getElementById("npwh2-err").style.display="none";
+  openM("np-wh-modal");
+}
+async function saveNpWarehouse(){
+  var st=npwhState["npwh2"]||{};var err=document.getElementById("npwh2-err");
+  if(!st.cityRef||!st.whRef){err.textContent="Оберіть місто і відділення";err.style.display="block";return}
+  try{
+    await api("/api/np-senders/"+npWhModalSenderId+"/warehouse",{method:"PUT",body:JSON.stringify({city_ref:st.cityRef,city_name:st.cityName,warehouse_ref:st.whRef,warehouse_desc:st.whDesc})});
+    closeM("np-wh-modal");loadNpSenders();
+  }catch(e){err.textContent=e.message;err.style.display="block"}
+}
 async function addNpSender(){
   const name=document.getElementById("np-add-name").value;const phone=document.getElementById("np-add-phone").value;const api_key=document.getElementById("np-add-key").value;
+  const st=npwhState["np-add"]||{};
   const msg=document.getElementById("np-msg");msg.innerHTML='<span style="color:var(--blue)">'+Icon('refreshCw',12)+' Пошук контрагента в НП...</span>';
-  try{await api("/api/np-senders",{method:"POST",body:JSON.stringify({name,phone,api_key})});document.getElementById("np-add-name").value="";document.getElementById("np-add-phone").value="";document.getElementById("np-add-key").value="";msg.innerHTML='<span style="color:var(--acc)">'+Icon('check',13)+' Додано</span>';loadNpSenders()}catch(e){msg.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
+  try{
+    const r=await api("/api/np-senders",{method:"POST",body:JSON.stringify({name,phone,api_key})});
+    if(st.cityRef&&st.whRef)await api("/api/np-senders/"+r.id+"/warehouse",{method:"PUT",body:JSON.stringify({city_ref:st.cityRef,city_name:st.cityName,warehouse_ref:st.whRef,warehouse_desc:st.whDesc})});
+    document.getElementById("np-add-name").value="";document.getElementById("np-add-phone").value="";document.getElementById("np-add-key").value="";
+    document.getElementById("np-add-city").value="";document.getElementById("np-add-wh").value="";document.getElementById("np-add-wh").disabled=true;
+    npwhState["np-add"]={};
+    msg.innerHTML='<span style="color:var(--acc)">'+Icon('check',13)+' Додано</span>';loadNpSenders()
+  }catch(e){msg.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
 }
 async function activateNpSender(id){await api("/api/np-senders/"+id+"/activate",{method:"PUT"});loadNpSenders()}
 async function deleteNpSender(id){if(!confirm("Видалити?"))return;await api("/api/np-senders/"+id,{method:"DELETE"});loadNpSenders()}
