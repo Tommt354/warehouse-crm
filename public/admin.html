@@ -290,21 +290,60 @@
 </div>
 
 <div class="page" id="pg-adm-returns"><div class="pt"><i data-icon="undo2" data-size="17"></i> Повернення</div>
+<div style="display:flex;gap:4px;margin-bottom:10px">
+  <button class="btn btn-a on" id="rv-orders" onclick="showRetView('orders')">Замовлення</button>
+  <button class="btn" id="rv-stats" onclick="showRetView('stats')"><i data-icon="barChart3" data-size="13"></i> Статистика</button>
+  <button class="btn" id="rv-log" onclick="showRetView('log')"><i data-icon="clipboardList" data-size="13"></i> Журнал</button>
+  <button class="btn" id="rv-search" onclick="showRetView('search')"><i data-icon="search" data-size="13"></i> Пошук</button>
+</div>
+
+<div id="ret-v-orders">
 <div class="sg" style="margin-bottom:10px">
   <div class="sc"><div class="sv" style="color:var(--red)" id="ret-total">0</div><div class="sl">повернень</div></div>
   <div class="sc"><div class="sv" style="color:var(--warn)" id="ret-transit">0</div><div class="sl">в дорозі</div></div>
   <div class="sc"><div class="sv" style="color:var(--acc)" id="ret-processed">0</div><div class="sl">на складі</div></div>
+  <div class="sc"><div class="sv" style="color:var(--red)" id="ret-unreceived">0</div><div class="sl">не отримано</div></div>
 </div>
 <div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
   <button class="stab on" onclick="retFilter='all';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">Всі</button>
+  <button class="stab" onclick="retFilter='unreceived';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="alertTriangle" data-size="13"></i> Не отримано</button>
   <button class="stab" onclick="retFilter='transit';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="truck" data-size="13"></i> В дорозі</button>
   <button class="stab" onclick="retFilter='arrived';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="package" data-size="13"></i> На пошті</button>
   <button class="stab" onclick="retFilter='stocked';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="check" data-size="13"></i> На складі</button>
   <button class="stab" onclick="retFilter='pending';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="refreshCw" data-size="13"></i> Не оброблено</button>
 </div>
+<div id="ret-day-filter" style="display:none;gap:4px;margin-bottom:10px;flex-wrap:wrap">
+  <button class="stab on" onclick="retDayFilter=0;renderReturnsFiltered();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">Всі дні</button>
+  <button class="stab" onclick="retDayFilter=3;renderReturnsFiltered();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">3+ днів</button>
+  <button class="stab" onclick="retDayFilter=7;renderReturnsFiltered();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')" style="color:var(--red)">7+ днів</button>
+</div>
 <input class="search-bar" id="ret-scan-adm" placeholder="Скануйте ТТН повернення або пошук..." style="max-width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace;margin-bottom:10px">
 <div id="ret-scan-result"></div>
 <div id="adm-returns-list"></div>
+</div>
+
+<div id="ret-v-stats" style="display:none">
+  <div class="sg" style="margin-bottom:14px">
+    <div class="sc"><div class="sv" id="rst-today">0</div><div class="sl">відправлено сьогодні</div></div>
+    <div class="sc"><div class="sv" style="color:var(--acc)" id="rst-ret-today">0</div><div class="sl">повернень прийнято сьогодні</div></div>
+    <div class="sc"><div class="sv" style="color:var(--red)" id="rst-ret-total">0</div><div class="sl">повернень прийнято всього</div></div>
+  </div>
+  <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">По днях (останні 30):</div>
+  <div id="rst-table"></div>
+</div>
+
+<div id="ret-v-log" style="display:none">
+  <div style="display:flex;gap:6px;margin-bottom:10px">
+    <input class="search-bar" id="rlog-search" placeholder="Фільтр по ТТН..." style="flex:1;font-size:13px;padding:8px 12px;font-family:'JetBrains Mono',monospace" oninput="renderRetLog()">
+    <button class="btn btn-sm" onclick="exportRetLogCsv()"><i data-icon="download" data-size="13"></i> CSV</button>
+  </div>
+  <div id="rlog-table"></div>
+</div>
+
+<div id="ret-v-search" style="display:none">
+  <input class="search-bar" id="rsearch-input" placeholder="Введіть номер ТТН..." style="width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace;margin-bottom:10px" onkeydown="if(event.key==='Enter')doRetSearch()">
+  <div id="rsearch-result"></div>
+</div>
 </div>
 
 <div class="page" id="pg-stocklog"><div class="pt"><i data-icon="barChart3" data-size="17"></i> Рух товару</div>
@@ -1591,47 +1630,75 @@ async function markPaid(id){if(!confirm("Підтвердити виплату?"
 // ── STOCK LOG ────────────────────────────────────────────────────
 
 // ── ADMIN RETURNS ────────────────────────────────────────────────
-var retFilter="all",allReturns=[];
+var retFilter="all",retDayFilter=0,allReturns=[];
+function daysPending(o){
+  var anchor=o.return_flagged_at||o.updated_at;if(!anchor)return 0;
+  var ms=Date.now()-new Date(anchor.replace(" ","T")).getTime();
+  return Math.max(0,Math.floor(ms/86400000));
+}
+function showRetView(v){
+  ["orders","stats","log","search"].forEach(function(x){
+    document.getElementById("ret-v-"+x).style.display=x===v?"":"none";
+    document.getElementById("rv-"+x).classList.toggle("on",x===v);
+  });
+  if(v==="stats")loadRetStats();
+  if(v==="log")loadRetLog();
+}
 async function loadAdmReturns(){
   try{
     var r=await api("/api/returns");allReturns=r.orders;
     var transit=allReturns.filter(function(o){return o.status==="return_transit"}).length;
     var stocked=allReturns.filter(function(o){return o.items.every(function(i){return i.returned_to_stock})}).length;
-    var pending=allReturns.filter(function(o){return o.items.some(function(i){return !i.returned_to_stock})}).length;
+    var unreceived=allReturns.filter(function(o){return !o.return_received}).length;
     document.getElementById("ret-total").textContent=allReturns.length;
     document.getElementById("ret-transit").textContent=transit;
     document.getElementById("ret-processed").textContent=stocked;
-    // Filter
-    var filtered=allReturns;
-    if(retFilter==="transit")filtered=allReturns.filter(function(o){return o.status==="return_transit"});
-    else if(retFilter==="arrived")filtered=allReturns.filter(function(o){return o.status==="refused"});
-    else if(retFilter==="stocked")filtered=allReturns.filter(function(o){return o.items.every(function(i){return i.returned_to_stock})});
-    else if(retFilter==="pending")filtered=allReturns.filter(function(o){return o.items.some(function(i){return !i.returned_to_stock})});
-    renderReturns(filtered);
+    document.getElementById("ret-unreceived").textContent=unreceived;
+    document.getElementById("ret-day-filter").style.display=retFilter==="unreceived"?"flex":"none";
+    renderReturnsFiltered();
   }catch(e){}
   var inp=document.getElementById("ret-scan-adm");
   inp.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();admScanReturn(inp.value.trim());inp.value=""}};
 }
+function renderReturnsFiltered(){
+  var filtered=allReturns;
+  if(retFilter==="unreceived")filtered=allReturns.filter(function(o){return !o.return_received});
+  else if(retFilter==="transit")filtered=allReturns.filter(function(o){return o.status==="return_transit"});
+  else if(retFilter==="arrived")filtered=allReturns.filter(function(o){return o.status==="refused"});
+  else if(retFilter==="stocked")filtered=allReturns.filter(function(o){return o.items.every(function(i){return i.returned_to_stock})});
+  else if(retFilter==="pending")filtered=allReturns.filter(function(o){return o.items.some(function(i){return !i.returned_to_stock})});
+  if(retFilter==="unreceived"&&retDayFilter>0)filtered=filtered.filter(function(o){return daysPending(o)>=retDayFilter});
+  if(retFilter==="unreceived")filtered=filtered.slice().sort(function(a,b){return daysPending(b)-daysPending(a)});
+  renderReturns(filtered);
+}
 function renderReturns(orders){
   document.getElementById("adm-returns-list").innerHTML=orders.length?orders.map(function(o){
       var allDone=o.items.every(function(i){return i.returned_to_stock});
+      var days=daysPending(o);
+      var dayColor=days>=7?"var(--red)":days>=3?"var(--warn)":"var(--td)";
       return '<div style="background:var(--card);border:1px solid '+(allDone?'rgba(124,134,255,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:8px;overflow:hidden">'+
       '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(allDone?' <span style="font-size:10px;color:var(--acc)">'+Icon('check',11)+' На складі</span>':'')+'</div>'+
       '<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · '+esc(o.drop_name)+'</div>'+
       (o.ttn?'<div style="font-size:11px;color:'+ttnColor(o)+';font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:'+ttnColor(o)+'">'+Icon('package',10)+' '+esc(o.np_status_text)+'</div>':'')+
-      '</div><div style="font-size:10px;color:var(--td)">'+(o.updated_at?.slice(0,16)||"")+'</div></div>'+
+      (o.return_ttn?'<div style="font-size:9px;color:var(--warn)">'+Icon('undo2',10)+' ТТН повернення: '+esc(o.return_ttn)+'</div>':'')+
+      '</div><div style="text-align:right">'+
+      (o.return_received?'<div style="font-size:9px;color:var(--acc)">'+Icon('check',11)+' Проведено '+(o.return_received_at?.slice(0,16)||"")+'</div>':'<div style="font-size:11px;font-weight:700;color:'+dayColor+'">⏱ '+days+' '+(days===1?"день":"днів")+'</div>')+
+      '<div style="font-size:10px;color:var(--td);margin-top:2px">'+(o.updated_at?.slice(0,16)||"")+'</div></div></div>'+
       '<div style="padding:4px 14px 10px">'+o.items.map(function(it){var ph=it.var_photo||it.print_photo||it.bp_photo;
         return '<div style="display:flex;gap:8px;padding:4px 0;align-items:center;border-top:1px solid var(--brd);">'+(ph?'<img src="'+ph+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+
         '<div style="flex:1;font-size:11px;color:var(--th)">'+esc(it.var_name)+' <b style="color:var(--acc)">'+esc(it.size_name)+'</b></div>'+
         (it.returned_to_stock?'<div style="font-size:10px;color:'+(it.return_condition==="damaged"?"var(--red)":"var(--acc)")+'">'+Icon('check',11)+' '+(it.return_condition==="damaged"?"Брак списано":"На складі")+'</div>':'<div style="display:flex;gap:4px"><button class="btn btn-sm btn-p" onclick="admRetItem('+it.id+',this,\'good\')" style="font-size:9px">'+Icon('check',10)+' Придатний</button><button class="btn btn-sm btn-d" onclick="admRetItem('+it.id+',this,\'damaged\')" style="font-size:9px">'+Icon('x',10)+' Брак</button></div>')+
-        '</div>'}).join("")+'</div></div>'
+        '</div>'}).join("")+
+      (o.return_received?'':'<div style="margin-top:6px;text-align:right"><button class="btn btn-sm btn-p" onclick="admConfirmReturn('+o.id+',this)">'+Icon('check',13)+' Провести повернення</button></div>')+
+      '</div></div>'
   }).join(""):'<div class="empty"><span class="ic">'+Icon('undo2',40)+'</span>Немає повернень</div>';
 }
 async function admScanReturn(ttn){
+  // Scanning only FINDS the order — it must not count as received on its
+  // own, so this is a read-only lookup (by-ttn), not a scan_log write.
   if(!ttn)return;var el=document.getElementById("ret-scan-result");
-  try{var r=await api("/api/scan",{method:"POST",body:JSON.stringify({ttn:ttn,scan_type:"return"})});
-  var o=r.order;
-  el.innerHTML='<div class="msg msg-ok">'+Icon('check',13)+' Повернення #'+o.id+' · '+esc(o.client_name)+' зареєстровано</div>';
+  try{var o=(await api("/api/orders/by-ttn/"+encodeURIComponent(ttn))).order;
+  el.innerHTML='<div class="msg msg-ok">'+Icon('check',13)+' Знайдено #'+o.id+' · '+esc(o.client_name)+' — розберіть товар і натисніть "Провести повернення" нижче</div>';
   loadAdmReturns()}catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
 }
 async function admRetItem(id,btn,condition){
@@ -1640,6 +1707,64 @@ async function admRetItem(id,btn,condition){
     var wrap=btn.parentElement;
     wrap.outerHTML='<div style="font-size:10px;color:'+(condition==="damaged"?"var(--red)":"var(--acc)")+'">'+Icon('check',11)+' '+(condition==="damaged"?"Брак списано":"На складі")+'</div>';
   }catch(e){}
+}
+async function admConfirmReturn(id,btn){
+  var old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<div style="display:inline-block;width:11px;height:11px;border:2px solid rgba(124,134,255,.3);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></div>Проведення...';
+  try{await api("/api/orders/"+id+"/confirm-return",{method:"POST"});loadAdmReturns()}
+  catch(e){btn.disabled=false;btn.innerHTML=old;alert("Помилка: "+e.message)}
+}
+
+// ── Returns: Статистика ───────────────────────────────────────────
+async function loadRetStats(){
+  try{
+    var r=await api("/api/scan/stats");
+    document.getElementById("rst-today").textContent=r.today;
+    document.getElementById("rst-ret-today").textContent=r.returnsToday;
+    document.getElementById("rst-ret-total").textContent=r.returnsTotal;
+    var days={};
+    r.byDay.forEach(function(d){days[d.day]=days[d.day]||{shipment:0,return:0};days[d.day][d.scan_type]=d.c});
+    var sorted=Object.keys(days).sort().reverse();
+    document.getElementById("rst-table").innerHTML=sorted.length?'<table class="tbl"><tr><th>День</th><th>Відправ.</th><th>Повернень</th></tr>'+
+      sorted.map(function(d){return '<tr><td>'+d+'</td><td>'+days[d].shipment+'</td><td style="color:var(--acc)">'+days[d].return+'</td></tr>'}).join("")+'</table>'
+      :'<div class="empty"><span class="ic">'+Icon('barChart3',30)+'</span>Немає даних</div>';
+  }catch(e){}
+}
+// ── Returns: Журнал ────────────────────────────────────────────────
+var retLogRows=[];
+async function loadRetLog(){
+  try{var r=await api("/api/scan/stats");retLogRows=r.recent;renderRetLog()}catch(e){}
+}
+function renderRetLog(){
+  var q=(document.getElementById("rlog-search").value||"").toLowerCase();
+  var rows=retLogRows.filter(function(r){return !q||r.ttn.toLowerCase().includes(q)});
+  document.getElementById("rlog-table").innerHTML=rows.length?'<table class="tbl"><tr><th>Час</th><th>ТТН</th><th>Тип</th><th>Клієнт</th><th>Статус НП</th></tr>'+
+    rows.map(function(r){return '<tr><td style="font-size:10px;color:var(--td)">'+(r.created_at?.slice(0,16)||"")+'</td><td style="font-family:JetBrains Mono,monospace">'+esc(r.ttn)+'</td><td>'+(r.scan_type==="return"?'<span class="tag tag-y">повернення</span>':'<span class="tag tag-g">відправка</span>')+'</td><td>'+esc(r.client_name||"—")+'</td><td style="font-size:10px;color:var(--td)">'+esc(r.np_status_text||"")+'</td></tr>'}).join("")+'</table>'
+    :'<div class="empty"><span class="ic">'+Icon('clipboardList',30)+'</span>Немає записів</div>';
+}
+function exportRetLogCsv(){
+  var rows=[["Час","ТТН","Тип","Клієнт","Статус НП"]].concat(retLogRows.map(function(r){return [r.created_at||"",r.ttn,r.scan_type,r.client_name||"",r.np_status_text||""]}));
+  var csv=rows.map(function(row){return row.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"'}).join(",")}).join("\n");
+  var blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");a.href=url;a.download="journal_"+new Date().toISOString().slice(0,10)+".csv";a.click();
+  URL.revokeObjectURL(url);
+}
+// ── Returns: Пошук ─────────────────────────────────────────────────
+async function doRetSearch(){
+  var ttn=document.getElementById("rsearch-input").value.trim();var el=document.getElementById("rsearch-result");
+  if(!ttn){el.innerHTML="";return}
+  try{
+    var o=(await api("/api/orders/by-ttn/"+encodeURIComponent(ttn))).order;
+    el.innerHTML='<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px">'+
+      '<div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span></div>'+
+      '<div style="font-size:12px;color:var(--th);margin-top:4px">'+esc(o.client_name)+' · '+esc(o.client_phone)+'</div>'+
+      '<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>'+
+      (o.ttn?'<div style="font-size:12px;font-family:JetBrains Mono,monospace;color:'+ttnColor(o)+';margin-top:6px">ТТН: '+esc(o.ttn)+'</div>':'')+
+      (o.np_status_text?'<div style="font-size:11px;color:'+ttnColor(o)+'">'+Icon('package',11)+' '+esc(o.np_status_text)+'</div>':'')+
+      (o.return_ttn?'<div style="font-size:11px;color:var(--warn);margin-top:4px">'+Icon('undo2',11)+' ТТН повернення: '+esc(o.return_ttn)+'</div>':'')+
+      (o.return_received?'<div style="font-size:11px;color:var(--acc)">'+Icon('check',11)+' Повернення проведено: '+(o.return_received_at?.slice(0,16)||"")+'</div>':(o.return_ttn?'<div style="font-size:11px;color:var(--red)">'+Icon('alertTriangle',11)+' Повернення ще не проведено</div>':""))+
+      '</div>';
+  }catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
 }
 
 function setAccPeriod(days){

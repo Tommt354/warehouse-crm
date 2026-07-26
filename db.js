@@ -477,6 +477,15 @@ addCol("order_items","original_size_id","INTEGER DEFAULT NULL");
 addCol("orders","np_status_text","TEXT DEFAULT ''");
 addCol("orders","return_ttn","TEXT DEFAULT ''");
 addCol("orders","return_cost","REAL DEFAULT 0");
+// Returns only count as physically received once staff explicitly confirms
+// them (not the moment NP flags a refusal or the moment someone scans the
+// return TTN to look it up) — return_flagged_at anchors the "not received"
+// day-count from when NP first signaled a return, independent of later
+// order edits that would otherwise bump updated_at.
+addCol("orders","return_flagged_at","TEXT DEFAULT ''");
+addCol("orders","return_received","INTEGER DEFAULT 0");
+addCol("orders","return_received_at","TEXT DEFAULT ''");
+addCol("orders","return_received_by","INTEGER DEFAULT NULL");
 addCol("orders","is_prepaid","INTEGER DEFAULT 0");
 addCol("orders","receipt_photo","TEXT DEFAULT ''");
 addCol("orders","declared_value","REAL DEFAULT 0");

@@ -1710,6 +1710,41 @@ app.get("/api/nova-poshta/print/:order_id", authMiddleware, (req, res) => {
 });
 
 // Track all shipped orders and update statuses
+// Shared by the manual "Оновити статуси НП" button and the 15-min background
+// job (autoTrackNP below) — kept as one implementation so return-flagging
+// logic (return_ttn/return_cost/return_flagged_at) never drifts out of sync
+// between the two trigger paths, the way it previously did.
+async function trackOneOrder(apiKey, o) {
+  const r = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: o.ttn }] });
+  const st = r.data?.[0];
+  if (!st) return false;
+  db.prepare("UPDATE orders SET np_status_text=? WHERE id=?").run(st.Status || "", o.id);
+  const code = parseInt(st.StatusCode);
+  let ns = null;
+  if (code >= 7 && code <= 8) ns = "delivering";
+  if (code === 9 || code === 10 || code === 11) ns = "delivered";
+  if (code === 17 || code === 102 || code === 103) ns = "refused";
+  if (code === 106) ns = "return_transit";
+  let statusChanged = false;
+  if (ns && ns !== o.status) {
+    db.prepare("UPDATE orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(ns, o.id);
+    statusChanged = true;
+  }
+  if (ns === "refused" || ns === "return_transit" || o.status === "refused" || o.status === "return_transit") {
+    db.prepare("UPDATE orders SET return_flagged_at=datetime('now','localtime') WHERE id=? AND (return_flagged_at IS NULL OR return_flagged_at='')").run(o.id);
+    if (st.LastCreatedOnTheBasisNumber) {
+      const retTtn = st.LastCreatedOnTheBasisNumber;
+      db.prepare("UPDATE orders SET return_ttn=? WHERE id=? AND (return_ttn IS NULL OR return_ttn='')").run(retTtn, o.id);
+      const existingCost = db.prepare("SELECT return_cost FROM orders WHERE id=?").get(o.id);
+      if (!existingCost?.return_cost || existingCost.return_cost === 0) {
+        const cost = parseFloat(st.DocumentCost) || parseFloat(st.RedeliverySum) || 0;
+        if (cost > 0) db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost, o.id);
+      }
+    }
+  }
+  return statusChanged;
+}
+
 app.post("/api/nova-poshta/track-all", authMiddleware, async (req, res) => {
   try {
     const apiKey = getActiveApiKey();
@@ -1717,28 +1752,8 @@ app.post("/api/nova-poshta/track-all", authMiddleware, async (req, res) => {
 
     const orders = db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status NOT IN ('cancelled')").all();
     let updated = 0;
-
     for (const o of orders) {
-      try {
-        const r = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: o.ttn }] });
-        const st = r.data?.[0];
-        if (!st) continue;
-
-        // Save NP status text
-        db.prepare("UPDATE orders SET np_status_text=? WHERE id=?").run(st.Status || "", o.id);
-
-        const code = parseInt(st.StatusCode);
-        let newStatus = null;
-        if (code >= 7 && code <= 8) newStatus = "delivering";
-        if (code === 9 || code === 10 || code === 11) newStatus = "delivered";
-        if (code === 17 || code === 102 || code === 103) newStatus = "refused";
-        if (code === 106) newStatus = "return_transit";
-
-        if (newStatus && newStatus !== o.status) {
-          db.prepare("UPDATE orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(newStatus, o.id);
-          updated++;
-        }
-      } catch (e) { /* skip individual errors */ }
+      try { if (await trackOneOrder(apiKey, o)) updated++; } catch (e) { /* skip individual errors */ }
     }
     res.json({ ok: true, checked: orders.length, updated });
   } catch (e) {
@@ -2104,6 +2119,19 @@ app.get("/api/scan/stats", authMiddleware, (req, res) => {
   res.json({ today, yesterday, week, returnsToday, returnsTotal, byDay, recent });
 });
 
+// Confirms a return as physically received — this, not the moment NP flags
+// a refusal or the moment someone scans the return TTN to look the order
+// up, is what stops the "не отримано" clock and is what gets logged with
+// an exact timestamp (so it can be cross-checked against camera footage).
+app.post("/api/orders/:id/confirm-return", authMiddleware, requireRole("admin", "warehouse"), (req, res) => {
+  const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
+  if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
+  if (o.return_received) return res.status(400).json({ error: "Повернення вже проведено" });
+  db.prepare("UPDATE orders SET return_received=1,return_received_at=datetime('now','localtime'),return_received_by=? WHERE id=?").run(req.user.id, o.id);
+  db.prepare("INSERT INTO scan_log(ttn,order_id,scan_type,user_id)VALUES(?,?,?,?)").run(o.return_ttn || o.ttn, o.id, "return", req.user.id);
+  res.json({ ok: true, return_received_at: db.prepare("SELECT return_received_at FROM orders WHERE id=?").get(o.id).return_received_at });
+});
+
 // Get returns list for admin
 app.get("/api/returns", authMiddleware, (req, res) => {
   const orders = db.prepare(`SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id 
@@ -2346,29 +2374,7 @@ async function autoTrackNP(){
     const orders=db.prepare("SELECT id,ttn,status FROM orders WHERE ttn IS NOT NULL AND ttn!='' AND status NOT IN ('cancelled')").all();
     if(!orders.length)return;
     for(const o of orders){
-      try{
-        const r=await npApi(apiKey,"TrackingDocument","getStatusDocuments",{Documents:[{DocumentNumber:o.ttn}]});
-        const st=r.data?.[0];if(!st)continue;
-        db.prepare("UPDATE orders SET np_status_text=? WHERE id=?").run(st.Status||"",o.id);
-        const code=parseInt(st.StatusCode);
-        let ns=null;
-        if(code>=7&&code<=8)ns="delivering";
-        if(code===9||code===10||code===11)ns="delivered";
-        if(code===17||code===102||code===103)ns="refused";
-        if(code===106)ns="return_transit";
-        if(ns&&ns!==o.status)db.prepare("UPDATE orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(ns,o.id);
-        // Handle returns - get return TTN and cost
-        if((ns==="refused"||ns==="return_transit"||o.status==="refused"||o.status==="return_transit") && st.LastCreatedOnTheBasisNumber){
-          const retTtn=st.LastCreatedOnTheBasisNumber;
-          db.prepare("UPDATE orders SET return_ttn=? WHERE id=? AND (return_ttn IS NULL OR return_ttn='')").run(retTtn,o.id);
-          // Get return cost - use DocumentCost from original TTN
-          const existingCost=db.prepare("SELECT return_cost FROM orders WHERE id=?").get(o.id);
-          if(!existingCost?.return_cost || existingCost.return_cost===0){
-            const cost=parseFloat(st.DocumentCost)||parseFloat(st.RedeliverySum)||0;
-            if(cost>0)db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost,o.id);
-          }
-        }
-      }catch(e){}
+      try{ await trackOneOrder(apiKey,o); }catch(e){}
     }
     console.log(`🔄 NP auto-track: checked ${orders.length} orders`);
   }catch(e){}

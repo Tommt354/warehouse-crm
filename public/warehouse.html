@@ -184,13 +184,14 @@ async function init(){
   document.getElementById("scan-ttn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();scanTTN()}});
   }catch(e){location.href="/login"}
 }
-// Пакувальник готового товару packs solo start-to-finish: no returns/stock
-// tabs, no team shift picker, no ready/channel filters — he only ever sees
+// Пакувальник готового товару packs solo start-to-finish: no stock-browsing
+// tab, no team shift picker, no ready/channel filters — he only ever sees
 // his own ready-product orders (server already scopes GET /api/orders to
-// that automatically for this worker_role).
+// that automatically for this worker_role). Returns DOES stay available —
+// ready-product returns just go back to stock as the whole item, no
+// print/variation breakdown, same as everyone else's returns flow.
 function enterPackerReadyMode(){
   var tabs=document.querySelectorAll(".main-tab");
-  if(tabs[1])tabs[1].style.display="none";
   if(tabs[2])tabs[2].style.display="none";
   var rf=document.getElementById("rf-all");if(rf&&rf.parentElement)rf.parentElement.style.display="none";
   var chRow=document.getElementById("wc-hot");if(chRow&&chRow.parentElement)chRow.parentElement.style.display="none";
@@ -401,9 +402,17 @@ async function scanTTN(){
       else html+='<div style="display:flex;gap:6px"><button class="btn btn-sm btn-p" onclick="retIt('+it.id+',this,\'good\')" style="font-size:10px">'+Icon('check',12)+' Придатний</button><button class="btn btn-sm btn-d" onclick="retIt('+it.id+',this,\'damaged\')" style="font-size:10px">'+Icon('x',12)+' Брак</button></div>';
       html+='</div>';
     }
+    if(o.return_received)html+='<div style="margin-top:8px;text-align:right;font-size:11px;color:var(--acc)">'+Icon('check',13)+' Повернення проведено '+(o.return_received_at?.slice(0,16)||"")+'</div>';
+    else html+='<div style="margin-top:10px;text-align:right"><button class="btn btn-p" onclick="whConfirmReturn('+o.id+',this)">'+Icon('check',14)+' Провести повернення</button></div>';
     html+='</div>';el.innerHTML=html;
     document.getElementById("scan-ttn").value="";document.getElementById("scan-ttn").focus();
   }catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+e.message+'</div>'}
+}
+async function whConfirmReturn(id,btn){
+  btnSpin(btn);
+  try{await api("/api/orders/"+id+"/confirm-return",{method:"POST"});
+    btn.parentElement.outerHTML='<div style="margin-top:8px;text-align:right;font-size:11px;color:var(--acc)">'+Icon('check',13)+' Повернення проведено щойно</div>';
+  }catch(e){btnDone(btn);alert("Помилка: "+e.message)}
 }
 async function retIt(id,btn,condition){
   btnSpin(btn);
