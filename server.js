@@ -8,6 +8,16 @@ const { createToken, authMiddleware, requireRole } = require("./auth");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Finalizer scans TTNs to complete orders; seamstress/printer never touch
+// orders directly and only need to see their own salary; everyone else
+// (packer, packer_ready) lands on the operational warehouse page, which
+// switches into a simplified solo-packing mode client-side for packer_ready.
+function warehouseRedirectFor(workerRole) {
+  if (workerRole === "finalizer") return "/finalizer";
+  if (workerRole === "seamstress" || workerRole === "printer") return "/staff";
+  return "/warehouse";
+}
 const PHOTO_DIR = process.env.DB_PATH ? path.join(path.dirname(process.env.DB_PATH), "photos") : path.join(__dirname, "photos");
 if (!fs.existsSync(PHOTO_DIR)) fs.mkdirSync(PHOTO_DIR, { recursive: true });
 
@@ -24,8 +34,8 @@ app.post("/api/auth/login", (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({ error: "Невірний логін або пароль" });
   db.prepare("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?").run(user.id);
   res.cookie("token", createToken(user), { httpOnly: true, maxAge: 7*24*3600000, sameSite: "lax" });
-  let redirect = {admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse"}[user.role] || "/login";
-  if (user.role === "warehouse" && user.worker_role === "finalizer") redirect = "/finalizer";
+  let redirect = {admin:"/admin",dropshipper:"/drop"}[user.role] || "/login";
+  if (user.role === "warehouse") redirect = warehouseRedirectFor(user.worker_role);
   res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, worker_role: user.worker_role }, redirect });
 });
 app.get("/api/auth/me", authMiddleware, (req, res) => {
@@ -52,14 +62,16 @@ app.post("/api/auth/dev-login/:role", (req, res) => {
     user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role='packer' AND assigned_warehouse='molod' AND active=1 ORDER BY id LIMIT 1").get();
   } else if (key === "packer") {
     user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role='packer' AND (assigned_warehouse='' OR assigned_warehouse='base') AND active=1 ORDER BY id LIMIT 1").get();
+  } else if (["packer_ready","seamstress","printer"].includes(key)) {
+    user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role=? AND active=1 ORDER BY id LIMIT 1").get(key);
   } else {
     user = db.prepare("SELECT * FROM users WHERE role=? AND active=1 ORDER BY id LIMIT 1").get(key);
   }
   if (!user) return res.status(404).json({ error: "Немає користувача з такою роллю" });
   db.prepare("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?").run(user.id);
   res.cookie("token", createToken(user), { httpOnly: true, maxAge: 7*24*3600000, sameSite: "lax" });
-  let redirect = {admin:"/admin",dropshipper:"/drop",warehouse:"/warehouse"}[user.role] || "/login";
-  if (user.role === "warehouse" && user.worker_role === "finalizer") redirect = "/finalizer";
+  let redirect = {admin:"/admin",dropshipper:"/drop"}[user.role] || "/login";
+  if (user.role === "warehouse") redirect = warehouseRedirectFor(user.worker_role);
   res.json({ ok: true, redirect });
 });
 
@@ -1081,6 +1093,13 @@ app.get("/api/orders", authMiddleware, (req, res) => {
     where.push("o.id IN (SELECT DISTINCT oi.order_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE m.main_warehouse=?)");
     params.push(wh);
   }
+  // Ready-product-only orders (Пакувальник готовий товар packs these solo,
+  // start to finish) — either explicitly requested or implied by that role.
+  const readyOnly = req.query.ready_only || (req.user.role === "warehouse" && req.user.worker_role === "packer_ready" ? "1" : null);
+  if (readyOnly) {
+    where.push("o.id IN (SELECT DISTINCT oi.order_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE m.is_ready_product=1)");
+    where.push("o.id NOT IN (SELECT DISTINCT oi.order_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE m.is_ready_product=0)");
+  }
 
   if (where.length) q += " WHERE " + where.join(" AND ");
   q += " ORDER BY o.created_at DESC";
@@ -1214,6 +1233,9 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
   const validStatuses = ['new','in_progress','packed','shipped','delivering','delivered','refused','return_transit','return_warehouse','return_received','cancelled'];
   if (!validStatuses.includes(status)) return res.status(400).json({ error: "Невірний статус" });
 
+  const existing = db.prepare("SELECT status FROM orders WHERE id=?").get(req.params.id);
+  if (!existing) return res.status(404).json({ error: "Не знайдено" });
+
   const updates = ["status=?","updated_at=datetime('now','localtime')"];
   const vals = [status];
 
@@ -1224,6 +1246,23 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
 
   vals.push(req.params.id);
   db.prepare(`UPDATE orders SET ${updates.join(",")} WHERE id=?`).run(...vals);
+
+  // Пакувальник готовий товар packs solo start-to-finish — marking the
+  // order "packed" IS his finalize step, so credit his own open shift right
+  // here instead of waiting on a separate finalizer scan. Guarded so it
+  // only fires once (existing.status!=="packed") and only for his role.
+  if (status === "packed" && existing.status !== "packed" && req.user.worker_role === "packer_ready") {
+    const shift = db.prepare("SELECT id FROM shifts WHERE packer_user_id=? AND status='open'").get(req.user.id);
+    const worker = db.prepare("SELECT id,per_item_rate FROM workers WHERE user_id=? AND role='packer_ready'").get(req.user.id);
+    if (shift && worker && worker.per_item_rate > 0) {
+      const qty = db.prepare("SELECT COALESCE(SUM(quantity),0) as c FROM order_items WHERE order_id=?").get(req.params.id).c;
+      if (qty > 0) {
+        db.prepare("INSERT INTO worker_payroll(worker_id,shift_id,order_id,amount,type,note)VALUES(?,?,?,?,?,?)")
+          .run(worker.id, shift.id, req.params.id, worker.per_item_rate * qty, "item", "Готовий товар — запаковано");
+      }
+    }
+  }
+
   res.json({ ok: true });
 });
 
@@ -1704,12 +1743,16 @@ app.get("/api/workers", authMiddleware, (req, res) => {
   res.json({ workers });
 });
 
+const WORKER_ROLES = ["packer", "finalizer", "seamstress", "printer", "packer_ready"];
+
 app.post("/api/workers", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, role, daily_rate, per_item_rate, per_return_item_rate, username, password } = req.body;
+  const { name, role, daily_rate, per_item_rate, per_return_item_rate, use_daily_rate, username, password } = req.body;
   if (!name?.trim() || !role) return res.status(400).json({ error: "Ім'я та роль обов'язкові" });
   let userId = null;
-  // Create user account for packer and finalizer
-  if ((role === "packer" || role === "finalizer") && username && password) {
+  // Every worker role can get a real login now — seamstress/printer only need
+  // it to view their own salary (no shift/scan controls for them), while
+  // packer/finalizer/packer_ready use it operationally too.
+  if (WORKER_ROLES.includes(role) && username && password) {
     const uRole = "warehouse";
     const existing = db.prepare("SELECT id FROM users WHERE username=?").get(username);
     if (existing) return res.status(400).json({ error: "Логін вже зайнятий" });
@@ -1718,16 +1761,16 @@ app.post("/api/workers", authMiddleware, requireRole("admin"), (req, res) => {
       userId = u.lastInsertRowid;
     } catch(e) { return res.status(400).json({ error: "Помилка створення акаунту: " + e.message }); }
   }
-  const r = db.prepare("INSERT INTO workers(name,role,user_id,daily_rate,per_item_rate,per_return_item_rate)VALUES(?,?,?,?,?,?)").run(
-    name.trim(), role, userId, parseFloat(daily_rate)||0, parseFloat(per_item_rate)||0, parseFloat(per_return_item_rate)||0
+  const r = db.prepare("INSERT INTO workers(name,role,user_id,daily_rate,per_item_rate,per_return_item_rate,use_daily_rate)VALUES(?,?,?,?,?,?,?)").run(
+    name.trim(), role, userId, parseFloat(daily_rate)||0, parseFloat(per_item_rate)||0, parseFloat(per_return_item_rate)||0, use_daily_rate===false?0:1
   );
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 
 app.put("/api/workers/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, daily_rate, per_item_rate, per_return_item_rate } = req.body;
-  db.prepare("UPDATE workers SET name=?,daily_rate=?,per_item_rate=?,per_return_item_rate=? WHERE id=?").run(
-    name, parseFloat(daily_rate)||0, parseFloat(per_item_rate)||0, parseFloat(per_return_item_rate)||0, req.params.id
+  const { name, daily_rate, per_item_rate, per_return_item_rate, use_daily_rate } = req.body;
+  db.prepare("UPDATE workers SET name=?,daily_rate=?,per_item_rate=?,per_return_item_rate=?,use_daily_rate=? WHERE id=?").run(
+    name, parseFloat(daily_rate)||0, parseFloat(per_item_rate)||0, parseFloat(per_return_item_rate)||0, use_daily_rate===false?0:1, req.params.id
   );
   res.json({ ok: true });
 });
@@ -1747,6 +1790,29 @@ app.get("/api/workers/:id/detail", authMiddleware, (req, res) => {
   w.total_paid = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payouts WHERE worker_id=?").get(w.id).s;
   w.balance = w.total_earned - w.total_paid;
   res.json({ worker: w });
+});
+
+// Self-service salary view — any logged-in worker (packer/finalizer/
+// seamstress/printer/packer_ready) looks up their own linked workers row via
+// workers.user_id, never someone else's by passing an id.
+app.get("/api/my-payroll", authMiddleware, (req, res) => {
+  const w = db.prepare("SELECT * FROM workers WHERE user_id=?").get(req.user.id);
+  if (!w) return res.status(404).json({ error: "Немає профілю працівника, прив'язаного до цього акаунту" });
+  const df = req.query.date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const dt = req.query.date_to || new Date().toISOString().slice(0, 10);
+  const periodEarned = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payroll WHERE worker_id=? AND date(created_at) BETWEEN ? AND ?").get(w.id, df, dt).s;
+  const totalEarned = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payroll WHERE worker_id=?").get(w.id).s;
+  const totalPaid = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payouts WHERE worker_id=?").get(w.id).s;
+  const entries = db.prepare("SELECT wp.*,o.client_name,o.ttn FROM worker_payroll wp LEFT JOIN orders o ON wp.order_id=o.id WHERE wp.worker_id=? AND date(wp.created_at) BETWEEN ? AND ? ORDER BY wp.created_at DESC").all(w.id, df, dt);
+  const payouts = db.prepare("SELECT * FROM worker_payouts WHERE worker_id=? ORDER BY created_at DESC LIMIT 30").all(w.id);
+  res.json({
+    name: w.name, role: w.role,
+    date_from: df, date_to: dt,
+    period_earned: periodEarned,
+    balance: totalEarned - totalPaid,
+    total_earned: totalEarned, total_paid: totalPaid,
+    entries, payouts
+  });
 });
 
 // Pay worker
@@ -1787,7 +1853,13 @@ app.get("/api/shifts/current", authMiddleware, (req, res) => {
 app.post("/api/shifts/open", authMiddleware, (req, res) => {
   const existing = db.prepare("SELECT id FROM shifts WHERE packer_user_id=? AND status='open'").get(req.user.id);
   if (existing) return res.status(400).json({ error: "Зміна вже відкрита" });
-  const { worker_ids } = req.body;
+  let { worker_ids } = req.body;
+  // Solo roles (e.g. packer_ready) don't pick a team — default to just
+  // whichever worker profile is linked to the logged-in account.
+  if (!worker_ids || !worker_ids.length) {
+    const self = db.prepare("SELECT id FROM workers WHERE user_id=?").get(req.user.id);
+    worker_ids = self ? [self.id] : [];
+  }
   const s = db.prepare("INSERT INTO shifts(packer_user_id)VALUES(?)").run(req.user.id);
   const ins = db.prepare("INSERT INTO shift_workers(shift_id,worker_id)VALUES(?,?)");
   (worker_ids||[]).forEach(id => ins.run(s.lastInsertRowid, id));
@@ -1795,7 +1867,7 @@ app.post("/api/shifts/open", authMiddleware, (req, res) => {
   const addDaily = db.prepare("INSERT INTO worker_payroll(worker_id,shift_id,amount,type,note)VALUES(?,?,?,?,?)");
   (worker_ids||[]).forEach(id => {
     const w = db.prepare("SELECT * FROM workers WHERE id=?").get(id);
-    if (w && w.daily_rate > 0) addDaily.run(id, s.lastInsertRowid, w.daily_rate, "daily", "Ставка за зміну");
+    if (w && w.use_daily_rate && w.daily_rate > 0) addDaily.run(id, s.lastInsertRowid, w.daily_rate, "daily", "Ставка за зміну");
   });
   res.json({ ok: true, shift_id: s.lastInsertRowid });
 });
@@ -2108,12 +2180,13 @@ app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), (req, res)
 function pageAuth(req,res,next){const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");req.user=u;next()}
 function pageRole(...r){return(req,res,next)=>{if(!r.includes(req.user.role))return res.redirect("/login");next()}}
 app.get("/login",(req,res)=>res.sendFile(path.join(__dirname,"public","login.html")));
-app.get("/",(req,res)=>{const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");if(u.role==="warehouse"){const wr=db.prepare("SELECT worker_role FROM users WHERE id=?").get(u.id);res.redirect(wr?.worker_role==="finalizer"?"/finalizer":"/warehouse")}else{res.redirect({admin:"/admin",dropshipper:"/drop"}[u.role]||"/login")}});
+app.get("/",(req,res)=>{const t=req.cookies?.token;if(!t)return res.redirect("/login");const{verifyToken}=require("./auth");const u=verifyToken(t);if(!u)return res.redirect("/login");if(u.role==="warehouse"){const wr=db.prepare("SELECT worker_role FROM users WHERE id=?").get(u.id);res.redirect(warehouseRedirectFor(wr?.worker_role))}else{res.redirect({admin:"/admin",dropshipper:"/drop"}[u.role]||"/login")}});
 app.get("/admin",pageAuth,pageRole("admin"),(req,res)=>res.sendFile(path.join(__dirname,"public","admin.html")));
 app.get("/admin/*",pageAuth,pageRole("admin"),(req,res)=>res.sendFile(path.join(__dirname,"public","admin.html")));
 app.get("/drop",pageAuth,pageRole("dropshipper"),(req,res)=>res.sendFile(path.join(__dirname,"public","drop.html")));
 app.get("/warehouse",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","warehouse.html")));
 app.get("/finalizer",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","finalizer.html")));
+app.get("/staff",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","staff.html")));
 app.get("*",(req,res)=>{if(req.path.startsWith("/api/"))return res.status(404).json({error:"Not found"});res.redirect("/login")});
 
 // Auto-track NP statuses every 15 minutes

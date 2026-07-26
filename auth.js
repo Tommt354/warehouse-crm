@@ -8,7 +8,7 @@ if (!SECRET) {
 }
 
 function createToken(user) {
-  return jwt.sign({ id: user.id, username: user.username, role: user.role, name: user.name }, SECRET, { expiresIn: "7d" });
+  return jwt.sign({ id: user.id, username: user.username, role: user.role, name: user.name, worker_role: user.worker_role || "", assigned_warehouse: user.assigned_warehouse || "" }, SECRET, { expiresIn: "7d" });
 }
 
 function verifyToken(token) {

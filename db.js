@@ -480,6 +480,7 @@ addCol("orders","is_postomat","INTEGER DEFAULT 0");
 addCol("orders","parcel_width","REAL DEFAULT 0");
 addCol("orders","parcel_height","REAL DEFAULT 0");
 addCol("orders","parcel_length","REAL DEFAULT 0");
+addCol("workers","use_daily_rate","INTEGER DEFAULT 1");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){
@@ -516,6 +517,29 @@ if(!db.prepare("SELECT id FROM users WHERE username='final1'").get()){
   db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse',?,'finalizer',5)").run("final1",bcrypt.hashSync(pw,10),"Пакувальниця 1");
   console.log("✅ Створено final1, логін: final1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
 }
+if(!db.prepare("SELECT id FROM users WHERE username='ready1'").get()){
+  const pw = process.env.PACKER_READY_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse',?,'packer_ready',5)").run("ready1",bcrypt.hashSync(pw,10),"Пакувальник ГТ 1");
+  console.log("✅ Створено ready1, логін: ready1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
+}
+if(!db.prepare("SELECT id FROM users WHERE username='seam1'").get()){
+  const pw = process.env.SEAMSTRESS_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse',?,'seamstress',5)").run("seam1",bcrypt.hashSync(pw,10),"Швея 1");
+  console.log("✅ Створено seam1, логін: seam1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
+}
+if(!db.prepare("SELECT id FROM users WHERE username='print1'").get()){
+  const pw = process.env.PRINTER_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse',?,'printer',5)").run("print1",bcrypt.hashSync(pw,10),"Принтувальник 1");
+  console.log("✅ Створено print1, логін: print1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
+}
+// Ensure every warehouse-role login has a matching workers profile (needed
+// for payroll crediting and the self-service /api/my-payroll salary view) —
+// seed accounts created directly in users don't go through POST /api/workers
+// which normally creates both rows together.
+db.prepare(`SELECT * FROM users WHERE role='warehouse' AND id NOT IN (SELECT user_id FROM workers WHERE user_id IS NOT NULL)`).all().forEach(u => {
+  db.prepare("INSERT INTO workers(name,role,user_id,daily_rate,per_item_rate,per_return_item_rate)VALUES(?,?,?,?,?,?)")
+    .run(u.name, u.worker_role || "packer", u.id, 0, u.worker_rate || 0, 0);
+});
 // Seed default order statuses
 if(!db.prepare("SELECT id FROM order_statuses LIMIT 1").get()){
   const statuses = [

@@ -215,8 +215,15 @@
 <div class="cards" id="drop-list"></div></div>
 
 <div class="page" id="pg-workers"><div class="pt"><i data-icon="hardHat" data-size="17"></i> Працівники</div>
-<div class="acts" style="margin-bottom:10px"><button class="btn btn-p" onclick="openAddWorker()">+ Додати працівника</button></div>
-<div id="workers-list"></div>
+<div class="cards" id="worker-tiles"></div>
+<div id="worker-role-detail" style="display:none">
+  <div class="acts" style="margin-bottom:10px">
+    <button class="btn" onclick="backToWorkerTiles()"><i data-icon="undo2" data-size="14"></i> Всі посади</button>
+    <div id="wkr-title" style="font-size:15px;font-weight:700;color:var(--th);margin-left:6px"></div>
+    <button class="btn btn-p" style="margin-left:auto" onclick="openAddWorker()">+ Додати людину</button>
+  </div>
+  <div id="worker-people-list"></div>
+</div>
 </div>
 
 <!-- Add worker modal -->
@@ -225,13 +232,15 @@
 <div class="fld"><label>Роль</label><select id="wk-role" onchange="toggleWkRole()" style="width:100%;padding:9px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff">
   <option value="packer">Головний пакувальник</option>
   <option value="finalizer">Пакувальниця</option>
+  <option value="packer_ready">Пакувальник (Готовий товар)</option>
   <option value="seamstress">Швея</option>
   <option value="printer">Принтувальник</option>
 </select></div>
 <div id="wk-auth-wrap">
 <div class="fld-row"><div class="fld"><label>Логін</label><input id="wk-login"></div><div class="fld"><label>Пароль</label><input id="wk-pass" type="password"></div></div>
 </div>
-<div class="fld"><label>Ставка за день ₴</label><input id="wk-daily" type="number" value="0"></div>
+<div class="sw"><div class="swb on" id="wk-daily-toggle" onclick="toggleWkDaily(this)"></div><label onclick="document.getElementById('wk-daily-toggle').click()">Ставка за день</label></div>
+<div class="fld" id="wk-daily-wrap"><label>Сума ставки ₴</label><input id="wk-daily" type="number" value="0"></div>
 <div class="fld" id="wk-rate-wrap"><label id="wk-rate-label">Виробіток за 1 видану річ ₴</label><input id="wk-rate" type="number" value="0"></div>
 <div id="wk-return-wrap" class="fld"><label>Виробіток за 1 річ з повернення ₴</label><input id="wk-ret-rate" type="number" value="0"></div>
 <div id="wk-err" class="msg msg-err" style="display:none"></div>
@@ -1732,23 +1741,57 @@ function renderDropsList(){
       '</div></div>';
   }).join("");
 }
-var ROLES={packer:Icon('hardHat',12)+" Пакувальник",finalizer:Icon('package',12)+" Пакувальниця",seamstress:Icon('shirt',12)+" Швея",printer:Icon('printer',12)+" Принтувальник"};
+var ROLES={
+  packer:{icon:'hardHat',label:'Головний пакувальник'},
+  finalizer:{icon:'package',label:'Пакувальниця'},
+  packer_ready:{icon:'check',label:'Пакувальник (Готовий товар)'},
+  seamstress:{icon:'shirt',label:'Швея'},
+  printer:{icon:'printer',label:'Принтувальник'}
+};
+var wkCurrentRole=null,allWorkersCache=[];
 async function loadWorkers(){
-  try{var r=await api("/api/workers");
-  document.getElementById("workers-list").innerHTML=r.workers.length?r.workers.map(function(w){
-    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openWorkerDetail('+w.id+')"><div><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(w.name)+' <span style="font-size:10px;color:var(--td)">'+(ROLES[w.role]||w.role)+'</span></div><div style="font-size:10px;color:var(--td);margin-top:2px">Ставка: '+w.daily_rate+'₴/день · Виробіток: '+w.per_item_rate+'₴/річ'+(w.role==="packer"?" · З поверн: "+w.per_return_item_rate+"₴":"")+'</div></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(w.balance>0?"var(--acc)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td)">до виплати</div></div></div>'
-  }).join(""):'<div class="empty"><span class="ic">'+Icon('hardHat',40)+'</span>Немає працівників</div>'}catch(e){}
+  try{var r=await api("/api/workers");allWorkersCache=r.workers;renderWorkerTiles()}catch(e){}
 }
-function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-auth-wrap").style.display=(r==="packer"||r==="finalizer")?"":"none";document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none";var lbl=document.getElementById("wk-rate-label");if(r==="seamstress")lbl.textContent="Оплата за 1 нашивку ₴";else if(r==="printer")lbl.textContent="Оплата за 1 принт ₴";else if(r==="packer")lbl.textContent="Виробіток за 1 видану річ ₴";else lbl.textContent="Виробіток за 1 річ ₴"}
-function openAddWorker(){document.getElementById("wk-title").textContent="+ Працівник";["wk-name","wk-login","wk-pass"].forEach(function(id){document.getElementById(id).value=""});document.getElementById("wk-daily").value="0";document.getElementById("wk-rate").value="0";document.getElementById("wk-ret-rate").value="0";document.getElementById("wk-role").value="packer";toggleWkRole();document.getElementById("wk-err").style.display="none";openM("wk-modal")}
+function renderWorkerTiles(){
+  document.getElementById("worker-role-detail").style.display="none";
+  document.getElementById("worker-tiles").style.display="";
+  document.getElementById("worker-tiles").innerHTML=Object.keys(ROLES).map(function(role){
+    var info=ROLES[role];
+    var people=allWorkersCache.filter(function(w){return w.role===role});
+    var totalBalance=people.reduce(function(s,w){return s+w.balance},0);
+    return '<div class="pcard" style="cursor:pointer" onclick="openRoleTile(\''+role+'\')"><div class="pcard-body" style="text-align:center;padding:22px 10px">'+
+      '<div style="margin-bottom:8px;color:var(--acc)">'+Icon(info.icon,28)+'</div>'+
+      '<div style="font-size:13px;font-weight:700;color:var(--th)">'+info.label+'</div>'+
+      '<div style="font-size:10px;color:var(--td);margin-top:4px">'+people.length+' '+(people.length===1?"людина":"людей")+'</div>'+
+      (totalBalance>0?'<div style="font-family:JetBrains Mono,monospace;font-size:12px;color:var(--warn);margin-top:4px">'+totalBalance.toFixed(0)+'₴ до виплати</div>':'')+
+      '</div></div>';
+  }).join("");
+}
+function openRoleTile(role){
+  wkCurrentRole=role;
+  document.getElementById("worker-tiles").style.display="none";
+  document.getElementById("worker-role-detail").style.display="";
+  document.getElementById("wkr-title").innerHTML=Icon(ROLES[role].icon,16)+' '+ROLES[role].label;
+  renderRolePeople();
+}
+function backToWorkerTiles(){renderWorkerTiles()}
+function renderRolePeople(){
+  var people=allWorkersCache.filter(function(w){return w.role===wkCurrentRole});
+  document.getElementById("worker-people-list").innerHTML=people.length?people.map(function(w){
+    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openWorkerDetail('+w.id+')"><div><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(w.name)+(w.username?' <span style="font-size:10px;color:var(--blue)">@'+esc(w.username)+'</span>':'')+'</div><div style="font-size:10px;color:var(--td);margin-top:2px">'+(w.use_daily_rate?"Ставка: "+w.daily_rate+"₴/день · ":"")+'Виробіток: '+w.per_item_rate+'₴/річ'+(w.role==="packer"?" · З поверн: "+w.per_return_item_rate+"₴":"")+'</div></div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(w.balance>0?"var(--acc)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td)">до виплати</div></div></div>'
+  }).join(""):'<div class="empty"><span class="ic">'+Icon('hardHat',40)+'</span>Ще нікого не додано</div>';
+}
+function toggleWkDaily(el){el.classList.toggle("on");document.getElementById("wk-daily-wrap").style.display=el.classList.contains("on")?"":"none"}
+function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none";var lbl=document.getElementById("wk-rate-label");if(r==="seamstress")lbl.textContent="Оплата за 1 нашивку ₴";else if(r==="printer")lbl.textContent="Оплата за 1 принт ₴";else if(r==="packer")lbl.textContent="Виробіток за 1 видану річ ₴";else if(r==="packer_ready")lbl.textContent="Оплата за 1 запаковану річ ₴";else lbl.textContent="Виробіток за 1 річ ₴"}
+function openAddWorker(){document.getElementById("wk-title").textContent="+ Працівник";["wk-name","wk-login","wk-pass"].forEach(function(id){document.getElementById(id).value=""});document.getElementById("wk-daily").value="0";document.getElementById("wk-rate").value="0";document.getElementById("wk-ret-rate").value="0";document.getElementById("wk-role").value=wkCurrentRole||"packer";document.getElementById("wk-daily-toggle").classList.add("on");document.getElementById("wk-daily-wrap").style.display="";toggleWkRole();document.getElementById("wk-err").style.display="none";openM("wk-modal")}
 async function saveWorker(){
   var err=document.getElementById("wk-err");err.style.display="none";
-  try{await api("/api/workers",{method:"POST",body:JSON.stringify({name:document.getElementById("wk-name").value,role:document.getElementById("wk-role").value,daily_rate:document.getElementById("wk-daily").value,per_item_rate:document.getElementById("wk-rate").value,per_return_item_rate:document.getElementById("wk-ret-rate").value,username:document.getElementById("wk-login").value,password:document.getElementById("wk-pass").value})});
-  closeM("wk-modal");loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}
+  try{await api("/api/workers",{method:"POST",body:JSON.stringify({name:document.getElementById("wk-name").value,role:document.getElementById("wk-role").value,daily_rate:document.getElementById("wk-daily").value,use_daily_rate:document.getElementById("wk-daily-toggle").classList.contains("on"),per_item_rate:document.getElementById("wk-rate").value,per_return_item_rate:document.getElementById("wk-ret-rate").value,username:document.getElementById("wk-login").value,password:document.getElementById("wk-pass").value})});
+  closeM("wk-modal");loadWorkers().then(function(){if(wkCurrentRole)openRoleTile(wkCurrentRole)})}catch(e){err.textContent=e.message;err.style.display="block"}
 }
 async function openWorkerDetail(id){
   try{var r=await api("/api/workers/"+id+"/detail");var w=r.worker;
-  var html='<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--td)">'+(ROLES[w.role]||w.role)+'</div>';
+  var html='<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--td)">'+(ROLES[w.role]?ROLES[w.role].label:w.role)+'</div>';
   html+='<div style="display:flex;gap:10px;margin-top:6px"><div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--acc)">'+w.total_earned.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ЗАРОБЛЕНО</div></div>';
   html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--td)">'+w.total_paid.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ВИПЛАЧЕНО</div></div>';
   html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:'+(w.balance>0?"var(--warn)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ДО ВИПЛАТИ</div></div></div></div>';

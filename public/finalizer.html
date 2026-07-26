@@ -32,11 +32,12 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 <script src="/public/icons.js"></script>
+<script src="/public/calendar.js"></script>
 </head>
 <body>
 <div class="wrap">
 <div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:15px;margin-top:2px"><i data-icon="package" data-size="16"></i> Пакувальниця</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
-<div class="nav"><a class="on" data-p="scan"><i data-icon="camera" data-size="15"></i> Сканер</a><a data-p="stats"><i data-icon="barChart3" data-size="15"></i> Статистика</a></div>
+<div class="nav"><a class="on" data-p="scan"><i data-icon="camera" data-size="15"></i> Сканер</a><a data-p="stats"><i data-icon="barChart3" data-size="15"></i> Статистика</a><a data-p="salary"><i data-icon="wallet" data-size="15"></i> Моя зарплата</a></div>
 
 <div class="page on" id="pg-scan">
 <div class="sg">
@@ -52,6 +53,19 @@
 
 <div class="page" id="pg-stats">
 <div id="stats-content"></div>
+</div>
+
+<div class="page" id="pg-salary">
+  <div class="acts" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">
+    <input type="date" id="sal-df"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="sal-dt">
+    <button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadSalary()">OK</button>
+    <div style="display:flex;gap:3px;margin-left:auto"><button class="stab" id="sal-p-7" onclick="setSalaryPeriod(7)">7д</button><button class="stab" id="sal-p-15" onclick="setSalaryPeriod(15)">15д</button><button class="stab on" id="sal-p-30" onclick="setSalaryPeriod(30)">30д</button></div>
+  </div>
+  <div id="sal-stats" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
+  <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Нарахування за період:</div>
+  <div id="sal-entries"></div>
+  <div style="font-size:13px;font-weight:600;color:var(--th);margin:16px 0 8px">Історія виплат:</div>
+  <div id="sal-payouts"></div>
 </div>
 </div>
 
@@ -76,6 +90,7 @@ document.querySelectorAll(".nav a").forEach(function(a){a.addEventListener("clic
   document.querySelectorAll(".page").forEach(function(x){x.classList.remove("on")});
   document.getElementById("pg-"+a.dataset.p).classList.add("on");
   if(a.dataset.p==="stats")loadFullStats();
+  if(a.dataset.p==="salary")setSalaryPeriod(30);
 })});
 
 document.getElementById("scan-ttn").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();doScan()}});
@@ -149,6 +164,29 @@ async function loadFullStats(){
   html+='</table>';
   document.getElementById("stats-content").innerHTML=html}catch(e){}
 }
+
+// ── MY SALARY ────────────────────────────────────────────────────
+function setSalaryPeriod(days){
+  var to=new Date();var from=new Date(to);from.setDate(from.getDate()-(days-1));
+  document.getElementById("sal-df").value=from.toISOString().slice(0,10);
+  document.getElementById("sal-dt").value=to.toISOString().slice(0,10);
+  document.querySelectorAll("[id^=sal-p-]").forEach(function(b){b.classList.remove("on")});
+  var pb=document.getElementById("sal-p-"+days);if(pb)pb.classList.add("on");
+  loadSalary();
+}
+async function loadSalary(){
+  var df=document.getElementById("sal-df").value,dt=document.getElementById("sal-dt").value;
+  try{
+    var r=await api("/api/my-payroll"+(df&&dt?"?date_from="+df+"&date_to="+dt:""));
+    document.getElementById("sal-stats").innerHTML=
+      '<div style="background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px 18px;text-align:center;flex:1;min-width:120px"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:var(--acc)">'+r.period_earned.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td);margin-top:2px">ЗАРОБЛЕНО ЗА ПЕРІОД</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px 18px;text-align:center;flex:1;min-width:120px"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(r.balance>0?"var(--warn)":"var(--td)")+'">'+r.balance.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td);margin-top:2px">ДО ВИПЛАТИ (ВСЬОГО)</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px 18px;text-align:center;flex:1;min-width:120px"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:var(--td)">'+r.total_paid.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td);margin-top:2px">ВИПЛАЧЕНО ВСЬОГО</div></div>';
+    document.getElementById("sal-entries").innerHTML=r.entries.length?'<table class="tbl"><tr><th>Дата</th><th>Замовлення</th><th>Опис</th><th>Сума</th></tr>'+r.entries.map(function(p){return '<tr><td style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+'</td><td>'+(p.order_id?"#"+p.order_id:"—")+'</td><td style="font-size:11px;color:var(--td)">'+esc(p.note||p.type)+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+p.amount.toFixed(0)+'₴</td></tr>'}).join("")+'</table>':'<div class="empty"><span class="ic">'+Icon('wallet',30)+'</span>Немає нарахувань за цей період</div>';
+    document.getElementById("sal-payouts").innerHTML=r.payouts.length?r.payouts.map(function(p){return '<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--card);border:1px solid var(--brd);border-radius:8px;margin-bottom:6px"><div style="font-size:11px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-weight:700;color:var(--acc)">'+p.amount.toFixed(0)+'₴</div></div>'}).join(""):'<div style="font-size:11px;color:var(--td)">Ще не було виплат</div>';
+  }catch(e){document.getElementById("sal-stats").innerHTML='<div class="msg msg-err">'+esc(e.message)+'</div>'}
+}
+RangePicker.init("sal-df", "sal-dt", {presets:[7,15,30]});
 
 init();
 </script>

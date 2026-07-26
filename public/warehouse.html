@@ -74,6 +74,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div class="main-tab on" onclick="showMain('orders')"><i data-icon="clipboardList" data-size="15"></i> Замовлення</div>
     <div class="main-tab" onclick="showMain('returns')"><i data-icon="package" data-size="15"></i> Повернення</div>
     <div class="main-tab" onclick="showMain('stock')"><i data-icon="package" data-size="15"></i> Склад</div>
+    <div class="main-tab" onclick="showMain('salary')"><i data-icon="wallet" data-size="15"></i> Моя зарплата</div>
   </div>
   <div id="v-orders">
     <div style="display:flex;gap:4px;margin-bottom:10px">
@@ -103,6 +104,18 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div class="pcards" id="wh-stock-list"></div>
     <div class="pagi" id="wh-stock-pagi"></div>
     <div style="margin-top:16px"><div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:8px"><i data-icon="package" data-size="15"></i> Повернення на складі:</div><div id="wh-ret-stock"></div></div>
+  </div>
+  <div id="v-salary" style="display:none">
+    <div class="acts" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">
+      <input type="date" id="sal-df"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="sal-dt">
+      <button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadSalary()">OK</button>
+      <div style="display:flex;gap:3px;margin-left:auto"><button class="stab" id="sal-p-7" onclick="setSalaryPeriod(7)">7д</button><button class="stab" id="sal-p-15" onclick="setSalaryPeriod(15)">15д</button><button class="stab on" id="sal-p-30" onclick="setSalaryPeriod(30)">30д</button></div>
+    </div>
+    <div id="sal-stats" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
+    <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Нарахування за період:</div>
+    <div id="sal-entries"></div>
+    <div style="font-size:13px;font-weight:600;color:var(--th);margin:16px 0 8px">Історія виплат:</div>
+    <div id="sal-payouts"></div>
   </div>
 </div>
 
@@ -161,9 +174,22 @@ const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-sh
 const WHS=[{key:"",label:Icon('clipboardList',13)+" Всі"},{key:"new",label:Icon('download',13)+" Нові",next:"in_progress",nl:Icon('settings',13)+" Взяти"},{key:"in_progress",label:Icon('settings',13)+" В роботі",next:"packed",nl:Icon('check',13)+" Готово"},{key:"packed",label:Icon('check',13)+" Готові"},{key:"shipped",label:Icon('truck',13)+" Відправлені"},{key:"delivered",label:Icon('packageOpen',13)+" Отримані"},{key:"refused",label:Icon('x',13)+" Відмови"},{key:"cancelled",label:Icon('x',13)+" Скасовані"}];
 
 async function init(){
-  try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;await checkShift();loadOrders();
+  try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;
+  if(ME.worker_role==="packer_ready")enterPackerReadyMode();
+  await checkShift();loadOrders();
   document.getElementById("scan-ttn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();scanTTN()}});
   }catch(e){location.href="/login"}
+}
+// Пакувальник готового товару packs solo start-to-finish: no returns/stock
+// tabs, no team shift picker, no ready/channel filters — he only ever sees
+// his own ready-product orders (server already scopes GET /api/orders to
+// that automatically for this worker_role).
+function enterPackerReadyMode(){
+  var tabs=document.querySelectorAll(".main-tab");
+  if(tabs[1])tabs[1].style.display="none";
+  if(tabs[2])tabs[2].style.display="none";
+  var rf=document.getElementById("rf-all");if(rf&&rf.parentElement)rf.parentElement.style.display="none";
+  var chRow=document.getElementById("wc-hot");if(chRow&&chRow.parentElement)chRow.parentElement.style.display="none";
 }
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function ttnColor(o){if(o.own_ttn)return'#c17f4e';var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
@@ -174,11 +200,12 @@ function clM(id){document.getElementById(id).classList.remove("on")}
 function opM(id){document.getElementById(id).classList.add("on")}
 
 function showMain(t){
-  document.querySelectorAll(".main-tab").forEach((b,i)=>b.classList.toggle("on",["orders","returns","stock"][i]===t));
-  ["v-orders","v-returns","v-stock"].forEach(id=>document.getElementById(id).style.display="none");
+  document.querySelectorAll(".main-tab").forEach((b,i)=>{if(b.style.display!=="none")b.classList.toggle("on",["orders","returns","stock","salary"][i]===t)});
+  ["v-orders","v-returns","v-stock","v-salary"].forEach(id=>document.getElementById(id).style.display="none");
   document.getElementById("v-"+t).style.display="";
   if(t==="orders")loadOrders();if(t==="returns"){document.getElementById("scan-ttn").value="";document.getElementById("scan-ttn").focus();document.getElementById("ret-result").innerHTML=""}
   if(t==="stock")loadWhStock();
+  if(t==="salary")setSalaryPeriod(30);
 }
 
 // ── ORDERS ────────────────────────────────────────────────────────
@@ -227,16 +254,23 @@ async function loadOrders(silent){if(!silent)document.getElementById("wh-orders"
     if(o.note)html+='<div style="padding:0 16px 10px"><div class="ocard-note">'+Icon('fileText',12)+' '+esc(o.note)+'</div></div>';
     var osi=WHS.find(function(s){return s.key===o.status});
     html+='<div class="ocard-footer"><div class="ocard-cod">Наложка: '+o.cod_amount+'₴</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
-    html+='<select onchange="chSt('+o.id+',this.value,this)" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark">';
-    ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
-    html+='</select>';
-    if(osi&&osi.next){
-      if(osi.next==="packed"&&hasOOS)html+='<button class="btn btn-sm" disabled style="opacity:.4;cursor:not-allowed">'+Icon('alertTriangle',13)+' Замініть розміри</button>';
-      else html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\',this)">'+osi.nl+'</button>';
+    if(ME.worker_role==="packer_ready"){
+      // Simplified 2-status flow: he packs solo and the single action both
+      // finishes the order and credits his own per-item pay (server-side).
+      if(o.status==="new")html+='<button class="btn btn-p" onclick="chSt('+o.id+',\'packed\',this)">'+Icon('check',13)+' Запаковано</button>';
+      else html+='<span class="tag tag-done">'+Icon('check',11)+' Готово</span>';
+    }else{
+      html+='<select onchange="chSt('+o.id+',this.value,this)" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark">';
+      ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
+      html+='</select>';
+      if(osi&&osi.next){
+        if(osi.next==="packed"&&hasOOS)html+='<button class="btn btn-sm" disabled style="opacity:.4;cursor:not-allowed">'+Icon('alertTriangle',13)+' Замініть розміри</button>';
+        else html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\',this)">'+osi.nl+'</button>';
+      }
     }
     if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="createTTN('+o.id+',this)">'+Icon('package',13)+' Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="printTTN('+o.id+')">'+Icon('printer',13)+' Друк ТТН</button>';
-    
+
     html+='</div></div></div>';
   }
   el.innerHTML=html;
@@ -285,15 +319,20 @@ async function checkShift(){
   if(currentShift){
     document.getElementById("shift-banner").style.display="none";
     document.getElementById("shift-active").style.display="";
-    document.getElementById("shift-crew").textContent=currentShift.workers.map(function(w){return w.name+" ("+({packer:"Пакувальник",finalizer:"Пакувальниця",seamstress:"Швея",printer:"Принтувальник"}[w.role]||w.role)+")"}).join(", ");
+    document.getElementById("shift-crew").textContent=currentShift.workers.map(function(w){return w.name+" ("+({packer:"Пакувальник",finalizer:"Пакувальниця",seamstress:"Швея",printer:"Принтувальник",packer_ready:"Пакувальник ГТ"}[w.role]||w.role)+")"}).join(", ");
   }else{
     document.getElementById("shift-banner").style.display="";
     document.getElementById("shift-active").style.display="none";
   }}catch(e){}
 }
 async function openShiftModal(){
+  if(ME.worker_role==="packer_ready"){
+    // Solo shift — no team to pick, server resolves worker_ids to himself.
+    try{await api("/api/shifts/open",{method:"POST",body:JSON.stringify({})});checkShift()}catch(e){}
+    return;
+  }
   try{var r=await api("/api/workers");shiftSelected=[];
-  document.getElementById("shift-worker-list").innerHTML=r.workers.filter(function(w){return w.active}).map(function(w){
+  document.getElementById("shift-worker-list").innerHTML=r.workers.filter(function(w){return w.active&&w.role!=="packer_ready"}).map(function(w){
     var rl={packer:"Пакувальник",finalizer:"Пакувальниця",seamstress:"Швея",printer:"Принтувальник"}[w.role]||w.role;
     return '<label style="display:flex;align-items:center;gap:8px;padding:6px;cursor:pointer;border-bottom:1px solid var(--brd)"><input type="checkbox" value="'+w.id+'" onchange="toggleShiftWorker('+w.id+')" style="width:18px;height:18px;accent-color:var(--acc)"><div><div style="font-size:12px;color:var(--th);font-weight:600">'+esc(w.name)+'</div><div style="font-size:10px;color:var(--td)">'+rl+'</div></div></label>'
   }).join("");
@@ -477,7 +516,30 @@ async function saveWhSwap(){
   clM("wh-swap-modal");loadWhStock();}catch(e){alert(e.message)}
 }
 
+// ── MY SALARY ────────────────────────────────────────────────────
+function setSalaryPeriod(days){
+  var to=new Date();var from=new Date(to);from.setDate(from.getDate()-(days-1));
+  document.getElementById("sal-df").value=from.toISOString().slice(0,10);
+  document.getElementById("sal-dt").value=to.toISOString().slice(0,10);
+  document.querySelectorAll("[id^=sal-p-]").forEach(function(b){b.classList.remove("on")});
+  var pb=document.getElementById("sal-p-"+days);if(pb)pb.classList.add("on");
+  loadSalary();
+}
+async function loadSalary(){
+  var df=document.getElementById("sal-df").value,dt=document.getElementById("sal-dt").value;
+  try{
+    var r=await api("/api/my-payroll"+(df&&dt?"?date_from="+df+"&date_to="+dt:""));
+    document.getElementById("sal-stats").innerHTML=
+      '<div style="background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px 18px;text-align:center;flex:1;min-width:120px"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:var(--acc)">'+r.period_earned.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td);margin-top:2px">ЗАРОБЛЕНО ЗА ПЕРІОД</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px 18px;text-align:center;flex:1;min-width:120px"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(r.balance>0?"var(--warn)":"var(--td)")+'">'+r.balance.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td);margin-top:2px">ДО ВИПЛАТИ (ВСЬОГО)</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px 18px;text-align:center;flex:1;min-width:120px"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:var(--td)">'+r.total_paid.toFixed(0)+'₴</div><div style="font-size:9px;color:var(--td);margin-top:2px">ВИПЛАЧЕНО ВСЬОГО</div></div>';
+    document.getElementById("sal-entries").innerHTML=r.entries.length?'<table class="tbl"><tr><th>Дата</th><th>Замовлення</th><th>Опис</th><th>Сума</th></tr>'+r.entries.map(function(p){return '<tr><td style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+'</td><td>'+(p.order_id?"#"+p.order_id:"—")+'</td><td style="font-size:11px;color:var(--td)">'+esc(p.note||p.type)+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+p.amount.toFixed(0)+'₴</td></tr>'}).join("")+'</table>':'<div class="empty"><span class="ic">'+Icon('wallet',30)+'</span>Немає нарахувань за цей період</div>';
+    document.getElementById("sal-payouts").innerHTML=r.payouts.length?r.payouts.map(function(p){return '<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--card);border:1px solid var(--brd);border-radius:8px;margin-bottom:6px"><div style="font-size:11px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-weight:700;color:var(--acc)">'+p.amount.toFixed(0)+'₴</div></div>'}).join(""):'<div style="font-size:11px;color:var(--td)">Ще не було виплат</div>';
+  }catch(e){document.getElementById("sal-stats").innerHTML='<div class="msg msg-err">'+esc(e.message)+'</div>'}
+}
+
 RangePicker.init("wh-df", "wh-dt", {presets:[7,15,30]});
+RangePicker.init("sal-df", "sal-dt", {presets:[7,15,30]});
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
