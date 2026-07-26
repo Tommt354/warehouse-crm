@@ -981,8 +981,13 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 
     const orderWeight = parseFloat(req.body.weight) || Math.max(0.1, totalWeight) || 0.5;
 
-    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel,is_prepaid,receipt_photo,declared_value,own_ttn,cargo_description,weight,delivery_type,client_street,client_house,client_flat,is_postomat,parcel_width,parcel_height,parcel_length)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel, isPrepaid, req.body.receipt_photo||"", parseFloat(req.body.declared_value)||cod, ownTtn?1:0, req.body.cargo_description||"Одяг", orderWeight, deliveryType, req.body.client_street||"", req.body.client_house||"", req.body.client_flat||"", isPostomat?1:0, parseFloat(req.body.parcel_width)||0, parseFloat(req.body.parcel_height)||0, parseFloat(req.body.parcel_length)||0);
+    // Only an admin creating the order on the dropshipper's behalf may enter
+    // the own_ttn number directly at creation time — a dropshipper's own
+    // request always leaves it blank for an admin to fill in later.
+    const adminTtn = (req.user.role === "admin" && ownTtn && req.body.own_ttn_number) ? String(req.body.own_ttn_number).trim() : "";
+
+    const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel,is_prepaid,receipt_photo,declared_value,own_ttn,cargo_description,weight,delivery_type,client_street,client_house,client_flat,is_postomat,parcel_width,parcel_height,parcel_length,ttn)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel, isPrepaid, req.body.receipt_photo||"", parseFloat(req.body.declared_value)||cod, ownTtn?1:0, req.body.cargo_description||"Одяг", orderWeight, deliveryType, req.body.client_street||"", req.body.client_house||"", req.body.client_flat||"", isPostomat?1:0, parseFloat(req.body.parcel_width)||0, parseFloat(req.body.parcel_height)||0, parseFloat(req.body.parcel_length)||0, adminTtn);
 
     const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id)VALUES(?,?,?,?,?,?,?)");
     orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id));
