@@ -1093,13 +1093,6 @@ app.get("/api/orders", authMiddleware, (req, res) => {
     where.push("o.id IN (SELECT DISTINCT oi.order_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE m.main_warehouse=?)");
     params.push(wh);
   }
-  // Ready-product-only orders (Пакувальник готовий товар packs these solo,
-  // start to finish) — either explicitly requested or implied by that role.
-  const readyOnly = req.query.ready_only || (req.user.role === "warehouse" && req.user.worker_role === "packer_ready" ? "1" : null);
-  if (readyOnly) {
-    where.push("o.id IN (SELECT DISTINCT oi.order_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE m.is_ready_product=1)");
-    where.push("o.id NOT IN (SELECT DISTINCT oi.order_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE m.is_ready_product=0)");
-  }
 
   if (where.length) q += " WHERE " + where.join(" AND ");
   q += " ORDER BY o.created_at DESC";
@@ -1757,7 +1750,11 @@ app.post("/api/workers", authMiddleware, requireRole("admin"), (req, res) => {
     const existing = db.prepare("SELECT id FROM users WHERE username=?").get(username);
     if (existing) return res.status(400).json({ error: "Логін вже зайнятий" });
     try {
-      const u = db.prepare("INSERT INTO users(username,password_hash,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate)VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(username, bcrypt.hashSync(password, 10), uRole, name.trim(), "", "", "", 0, 0, role, parseFloat(per_item_rate)||0);
+      // packer_ready is the one and only packer assigned to Молодіжна — he
+      // handles everything stored there, ready-made or not (a regular packer
+      // stays scoped to База), so his login gets that warehouse baked in.
+      const assignedWh = role === "packer_ready" ? "molod" : "";
+      const u = db.prepare("INSERT INTO users(username,password_hash,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,assigned_warehouse)VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(username, bcrypt.hashSync(password, 10), uRole, name.trim(), "", "", "", 0, 0, role, parseFloat(per_item_rate)||0, assignedWh);
       userId = u.lastInsertRowid;
     } catch(e) { return res.status(400).json({ error: "Помилка створення акаунту: " + e.message }); }
   }

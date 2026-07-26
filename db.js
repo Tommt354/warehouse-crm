@@ -509,7 +509,7 @@ if(!db.prepare("SELECT id FROM users WHERE username='pack2'").get()){
 }
 if(!db.prepare("SELECT id FROM users WHERE username='pack3'").get()){
   const pw = process.env.WAREHOUSE3_PASSWORD || genPassword();
-  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate,assigned_warehouse)VALUES(?,?,'warehouse',?,'packer',5,'molod')").run("pack3",bcrypt.hashSync(pw,10),"Пакувальник (Молодіжна)");
+  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate,assigned_warehouse)VALUES(?,?,'warehouse',?,'packer_ready',5,'molod')").run("pack3",bcrypt.hashSync(pw,10),"Пакувальник (Готовий товар)");
   console.log("✅ Створено pack3, логін: pack3, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
 }
 if(!db.prepare("SELECT id FROM users WHERE username='final1'").get()){
@@ -517,10 +517,20 @@ if(!db.prepare("SELECT id FROM users WHERE username='final1'").get()){
   db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse',?,'finalizer',5)").run("final1",bcrypt.hashSync(pw,10),"Пакувальниця 1");
   console.log("✅ Створено final1, логін: final1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
 }
-if(!db.prepare("SELECT id FROM users WHERE username='ready1'").get()){
-  const pw = process.env.PACKER_READY_PASSWORD || genPassword();
-  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse',?,'packer_ready',5)").run("ready1",bcrypt.hashSync(pw,10),"Пакувальник ГТ 1");
-  console.log("✅ Створено ready1, логін: ready1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
+// Молодіжна IS the ready-product warehouse (one and the same place) — an
+// earlier iteration modeled them as two separate packer concepts (regular
+// packer assigned to склад Молодіжна vs a distinct packer_ready role).
+// Collapse that into pack3 alone and drop the now-redundant duplicate.
+if(db.prepare("SELECT id FROM users WHERE username='pack3' AND worker_role='packer'").get()){
+  db.prepare("UPDATE users SET worker_role='packer_ready',name='Пакувальник (Готовий товар)' WHERE username='pack3'").run();
+  db.prepare("UPDATE workers SET role='packer_ready',name='Пакувальник (Готовий товар)' WHERE user_id=(SELECT id FROM users WHERE username='pack3')").run();
+  console.log("🔄 pack3 переведено на роль packer_ready (Молодіжна = Готовий товар)");
+}
+const readyDup = db.prepare("SELECT id FROM users WHERE username='ready1'").get();
+if(readyDup){
+  db.prepare("DELETE FROM workers WHERE user_id=?").run(readyDup.id);
+  db.prepare("DELETE FROM users WHERE id=?").run(readyDup.id);
+  console.log("🗑 Видалено дублікат ready1 (об'єднано з pack3)");
 }
 if(!db.prepare("SELECT id FROM users WHERE username='seam1'").get()){
   const pw = process.env.SEAMSTRESS_PASSWORD || genPassword();

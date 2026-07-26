@@ -1783,15 +1783,36 @@ function renderRolePeople(){
 }
 function toggleWkDaily(el){el.classList.toggle("on");document.getElementById("wk-daily-wrap").style.display=el.classList.contains("on")?"":"none"}
 function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none";var lbl=document.getElementById("wk-rate-label");if(r==="seamstress")lbl.textContent="Оплата за 1 нашивку ₴";else if(r==="printer")lbl.textContent="Оплата за 1 принт ₴";else if(r==="packer")lbl.textContent="Виробіток за 1 видану річ ₴";else if(r==="packer_ready")lbl.textContent="Оплата за 1 запаковану річ ₴";else lbl.textContent="Виробіток за 1 річ ₴"}
-function openAddWorker(){document.getElementById("wk-title").textContent="+ Працівник";["wk-name","wk-login","wk-pass"].forEach(function(id){document.getElementById(id).value=""});document.getElementById("wk-daily").value="0";document.getElementById("wk-rate").value="0";document.getElementById("wk-ret-rate").value="0";document.getElementById("wk-role").value=wkCurrentRole||"packer";document.getElementById("wk-daily-toggle").classList.add("on");document.getElementById("wk-daily-wrap").style.display="";toggleWkRole();document.getElementById("wk-err").style.display="none";openM("wk-modal")}
+var editWorkerId=null;
+function openAddWorker(){editWorkerId=null;document.getElementById("wk-title").textContent="+ Працівник";["wk-name","wk-login","wk-pass"].forEach(function(id){document.getElementById(id).value=""});document.getElementById("wk-daily").value="0";document.getElementById("wk-rate").value="0";document.getElementById("wk-ret-rate").value="0";document.getElementById("wk-role").value=wkCurrentRole||"packer";document.getElementById("wk-role").disabled=false;document.getElementById("wk-auth-wrap").style.display="";document.getElementById("wk-daily-toggle").classList.add("on");document.getElementById("wk-daily-wrap").style.display="";toggleWkRole();document.getElementById("wk-err").style.display="none";openM("wk-modal")}
+function openEditWorker(w){
+  editWorkerId=w.id;
+  document.getElementById("wk-title").textContent="Редагувати: "+w.name;
+  document.getElementById("wk-name").value=w.name;
+  document.getElementById("wk-role").value=w.role;document.getElementById("wk-role").disabled=true;
+  document.getElementById("wk-auth-wrap").style.display="none";
+  document.getElementById("wk-daily").value=w.daily_rate;
+  document.getElementById("wk-rate").value=w.per_item_rate;
+  document.getElementById("wk-ret-rate").value=w.per_return_item_rate;
+  document.getElementById("wk-daily-toggle").classList.toggle("on",!!w.use_daily_rate);
+  document.getElementById("wk-daily-wrap").style.display=w.use_daily_rate?"":"none";
+  toggleWkRole();
+  document.getElementById("wk-err").style.display="none";
+  closeM("wk-detail-modal");openM("wk-modal");
+}
 async function saveWorker(){
   var err=document.getElementById("wk-err");err.style.display="none";
-  try{await api("/api/workers",{method:"POST",body:JSON.stringify({name:document.getElementById("wk-name").value,role:document.getElementById("wk-role").value,daily_rate:document.getElementById("wk-daily").value,use_daily_rate:document.getElementById("wk-daily-toggle").classList.contains("on"),per_item_rate:document.getElementById("wk-rate").value,per_return_item_rate:document.getElementById("wk-ret-rate").value,username:document.getElementById("wk-login").value,password:document.getElementById("wk-pass").value})});
-  closeM("wk-modal");loadWorkers().then(function(){if(wkCurrentRole)openRoleTile(wkCurrentRole)})}catch(e){err.textContent=e.message;err.style.display="block"}
+  var data={name:document.getElementById("wk-name").value,role:document.getElementById("wk-role").value,daily_rate:document.getElementById("wk-daily").value,use_daily_rate:document.getElementById("wk-daily-toggle").classList.contains("on"),per_item_rate:document.getElementById("wk-rate").value,per_return_item_rate:document.getElementById("wk-ret-rate").value,username:document.getElementById("wk-login").value,password:document.getElementById("wk-pass").value};
+  try{
+    if(editWorkerId)await api("/api/workers/"+editWorkerId,{method:"PUT",body:JSON.stringify(data)});
+    else await api("/api/workers",{method:"POST",body:JSON.stringify(data)});
+    closeM("wk-modal");loadWorkers().then(function(){if(wkCurrentRole)openRoleTile(wkCurrentRole)})
+  }catch(e){err.textContent=e.message;err.style.display="block"}
 }
+var lastWorkerDetail=null;
 async function openWorkerDetail(id){
-  try{var r=await api("/api/workers/"+id+"/detail");var w=r.worker;
-  var html='<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--td)">'+(ROLES[w.role]?ROLES[w.role].label:w.role)+'</div>';
+  try{var r=await api("/api/workers/"+id+"/detail");var w=r.worker;lastWorkerDetail=w;
+  var html='<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:11px;color:var(--td)">'+(ROLES[w.role]?ROLES[w.role].label:w.role)+'</div><button class="btn btn-sm btn-a" onclick="openEditWorker(lastWorkerDetail)">'+Icon('pencil',12)+' Редагувати ставку</button></div>';
   html+='<div style="display:flex;gap:10px;margin-top:6px"><div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--acc)">'+w.total_earned.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ЗАРОБЛЕНО</div></div>';
   html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:var(--td)">'+w.total_paid.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ВИПЛАЧЕНО</div></div>';
   html+='<div style="background:var(--bg);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:'+(w.balance>0?"var(--warn)":"var(--td)")+'">'+w.balance.toFixed(0)+'₴</div><div style="font-size:8px;color:var(--td)">ДО ВИПЛАТИ</div></div></div></div>';
