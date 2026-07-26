@@ -1014,6 +1014,11 @@ app.post("/api/orders", authMiddleware, (req, res) => {
       const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
       console.log("Auto-TTN check:", "key:", !!apiKey, "sender:", sender?.name, "order:", result.order_id);
       if (apiKey && sender) {
+        // Marked synchronously (before the HTTP response even goes out) so
+        // the order list can show "generating..." from the very first time
+        // it's fetched, instead of a "Створити ТТН" button someone can
+        // click mid-flight and collide with this background job.
+        db.prepare("UPDATE orders SET ttn_pending=1 WHERE id=?").run(result.order_id);
         setTimeout(async () => {
           try {
             const o2 = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(result.order_id);
@@ -1066,6 +1071,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
               console.log("Auto-TTN NP error:", JSON.stringify(r2.errors||r2.warnings||[]));
             }
           } catch(e) { console.log("Auto-TTN error:", e.message); }
+          finally { db.prepare("UPDATE orders SET ttn_pending=0 WHERE id=?").run(result.order_id); }
         }, 1000);
       } else {
         console.log("Auto-TTN: no API key or sender");
@@ -1638,6 +1644,7 @@ app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, re
 const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.order_id);
     if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
     if (o.ttn) return res.status(400).json({ error: "ТТН вже створено: " + o.ttn });
+    if (o.ttn_pending) return res.status(409).json({ error: "ТТН вже генерується, зачекайте кілька секунд" });
     if (o.delivery_type === "pickup") return res.status(400).json({ error: "Самовивіз — ТТН не потрібне" });
 
     const apiKey = getActiveApiKey();
@@ -1648,6 +1655,7 @@ const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u 
     if (!sender) return res.status(400).json({ error: "Додайте контрагента НП і позначте його активним" });
     if (!sender.sender_city_ref || !sender.sender_warehouse_ref) return res.status(400).json({ error: "У контрагента не вказано відділення відправлення — додайте його в Налаштуваннях" });
 
+    db.prepare("UPDATE orders SET ttn_pending=1 WHERE id=?").run(o.id);
     const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
     const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 1;
     const weight = o.weight > 0 ? o.weight : Math.max(0.5, itemsCount * 0.3);
@@ -1687,6 +1695,8 @@ const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u 
     res.json({ ok: true, ttn, np_ref: npRef });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  } finally {
+    db.prepare("UPDATE orders SET ttn_pending=0 WHERE id=?").run(req.params.order_id);
   }
 });
 

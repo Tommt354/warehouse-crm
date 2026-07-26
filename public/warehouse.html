@@ -289,7 +289,8 @@ async function loadOrders(silent){if(!silent)document.getElementById("wh-orders"
         else html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\',this)">'+osi.nl+'</button>';
       }
     }
-    if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="createTTN('+o.id+',this)">'+Icon('package',13)+' Створити ТТН</button>';
+    if(!o.ttn&&o.ttn_pending&&(o.status==="packed"||o.status==="in_progress"))html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default"><div style="display:inline-block;width:11px;height:11px;border:2px solid rgba(255,167,38,.3);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></div>ТТН генерується...</div>';
+    else if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="createTTN('+o.id+',this)">'+Icon('package',13)+' Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="printTTN('+o.id+')">'+Icon('printer',13)+' Друк ТТН</button>';
 
     html+='</div></div></div>';
@@ -297,7 +298,10 @@ async function loadOrders(silent){if(!silent)document.getElementById("wh-orders"
   el.innerHTML=html;
   var whPages=Math.max(1,Math.ceil(r.total/whPp));whOrdPage=Math.min(whOrdPage||0,whPages-1);
   if(whPages>1){var ph="";for(var p=0;p<whPages;p++)ph+='<button class="'+(p===whOrdPage?"on":"")+'" onclick="whOrdPage='+p+';loadOrders()">'+(p+1)+'</button>';document.getElementById("wh-ord-pagi").innerHTML=ph}else document.getElementById("wh-ord-pagi").innerHTML="";
+  clearTimeout(whTtnPollT);
+  if(orders.some(function(o){return o.ttn_pending}))whTtnPollT=setTimeout(function(){loadOrders(true)},2000);
 }
+var whTtnPollT=null;
 function btnSpin(btn){if(!btn)return;btn._oldHtml=btn.innerHTML;btn.innerHTML='<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .6s linear infinite"></span>';btn.disabled=true}
 function btnDone(btn){if(!btn)return;btn.innerHTML=btn._oldHtml;btn.disabled=false}
 async function chSt(id,st,btn){btnSpin(btn);try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})})}catch(e){}loadOrders(true)}

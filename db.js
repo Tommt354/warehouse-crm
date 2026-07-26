@@ -491,6 +491,11 @@ addCol("np_senders","sender_city_ref","TEXT DEFAULT ''");
 addCol("np_senders","sender_city_name","TEXT DEFAULT ''");
 addCol("np_senders","sender_warehouse_ref","TEXT DEFAULT ''");
 addCol("np_senders","sender_warehouse_desc","TEXT DEFAULT ''");
+// Tracks the ~1-2s window while the auto-TTN background job (fired after
+// order creation) is still talking to Nova Poshta, so the UI can show a
+// clear "generating" state instead of letting someone click "Створити ТТН"
+// and hit a confusing "already created" error mid-flight.
+addCol("orders","ttn_pending","INTEGER DEFAULT 0");
 addCol("orders","own_ttn","INTEGER DEFAULT 0");
 addCol("models","size_grid_photo","TEXT DEFAULT ''");
 addCol("orders","cargo_description","TEXT DEFAULT 'Одяг'");

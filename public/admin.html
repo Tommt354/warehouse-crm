@@ -1256,7 +1256,8 @@ function setAdmDatePeriod(days){
 }
 
 async function admTrackNP(){var b=document.getElementById("adm-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></div>Оновлення...';try{await fetch("/api/nova-poshta/track-all",{method:"POST",headers:{"Content-Type":"application/json"}});b.innerHTML=Icon('check',12)+' Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false;loadAdmOrders(admOrdFilter)},1500)}catch(e){b.innerHTML=Icon('x',12)+' Помилка';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false},2000)}}
-async function loadAdmOrders(status){document.getElementById("adm-orders").innerHTML='<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
+let admTtnPollT=null;
+async function loadAdmOrders(status,silent){if(!silent)document.getElementById("adm-orders").innerHTML='<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   admOrdFilter=status;
   document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");
   const btn=document.getElementById("ao-"+(status||"all"));if(btn)btn.className="btn btn-a";
@@ -1287,7 +1288,8 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
     if(o.own_ttn)html+='<div style="width:100%;font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+Icon('alertTriangle',10)+' ТТН дропера — не наша доставка'+(o.receipt_photo?' · <a href="'+o.receipt_photo+'" target="_blank" style="color:#c17f4e;text-decoration:underline">'+Icon('image',10)+' чек</a>':' · <span style="color:var(--red)">чек не завантажено</span>')+'</div>';
     if(o.ttn)html+='<div style="flex:1;background:'+(o.own_ttn?'rgba(193,127,78,.1)':'rgba(255,167,38,.06)')+';border:1px solid '+(o.own_ttn?'rgba(193,127,78,.3)':'rgba(255,167,38,.15)')+';border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">'+Icon('package',11)+' '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div>';
     html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="'+(o.own_ttn?"Вставте ТТН дропера сюди...":"Вставте ТТН...")+'" readonly style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid '+(o.own_ttn&&!o.ttn?'#c17f4e':'var(--brd)')+';border-radius:6px;color:#fff;opacity:.7"><button id="ttn-edit-'+o.id+'" class="btn btn-sm" onclick="editTtn('+o.id+')" style="font-size:10px">'+Icon('pencil',11)+'</button><button id="ttn-save-'+o.id+'" class="btn btn-sm btn-p" onclick="saveTtn('+o.id+')" style="font-size:10px;display:none">'+Icon('save',11)+'</button>';
-    if(!o.ttn&&!o.own_ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+')">'+Icon('package',13)+' Створити ТТН</button>';
+    if(!o.ttn&&!o.own_ttn&&o.ttn_pending)html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default"><div style="display:inline-block;width:11px;height:11px;border:2px solid rgba(255,167,38,.3);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></div>ТТН генерується...</div>';
+    else if(!o.ttn&&!o.own_ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+',this)">'+Icon('package',13)+' Створити ТТН</button>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="window.open(\'https://my.novaposhta.ua/orders/printMarkings/orders[]/\'+document.getElementById(\'ttn-\'+'+o.id+').value+\'/type/pdf\',\'_blank\')">'+Icon('printer',13)+'</button>';
     html+='</div>';
     // Items
@@ -1317,6 +1319,8 @@ async function loadAdmOrders(status){document.getElementById("adm-orders").inner
   el.innerHTML=html;
   var admPages=Math.max(1,Math.ceil(r.total/admPp));admOrdPage=Math.min(admOrdPage||0,admPages-1);
   if(admPages>1){var ph="";for(var p=0;p<admPages;p++)ph+='<button class="'+(p===admOrdPage?"on":"")+'" onclick="admOrdPage='+p+';loadAdmOrders(admOrdFilter)">'+(p+1)+'</button>';document.getElementById("adm-ord-pagi").innerHTML=ph}else document.getElementById("adm-ord-pagi").innerHTML="";
+  clearTimeout(admTtnPollT);
+  if(orders.some(o=>o.ttn_pending))admTtnPollT=setTimeout(()=>loadAdmOrders(admOrdFilter,true),2000);
 }
 async function chAdmSt(id,st){try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){}}
@@ -1724,8 +1728,10 @@ async function applyRecount(){
 }
 
 // Admin create TTN
-async function admCreateTTN(id){
-  try{var r=await api("/api/nova-poshta/create-ttn/"+id,{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){
+async function admCreateTTN(id,btn){
+  const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<div style="display:inline-block;width:11px;height:11px;border:2px solid rgba(255,167,38,.3);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></div>Створення...';
+  try{await api("/api/nova-poshta/create-ttn/"+id,{method:"POST"});loadAdmOrders(admOrdFilter,true)}catch(e){
+    btn.disabled=false;btn.innerHTML=old;
     var el=document.getElementById("adm-orders");
     el.insertAdjacentHTML("afterbegin",'<div style="padding:8px 12px;background:var(--redbg);color:var(--red);border-radius:8px;font-size:11px;margin-bottom:8px">'+Icon('x',13)+' '+esc(e.message)+'</div>');
   }
