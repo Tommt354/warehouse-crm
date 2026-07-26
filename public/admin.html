@@ -36,6 +36,7 @@
   <div class="side-logo"><img src="/public/logo-white.png" alt="ADS DROP" style="height:24px;width:auto"></div>
   <div class="side-nav">
     <a class="on" data-p="dash"><i data-icon="layoutDashboard" data-size="15"></i> Дашборд</a>
+    <a data-p="adm-returns" style="display:flex;align-items:center;justify-content:space-between;color:#ffa8a8"><span><i data-icon="alertTriangle" data-size="15"></i> Не отримано</span><span id="sidenav-unrec-badge" style="background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;display:none">0</span></a>
     <div class="nav-g">Каталог</div>
     <a data-p="dirs"><i data-icon="bookOpen" data-size="15"></i> Довідники</a>
     <a data-p="models"><i data-icon="tag" data-size="15"></i> Моделі</a>
@@ -636,7 +637,16 @@ function renderModelOps(){document.getElementById("mm-ops").innerHTML=modelOps.m
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-name").textContent=ME.name||ME.username;
   const h=location.hash.slice(1);const navBtn=h&&document.querySelector(`.side-nav a[data-p="${h}"]`);
   if(navBtn)navBtn.click();else loadDash();
+  refreshUnrecBadge();
 }catch(e){location.href="/login"}}
+async function refreshUnrecBadge(){
+  try{
+    var r=await api("/api/returns");
+    var n=r.orders.filter(function(o){return !o.return_received}).length;
+    var b=document.getElementById("sidenav-unrec-badge");
+    b.textContent=n;b.style.display=n>0?"":"none";
+  }catch(e){}
+}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function ttnColor(o){if(o.own_ttn)return'#c17f4e';var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.textContent=t+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
@@ -1655,6 +1665,7 @@ async function loadAdmReturns(){
     document.getElementById("ret-processed").textContent=stocked;
     document.getElementById("ret-unreceived").textContent=unreceived;
     document.getElementById("ret-unrec-tab-badge").textContent=unreceived;
+    var sb=document.getElementById("sidenav-unrec-badge");sb.textContent=unreceived;sb.style.display=unreceived>0?"":"none";
     document.getElementById("ret-day-filter").style.display=retFilter==="unreceived"?"flex":"none";
     renderReturnsFiltered();
   }catch(e){}
