@@ -305,8 +305,8 @@
   <div class="sc"><div class="sv" style="color:var(--red)" id="ret-unreceived">0</div><div class="sl">не отримано</div></div>
 </div>
 <div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
-  <button class="stab on" onclick="retFilter='all';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">Всі</button>
-  <button class="stab" onclick="retFilter='unreceived';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="alertTriangle" data-size="13"></i> Не отримано</button>
+  <button class="stab on" style="border-color:rgba(255,107,107,.4)" onclick="retFilter='unreceived';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="alertTriangle" data-size="13"></i> Не отримано <span id="ret-unrec-tab-badge" style="background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
+  <button class="stab" onclick="retFilter='all';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')">Всі</button>
   <button class="stab" onclick="retFilter='transit';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="truck" data-size="13"></i> В дорозі</button>
   <button class="stab" onclick="retFilter='arrived';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="package" data-size="13"></i> На пошті</button>
   <button class="stab" onclick="retFilter='stocked';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="check" data-size="13"></i> На складі</button>
@@ -1630,7 +1630,7 @@ async function markPaid(id){if(!confirm("Підтвердити виплату?"
 // ── STOCK LOG ────────────────────────────────────────────────────
 
 // ── ADMIN RETURNS ────────────────────────────────────────────────
-var retFilter="all",retDayFilter=0,allReturns=[];
+var retFilter="unreceived",retDayFilter=0,allReturns=[];
 function daysPending(o){
   var anchor=o.return_flagged_at||o.updated_at;if(!anchor)return 0;
   var ms=Date.now()-new Date(anchor.replace(" ","T")).getTime();
@@ -1654,6 +1654,7 @@ async function loadAdmReturns(){
     document.getElementById("ret-transit").textContent=transit;
     document.getElementById("ret-processed").textContent=stocked;
     document.getElementById("ret-unreceived").textContent=unreceived;
+    document.getElementById("ret-unrec-tab-badge").textContent=unreceived;
     document.getElementById("ret-day-filter").style.display=retFilter==="unreceived"?"flex":"none";
     renderReturnsFiltered();
   }catch(e){}
