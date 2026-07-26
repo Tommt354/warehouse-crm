@@ -41,6 +41,7 @@
     <a data-p="models"><i data-icon="tag" data-size="15"></i> Моделі</a>
     <div class="nav-g">Склад</div>
     <a data-p="sbase"><i data-icon="package" data-size="15"></i> Склад база</a>
+    <a data-p="sready"><i data-icon="check" data-size="15"></i> Готовий товар</a>
     <a data-p="sdrop"><i data-icon="shoppingCart" data-size="15"></i> Склад дроп</a>
     <a data-p="cuts"><i data-icon="scissors" data-size="15"></i> Крій</a>
     <a data-p="orders"><i data-icon="clipboardList" data-size="15"></i> Замовлення</a>
@@ -122,6 +123,19 @@
 </div>
 <div class="cards" id="sbase-cats"></div>
 <div class="cards" id="sbase-list" style="margin-top:10px"></div>
+</div>
+
+<div class="page" id="pg-sready"><div class="pt"><i data-icon="check" data-size="17"></i> Готовий товар</div>
+<div id="sready-bread"></div>
+<div class="acts">
+  <button class="btn btn-p" onclick="addCatIn('base')">+ Категорія</button>
+  <button class="btn btn-a" onclick="openInc()"><i data-icon="download" data-size="15"></i> Прихід</button>
+  <button class="btn btn-d" onclick="openWriteOff()"><i data-icon="upload" data-size="15"></i> Списати</button>
+  <button class="btn btn-w" onclick="openSwapSize()"><i data-icon="refreshCw" data-size="15"></i> Заміна розміру</button>
+  <input class="search-bar" placeholder="Пошук..." oninput="searchReady(this.value)">
+</div>
+<div class="cards" id="sready-cats"></div>
+<div class="cards" id="sready-list" style="margin-top:10px"></div>
 </div>
 
 <div class="page" id="pg-sdrop"><div class="pt"><i data-icon="shoppingCart" data-size="17"></i> Склад дроп</div>
@@ -554,7 +568,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,drops:loadDrops,workers:loadWorkers,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,drops:loadDrops,workers:loadWorkers,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -804,6 +818,39 @@ function renderSBase(products){
   if(pages>1){let pg='<div style="grid-column:1/-1;display:flex;justify-content:center;gap:4px;margin-top:8px">';for(let i=0;i<pages;i++)pg+='<button style="padding:5px 10px;font-size:10px;border-radius:5px;border:1px solid '+(i===sbPage?'var(--acc)':'var(--brd)')+';background:'+(i===sbPage?'var(--accbg)':'var(--card)')+';color:'+(i===sbPage?'var(--acc)':'var(--td)')+';cursor:pointer;font-family:inherit" onclick="sbPage='+i+';renderSBase(sbProducts)">'+(i+1)+'</button>';pg+='</div>';el.innerHTML+=pg}
 }
 function searchSBase(q){if(!q){renderSBase(sbProducts);return}renderSBase(sbProducts.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())))}
+
+// ── Ready-made product warehouse (is_ready_product=1 models only) ────────
+// A model is registered here automatically the moment it's created with
+// "Готовий товар" checked — stock rows already get created for every size
+// at that point, this page just gives them their own dedicated view
+// instead of being mixed into Склад база.
+let sreadyProducts=[],sreadySizes=[],sreadyCatP=null,sreadyPage=0;
+async function loadSReady(){
+  const cd=await api(`/api/categories?parent_id=${sreadyCatP||""}&scope=base`);
+  let bc='<div class="bread"><a onclick="sreadyCatP=null;loadSReady()">'+Icon('check',13)+' Всі товари</a>';
+  cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sreadyCatP=${b.id};loadSReady()">${esc(b.name)}</a>`});
+  bc+="</div>";document.getElementById("sready-bread").innerHTML=bc;
+  document.getElementById("sready-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sreadyCatP=${c.id};loadSReady()">
+    <div class="crd-img">${c.photo?`<img src="${c.photo}">`:Icon('folder',28)}</div>
+    <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
+    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">${Icon('trash2',13)}</button></div></div></div>`).join("");
+  var url=(sreadyCatP?"/api/base-products?category_id="+sreadyCatP+"&":"/api/base-products?")+"is_ready=1";
+  const d=await api(url);sreadyProducts=d.products;sreadySizes=d.sizes;
+  renderSReady(sreadyProducts);
+}
+function renderSReady(products){
+  const el=document.getElementById("sready-list");const thr=3;const perPage=20;
+  if(!products.length&&!document.getElementById("sready-cats").innerHTML){el.innerHTML='<div class="empty" style="grid-column:1/-1"><span class="ic">'+Icon('check',40)+'</span>Порожньо</div>';return}
+  if(!products.length){el.innerHTML="";return}
+  const pages=Math.ceil(products.length/perPage);sreadyPage=Math.min(sreadyPage,pages-1);
+  const slice=products.slice(sreadyPage*perPage,(sreadyPage+1)*perPage);
+  el.innerHTML=slice.map(p=>{
+    const szs=sreadySizes.filter(s=>p.stock[s.id]!==undefined);
+    return'<div class="pcard"><div class="pcard-img" onclick="openEditBp('+p.id+')">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+(p.drop_channel==='hot'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(p.drop_channel==='ads'?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(124,134,255,.1);color:#7c86ff">ADS</span>':'')+'</div><div class="pcard-sub">'+esc(p.category_name||"")+'</div><div class="pcard-prices"><span class="pp tag" style="background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span><span class="pp tag tag-g">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(s=>{const q=p.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":q<=thr?"low":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div><div style="margin-top:5px;text-align:right"><button class="btn btn-sm btn-a" onclick="openEditBp('+p.id+')">'+Icon('pencil',13)+'</button> <button class="btn btn-sm" onclick="dupBp('+p.id+')" title="Дублювати">'+Icon('clipboardList',13)+'</button></div></div></div>';
+  }).join("");
+  if(pages>1){let pg='<div style="grid-column:1/-1;display:flex;justify-content:center;gap:4px;margin-top:8px">';for(let i=0;i<pages;i++)pg+='<button style="padding:5px 10px;font-size:10px;border-radius:5px;border:1px solid '+(i===sreadyPage?'var(--acc)':'var(--brd)')+';background:'+(i===sreadyPage?'var(--accbg)':'var(--card)')+';color:'+(i===sreadyPage?'var(--acc)':'var(--td)')+';cursor:pointer;font-family:inherit" onclick="sreadyPage='+i+';renderSReady(sreadyProducts)">'+(i+1)+'</button>';pg+='</div>';el.innerHTML+=pg}
+}
+function searchReady(q){if(!q){renderSReady(sreadyProducts);return}renderSReady(sreadyProducts.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())))}
 
 // ── Stock drop with categories ───────────────────────────────────
 let sdVars=[],sdSizes=[],sdCatP=null,sdChannel="";
