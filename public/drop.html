@@ -493,9 +493,11 @@ function searchNpWh(q){clearTimeout(whTimer);
     if(cityVal.length>=2&&lastCities.length){pickCity(lastCities[0].Ref,lastCities[0].MainDescription)}
     if(!dropCityRef){document.getElementById("no-wh-dd").innerHTML='<div style="padding:6px;font-size:10px;color:var(--red)">Спочатку оберіть місто</div>';return}
   }
+var noWhResults=[];
   whTimer=setTimeout(async function(){try{var r=await api("/api/nova-poshta/search-warehouse",{method:"POST",body:JSON.stringify({city_ref:dropCityRef,settle_ref:dropSettleRef,query:q})});
-  document.getElementById("no-wh-dd").innerHTML=r.warehouses.slice(0,10).map(function(w){return '<div style="padding:8px;cursor:pointer;font-size:11px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickWh(\''+w.Description.replace(/'/g,"")+'\','+(w.CategoryOfWarehouse==="Postomat")+')">'+(w.Description)+(w.CategoryOfWarehouse==="Postomat"?' <span style="color:var(--acc);font-size:9px">(поштомат)</span>':'')+'</div>'}).join("")||'<div style="padding:6px;font-size:10px;color:var(--td)">Не знайдено</div>'}catch(e){}},300)}
-function pickWh(desc,isPostomat){document.getElementById("no-wh").value=desc;document.getElementById("no-wh-dd").innerHTML="";noIsPostomat=!!isPostomat;document.getElementById("no-postomat-wrap").style.display=noIsPostomat?"":"none"}
+  noWhResults=r.warehouses.slice(0,10);
+  document.getElementById("no-wh-dd").innerHTML=noWhResults.map(function(w,i){return '<div style="padding:8px;cursor:pointer;font-size:11px;border-bottom:1px solid var(--brd);color:var(--th)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="pickWh('+i+')">'+esc(w.Description)+(w.CategoryOfWarehouse==="Postomat"?' <span style="color:var(--acc);font-size:9px">(поштомат)</span>':'')+'</div>'}).join("")||'<div style="padding:6px;font-size:10px;color:var(--td)">Не знайдено</div>'}catch(e){}},300)}
+function pickWh(i){var w=noWhResults[i];if(!w)return;document.getElementById("no-wh").value=w.Description;document.getElementById("no-wh-dd").innerHTML="";noIsPostomat=w.CategoryOfWarehouse==="Postomat";document.getElementById("no-postomat-wrap").style.display=noIsPostomat?"":"none"}
 
 async function uploadReceipt(e){var f=e.target.files[0];if(!f)return;var r=new FileReader;r.onload=async function(){try{var d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});receiptPhoto=d.url;document.getElementById("no-receipt-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){}};r.readAsDataURL(f);e.target.value=""}
 

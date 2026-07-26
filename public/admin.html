@@ -113,7 +113,6 @@
 <div class="page" id="pg-sbase"><div class="pt"><i data-icon="package" data-size="17"></i> Склад база</div>
 <div id="sbase-bread"></div>
 <div class="acts">
-  <div class="acts" style="margin-bottom:4px"><button class="btn on" id="sr-all" onclick="sbReady='';sbCatP=null;loadSBase()">Всі</button><button class="btn" id="sr-0" onclick="sbReady='0';sbCatP=null;loadSBase()"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="sr-1" onclick="sbReady='1';sbCatP=null;loadSBase()"><i data-icon="check" data-size="15"></i> Готові</button></div>
   <button class="btn btn-p" onclick="addCatIn('base')">+ Категорія</button>
   <button class="btn btn-a" onclick="openInc()"><i data-icon="download" data-size="15"></i> Прихід</button>
   <button class="btn btn-d" onclick="openWriteOff()"><i data-icon="upload" data-size="15"></i> Списати</button>
@@ -522,7 +521,7 @@
 <!-- Admin catalog picker modal -->
 <div class="modal-bg" id="ano-cat-modal"><div class="modal" style="max-width:600px">
 <h3><i data-icon="package" data-size="16"></i> Оберіть товар</h3>
-<div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn on" id="anoc-hot" onclick="anoChannel='hot';loadAnoCatalog()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="btn" id="anoc-ads" onclick="anoChannel='ads';loadAnoCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS</button></div>
+<div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn" id="anoc-hot" onclick="anoChannel='hot';loadAnoCatalog()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="btn on" id="anoc-ads" onclick="anoChannel='ads';loadAnoCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS</button></div>
 <div style="margin-bottom:8px"><input id="ano-cat-search" placeholder="Пошук..." oninput="filterAnoCatalog(this.value)" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"></div>
 <div id="ano-cat-list" style="max-height:400px;overflow-y:auto"></div>
 </div></div>
@@ -807,7 +806,7 @@ async function saveModel(){
 }
 
 // ── Stock base with categories ────────────────────────────────────
-let sbProducts=[],sbSizes=[],sbCatP=null,sbPage=0,sbReady="";
+let sbProducts=[],sbSizes=[],sbCatP=null,sbPage=0;
 async function loadSBase(){
   // Load categories
   const cd=await api(`/api/categories?parent_id=${sbCatP||""}&scope=base`);
@@ -819,10 +818,8 @@ async function loadSBase(){
     <div class="crd-img">${c.photo?`<img src="${c.photo}">`:Icon('folder',28)}</div>
     <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
     <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">${Icon('trash2',13)}</button></div></div></div>`).join("");
-  // Products
-  document.querySelectorAll("[id^=sr-]").forEach(function(b){b.className="btn";if(b.id===("sr-"+(sbReady||"all")))b.className="btn btn-a"});
-  var url=sbCatP?"/api/base-products?category_id="+sbCatP:"/api/base-products";
-  if(sbReady)url+=(url.includes("?")?"\&":"\?")+"is_ready="+sbReady;
+  // Products — ready products live on their own "Готовий товар" page, so this catalog only ever shows non-ready stock
+  var url=sbCatP?"/api/base-products?category_id="+sbCatP+"&is_ready=0":"/api/base-products?is_ready=0";
   const d=await api(url);sbProducts=d.products;sbSizes=d.sizes;
   renderSBase(sbProducts);
 }
@@ -976,8 +973,7 @@ async function saveEditBp(){
       await api("/api/stock/set",{method:"POST",body:JSON.stringify({base_product_id:editBpId,size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})});
     }
     // Save workers (updates model workers)
-    const p=await api("/api/base-products/"+editBpId);
-    if(bpEditModelId&&bpOps.length)await api("/api/product-worker-ops/"+bpEditModelId,{method:"POST",body:JSON.stringify({ops:bpOps})});
+    if(bpEditModelId)await api("/api/product-worker-ops/"+bpEditModelId,{method:"POST",body:JSON.stringify({ops:bpOps})});
     closeM("edit-bp-modal");loadSBase();
   }catch(e){alert(e.message)}
 }
@@ -1307,7 +1303,7 @@ async function saveEditOrder(){
 }
 
 // ── ADMIN NEW ORDER ────────────────────────────────────────────────
-let anoItems=[],anoDrops=[],anoCatalog=[],anoChannel="hot",anoCityRef="",anoSettleRef="",anoReceipt="",anoKitPending=null;
+let anoItems=[],anoDrops=[],anoCatalog=[],anoChannel="ads",anoCityRef="",anoSettleRef="",anoReceipt="",anoKitPending=null;
 let anoDeliveryType="warehouse",anoIsPostomat=false,anoWeightManual=false;
 function setAnoDeliveryType(type,btn){
   anoDeliveryType=type;
@@ -1393,16 +1389,18 @@ async function searchAnoCity(q){
   document.getElementById("ano-city-dd").innerHTML=r.cities.map(c=>'<div class="popup-dd-item" onclick="pickAnoCity(\''+(c.DeliveryCity||c.Ref)+'\',\''+c.Ref+'\',\''+esc(c.Present||c.MainDescription)+'\')">'+esc(c.Present||c.MainDescription)+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
 }
 function pickAnoCity(ref,settle,name){anoCityRef=ref;anoSettleRef=settle;document.getElementById("ano-city").value=name;document.getElementById("ano-city-dd").innerHTML="";document.getElementById("ano-wh").value="";document.getElementById("ano-wh-dd").innerHTML=""}
+let anoWhResults=[];
 async function searchAnoWh(q){
   clearTimeout(anoNpT);if(!anoCityRef){document.getElementById("ano-wh-dd").innerHTML='<div style="padding:6px;color:var(--td);font-size:11px">Спочатку оберіть місто</div>';return}
   anoNpT=setTimeout(async()=>{try{var r=await api("/api/nova-poshta/search-warehouse",{method:"POST",body:JSON.stringify({city_ref:anoCityRef,settle_ref:anoSettleRef,query:q||""})});
-  document.getElementById("ano-wh-dd").innerHTML=r.warehouses.slice(0,10).map(w=>'<div class="popup-dd-item" onclick="pickAnoWh(\''+esc(w.Description)+'\','+(w.CategoryOfWarehouse==="Postomat")+')">'+esc(w.Description)+(w.CategoryOfWarehouse==="Postomat"?' <span style="color:var(--acc);font-size:9px">(поштомат)</span>':'')+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
+  anoWhResults=r.warehouses.slice(0,10);
+  document.getElementById("ano-wh-dd").innerHTML=anoWhResults.map((w,i)=>'<div class="popup-dd-item" onclick="pickAnoWh('+i+')">'+esc(w.Description)+(w.CategoryOfWarehouse==="Postomat"?' <span style="color:var(--acc);font-size:9px">(поштомат)</span>':'')+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
 }
-function pickAnoWh(name,isPostomat){document.getElementById("ano-wh").value=name;document.getElementById("ano-wh-dd").innerHTML="";anoIsPostomat=!!isPostomat;document.getElementById("ano-postomat-wrap").style.display=anoIsPostomat?"":"none"}
+function pickAnoWh(i){const w=anoWhResults[i];if(!w)return;document.getElementById("ano-wh").value=w.Description;document.getElementById("ano-wh-dd").innerHTML="";anoIsPostomat=w.CategoryOfWarehouse==="Postomat";document.getElementById("ano-postomat-wrap").style.display=anoIsPostomat?"":"none"}
 // Catalog picker for admin order
 async function openAnoCatPicker(){
   document.getElementById("ano-cat-search").value="";
-  anoChannel="hot";document.getElementById("anoc-hot").classList.add("on");document.getElementById("anoc-ads").classList.remove("on");
+  anoChannel="ads";document.getElementById("anoc-ads").classList.add("on");document.getElementById("anoc-hot").classList.remove("on");
   await loadAnoCatalog();openM("ano-cat-modal");
 }
 async function loadAnoCatalog(){
@@ -1874,7 +1872,12 @@ async function submitBalance(){
 async function loadSets(){try{const{settings:s}=await api("/api/settings");Object.entries(s).forEach(([k,v])=>{const el=document.getElementById("s-"+k);if(el)el.value=v})}catch(e){}loadNpSenders();loadOrderStatuses()}
 async function loadNpSenders(){
   try{const{senders}=await api("/api/np-senders");
-  document.getElementById("np-senders-list").innerHTML=senders.length?senders.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px;border:1px solid '+(s.is_active?'var(--acc)':'var(--brd)')+'"><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+(s.is_active?' <span class="tag tag-g">активний</span>':'')+'</div><div style="font-size:10px;color:var(--td)">'+esc(s.phone)+' · '+esc(s.address_description||"")+'</div></div>'+(s.is_active?'':'<button class="btn btn-sm btn-p" onclick="activateNpSender('+s.id+')" style="font-size:9px">'+Icon('check',10)+' Активувати</button>')+'<button class="btn btn-sm btn-d" onclick="deleteNpSender('+s.id+')" style="font-size:9px">'+Icon('x',10)+'</button></div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає контрагентів</div>'}catch(e){}
+  document.getElementById("np-senders-list").innerHTML=senders.length?senders.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px;border:1px solid '+(s.is_active?'var(--acc)':'var(--brd)')+'"><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+(s.is_active?' <span class="tag tag-g">активний</span>':'')+(s.address_ref?'':' <span class="tag" style="background:var(--red-soft,#4a1a1a);color:var(--red)">адреса не синхронізована</span>')+'</div><div style="font-size:10px;color:var(--td)">'+esc(s.phone)+' · '+esc(s.address_description||"немає адреси — натисніть Оновити")+'</div></div><button class="btn btn-sm" onclick="resyncNpSender('+s.id+',this)" style="font-size:9px" title="Оновити ref-и з НП за поточним ключем">'+Icon('refreshCw',10)+' Оновити</button>'+(s.is_active?'':'<button class="btn btn-sm btn-p" onclick="activateNpSender('+s.id+')" style="font-size:9px">'+Icon('check',10)+' Активувати</button>')+'<button class="btn btn-sm btn-d" onclick="deleteNpSender('+s.id+')" style="font-size:9px">'+Icon('x',10)+'</button></div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає контрагентів</div>'}catch(e){}
+}
+async function resyncNpSender(id,btn){
+  const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<div style="display:inline-block;width:10px;height:10px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div>';
+  try{await api("/api/np-senders/"+id+"/resync",{method:"PUT"});loadNpSenders()}
+  catch(e){alert("Помилка: "+e.message);btn.disabled=false;btn.innerHTML=old}
 }
 async function addNpSender(){
   const name=document.getElementById("np-add-name").value;const phone=document.getElementById("np-add-phone").value;const api_key=document.getElementById("np-add-key").value;

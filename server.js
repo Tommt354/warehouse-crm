@@ -1530,6 +1530,45 @@ app.delete("/api/np-senders/:id", authMiddleware, requireRole("admin"), (req, re
   res.json({ ok: true });
 });
 
+// Re-detects sender_ref/address_ref/contact_ref against the API key that's
+// actually active right now. Needed because these refs silently go stale
+// when the NP account is re-created or the active API key is swapped after
+// a sender row was first added — TTN creation then fails with
+// "CitySender not selected"/"SenderAddress not selected" since the old refs
+// no longer resolve under the new key.
+app.put("/api/np-senders/:id/resync", authMiddleware, requireRole("admin"), async (req, res) => {
+  const s = db.prepare("SELECT * FROM np_senders WHERE id=?").get(req.params.id);
+  if (!s) return res.status(404).json({ error: "Контрагента не знайдено" });
+  const apiKey = s.api_key || getActiveApiKey();
+  if (!apiKey) return res.status(400).json({ error: "Немає активного API ключа НП" });
+  try {
+    const cp = await npApi(apiKey, "Counterparty", "getCounterparties", { CounterpartyProperty: "Sender", Page: "1" });
+    if (!cp.success || !cp.data?.length) return res.status(400).json({ error: "Контрагента-відправника не знайдено в НП за цим ключем: " + (cp.errors?.join(", ") || "") });
+
+    let match = null;
+    if (s.phone) {
+      for (const c of cp.data) {
+        const contacts = await npApi(apiKey, "Counterparty", "getCounterpartyContactPersons", { Ref: c.Ref });
+        const found = (contacts.data || []).find(p => p.Phones?.includes(s.phone.replace(/[^\d]/g, "")));
+        if (found) { match = { ref: c.Ref, contact: found.Ref }; break; }
+      }
+    }
+    if (!match) {
+      const c = cp.data[0];
+      const contacts = await npApi(apiKey, "Counterparty", "getCounterpartyContactPersons", { Ref: c.Ref });
+      match = { ref: c.Ref, contact: contacts.data?.[0]?.Ref || "" };
+    }
+
+    const addrs = await npApi(apiKey, "Counterparty", "getCounterpartyAddresses", { Ref: match.ref, CounterpartyProperty: "Sender" });
+    const addr = addrs.data?.[0];
+    if (!addr) return res.status(400).json({ error: "Не знайдено адресу відправника в НП для цього контрагента" });
+
+    db.prepare("UPDATE np_senders SET sender_ref=?,address_ref=?,contact_ref=?,address_description=?,api_key=? WHERE id=?")
+      .run(match.ref, addr.Ref, match.contact, addr.Description || "", apiKey, s.id);
+    res.json({ ok: true, address_description: addr.Description || "" });
+  } catch (e) { res.status(500).json({ error: e.message }) }
+});
+
 // ── ORDER STATUSES ───────────────────────────────────────────────────
 app.get("/api/order-statuses", authMiddleware, (req, res) => {
   const statuses = db.prepare("SELECT * FROM order_statuses ORDER BY sort_order, id").all();
