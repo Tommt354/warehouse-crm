@@ -44,7 +44,17 @@ app.get("/api/auth/dev-login-enabled", (req, res) => {
 });
 app.post("/api/auth/dev-login/:role", (req, res) => {
   if (process.env.DEV_QUICK_LOGIN !== "1") return res.status(404).json({ error: "Not found" });
-  const user = db.prepare("SELECT * FROM users WHERE role=? AND active=1 ORDER BY id LIMIT 1").get(req.params.role);
+  const key = req.params.role;
+  let user;
+  if (key === "finalizer") {
+    user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role='finalizer' AND active=1 ORDER BY id LIMIT 1").get();
+  } else if (key === "packer_molod") {
+    user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role='packer' AND assigned_warehouse='molod' AND active=1 ORDER BY id LIMIT 1").get();
+  } else if (key === "packer") {
+    user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role='packer' AND (assigned_warehouse='' OR assigned_warehouse='base') AND active=1 ORDER BY id LIMIT 1").get();
+  } else {
+    user = db.prepare("SELECT * FROM users WHERE role=? AND active=1 ORDER BY id LIMIT 1").get(key);
+  }
   if (!user) return res.status(404).json({ error: "Немає користувача з такою роллю" });
   db.prepare("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?").run(user.id);
   res.cookie("token", createToken(user), { httpOnly: true, maxAge: 7*24*3600000, sameSite: "lax" });

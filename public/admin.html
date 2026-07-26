@@ -22,12 +22,6 @@
 .sel-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .sel-tag{font-size:10px;padding:3px 8px;border-radius:12px;background:var(--accent-soft);color:var(--accent);border:1px solid rgba(16,185,129,.2);cursor:pointer;transition:all var(--duration-fast)}
 .sel-tag:hover{background:var(--error-soft);color:var(--error);border-color:rgba(239,68,68,.2)}
-.sw{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-.sw label{font-size:12px;color:var(--text-primary)}
-.swb{width:40px;height:22px;background:var(--border-default);border-radius:11px;position:relative;cursor:pointer;transition:background var(--duration-fast)}
-.swb.on{background:var(--accent)}
-.swb::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:left var(--duration-fast)}
-.swb.on::after{left:20px}
 .wrow{display:flex;gap:8px;align-items:center;margin-bottom:6px;padding:8px 10px;background:var(--bg-deep);border-radius:var(--radius-md);font-size:12px}
 .wrow .wname{flex:1;color:var(--text-primary)}
 .wrow input{width:80px;padding:6px 8px;font-size:12px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-sm);color:var(--text-primary);text-align:center}
@@ -165,7 +159,7 @@
 </div></div>
 
 <div class="page" id="pg-orders"><div class="pt"><i data-icon="clipboardList" data-size="17"></i> Замовлення</div>
-<button class="btn-new" onclick="openAdmNewOrder()">＋ Створити замовлення</button>
+<button class="btn btn-p" onclick="openAdmNewOrder()"><i data-icon="plus" data-size="14"></i> Створити замовлення</button>
 <div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="check" data-size="15"></i> Готові товари</button></div>
 <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="admOrdPage=0;loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button><div style="display:flex;gap:3px;margin-left:auto"><button class="stab" id="adm-p-7" onclick="setAdmDatePeriod(7)">7д</button><button class="stab" id="adm-p-15" onclick="setAdmDatePeriod(15)">15д</button><button class="stab on" id="adm-p-30" onclick="setAdmDatePeriod(30)">30д</button></div></div>
 <div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="admOrdPage=0;loadAdmOrders(admOrdFilter)"></div>
@@ -487,8 +481,8 @@
 <div id="ano-postomat-wrap" style="display:none;padding:8px;background:rgba(124,134,255,.08);border:1px solid rgba(124,134,255,.25);border-radius:8px;margin-bottom:10px"><div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:6px">Поштомат — вкажіть розміри посилки (см)</div><div class="fld-row"><div class="fld"><label>Ширина</label><input id="ano-pw" type="number" value="20"></div><div class="fld"><label>Висота</label><input id="ano-ph" type="number" value="20"></div><div class="fld"><label>Довжина</label><input id="ano-pl" type="number" value="20"></div></div></div>
 <div id="ano-courier-wrap" style="display:none"><div class="fld"><label>Вулиця</label><input id="ano-street" placeholder="Назва вулиці"></div><div class="fld-row"><div class="fld"><label>Будинок</label><input id="ano-house"></div><div class="fld"><label>Квартира</label><input id="ano-flat"></div></div></div>
 <div class="fld"><label>Вага посилки (кг)</label><input id="ano-weight" type="number" step="0.1" value="0.5" onchange="anoWeightManual=true"></div>
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:rgba(193,127,78,.08);border:1px solid rgba(193,127,78,.25);border-radius:8px"><input type="checkbox" id="ano-own-ttn" onchange="toggleAnoOwnTtn()" style="width:18px;height:18px;accent-color:#c17f4e"><label style="font-size:12px;color:#c17f4e;margin:0;cursor:pointer;font-weight:600" onclick="document.getElementById('ano-own-ttn').click()">Це ТТН дропера (не наша доставка)</label></div>
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px"><input type="checkbox" id="ano-prepaid" onchange="toggleAnoPrepaid()" style="width:18px;height:18px;accent-color:var(--acc)"><label style="font-size:12px;color:var(--th);margin:0;cursor:pointer" onclick="document.getElementById('ano-prepaid').disabled||document.getElementById('ano-prepaid').click()">Повна оплата (без наложки)</label></div>
+<div class="sw" style="padding:8px;background:rgba(193,127,78,.08);border:1px solid rgba(193,127,78,.25);border-radius:8px"><div class="swb" id="ano-own-ttn" onclick="toggleAnoOwnTtn(this)"></div><label style="color:#c17f4e;font-weight:600" onclick="document.getElementById('ano-own-ttn').click()">Це ТТН дропера (не наша доставка)</label></div>
+<div class="sw" style="padding:8px;background:var(--bg);border-radius:8px"><div class="swb" id="ano-prepaid" onclick="toggleAnoPrepaid(this)"></div><label onclick="document.getElementById('ano-prepaid').click()">Повна оплата (без наложки)</label></div>
 <div id="ano-cod-wrap"><div class="fld"><label>Наложка ₴</label><input id="ano-cod" type="number" oninput="anoCalc()"></div></div>
 <div id="ano-prepaid-wrap" style="display:none">
   <div class="fld"><label>Оціночна вартість ₴</label><input id="ano-dval" type="number" value="0"></div>
@@ -1265,13 +1259,13 @@ async function openAdmNewOrder(){
   document.getElementById("ano-name").value="";document.getElementById("ano-phone").value="";
   document.getElementById("ano-city").value="";document.getElementById("ano-wh").value="";
   document.getElementById("ano-cod").value="";document.getElementById("ano-dval").value="0";
-  document.getElementById("ano-note").value="";document.getElementById("ano-cargo-desc").value="Одяг";document.getElementById("ano-own-ttn").checked=false;
+  document.getElementById("ano-note").value="";document.getElementById("ano-cargo-desc").value="Одяг";document.getElementById("ano-own-ttn").classList.remove("on");
   document.getElementById("ano-street").value="";document.getElementById("ano-house").value="";document.getElementById("ano-flat").value="";
   document.getElementById("ano-pw").value="20";document.getElementById("ano-ph").value="20";document.getElementById("ano-pl").value="20";
   document.getElementById("ano-weight").value="0.5";anoWeightManual=false;anoIsPostomat=false;
   document.getElementById("ano-postomat-wrap").style.display="none";
   setAnoDeliveryType("warehouse",document.querySelector("#ano-dt-tabs .stab"));
-  document.getElementById("ano-prepaid").checked=false;document.getElementById("ano-prepaid").disabled=false;
+  document.getElementById("ano-prepaid").classList.remove("on");document.getElementById("ano-prepaid").classList.remove("dis");
   document.getElementById("ano-cod-wrap").style.display="";document.getElementById("ano-prepaid-wrap").style.display="none";
   document.getElementById("ano-receipt-preview").innerHTML="—";document.getElementById("ano-pay").textContent="";
   document.getElementById("ano-err").style.display="none";document.getElementById("ano-city-dd").innerHTML="";document.getElementById("ano-wh-dd").innerHTML="";
@@ -1294,21 +1288,26 @@ function removeAnoItem(i){anoItems.splice(i,1);renderAnoItems();calcAnoWeight()}
 function anoCalc(){
   var total=anoItems.reduce((s,it)=>s+it.drop_price*it.quantity,0);
   var cod=parseFloat(document.getElementById("ano-cod").value)||0;
-  var isPrepaid=document.getElementById("ano-prepaid").checked;
+  var isPrepaid=document.getElementById("ano-prepaid").classList.contains("on");
   var payout=isPrepaid?0:Math.round((cod-total)*100)/100;
   document.getElementById("ano-pay").innerHTML='<div style="display:flex;justify-content:space-between"><span>Дроп ціна:</span><span style="color:var(--acc);font-weight:600">'+total.toFixed(2)+'₴</span></div>'+
     (isPrepaid?'':'<div style="display:flex;justify-content:space-between"><span>Виплата дропу:</span><span style="color:'+(payout>=0?'var(--th)':'var(--red)')+';font-weight:600">'+payout.toFixed(2)+'₴</span></div>');
 }
-function toggleAnoPrepaid(){
-  var ch=document.getElementById("ano-prepaid").checked;
+function toggleAnoPrepaid(el){
+  var pre=document.getElementById("ano-prepaid");
+  if(pre.classList.contains("dis"))return;
+  if(el)pre.classList.toggle("on");
+  var ch=pre.classList.contains("on");
   document.getElementById("ano-cod-wrap").style.display=ch?"none":"";
   document.getElementById("ano-prepaid-wrap").style.display=ch?"":"none";
   anoCalc();
 }
-function toggleAnoOwnTtn(){
-  var ch=document.getElementById("ano-own-ttn").checked;
-  if(ch){document.getElementById("ano-prepaid").checked=true;document.getElementById("ano-prepaid").disabled=true;toggleAnoPrepaid()}
-  else{document.getElementById("ano-prepaid").disabled=false}
+function toggleAnoOwnTtn(el){
+  el.classList.toggle("on");
+  var ch=el.classList.contains("on");
+  var pre=document.getElementById("ano-prepaid");
+  if(ch){pre.classList.add("on");pre.classList.add("dis");toggleAnoPrepaid()}
+  else{pre.classList.remove("dis")}
 }
 async function uploadAnoReceipt(e){
   var f=e.target.files[0];if(!f)return;var r=new FileReader;
@@ -1363,8 +1362,8 @@ async function submitAdmOrder(){
   if(!anoItems.length){el.textContent="Додайте товари";el.style.display="";return}
   var name=document.getElementById("ano-name").value.trim();if(!name){el.textContent="Вкажіть ПІБ";el.style.display="";return}
   var phone=document.getElementById("ano-phone").value.trim();if(!phone){el.textContent="Вкажіть телефон";el.style.display="";return}
-  var isPrepaid=document.getElementById("ano-prepaid").checked;
-  var ownTtn=document.getElementById("ano-own-ttn").checked;
+  var isPrepaid=document.getElementById("ano-prepaid").classList.contains("on");
+  var ownTtn=document.getElementById("ano-own-ttn").classList.contains("on");
   if((isPrepaid||ownTtn)&&!anoReceipt){el.textContent="Завантажте скрін чеку";el.style.display="";return}
   if(anoDeliveryType!=="pickup"&&!document.getElementById("ano-city").value){el.textContent="Вкажіть місто";el.style.display="";return}
   if(anoDeliveryType==="warehouse"&&!document.getElementById("ano-wh").value){el.textContent="Вкажіть відділення";el.style.display="";return}

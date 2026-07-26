@@ -497,6 +497,25 @@ if(!db.prepare("SELECT id FROM users WHERE role='warehouse' LIMIT 1").get()){
   db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse','Пакувальник 1','packer',5)").run("pack1",bcrypt.hashSync(pw,10));
   console.log("✅ Створено pack1, логін: pack1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
 }
+// Dedicated seed accounts for the distinct warehouse worker roles (packer on
+// Склад База, packer on Склад Молодіжна, finalizer) so each has its own
+// login — needed since a single shared account can't demonstrate the
+// per-warehouse packer split or the dev quick-login role buttons.
+if(!db.prepare("SELECT id FROM users WHERE username='pack2'").get()){
+  const pw = process.env.WAREHOUSE2_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate,assigned_warehouse)VALUES(?,?,'warehouse',?,'packer',5,'base')").run("pack2",bcrypt.hashSync(pw,10),"Пакувальник (База)");
+  console.log("✅ Створено pack2, логін: pack2, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
+}
+if(!db.prepare("SELECT id FROM users WHERE username='pack3'").get()){
+  const pw = process.env.WAREHOUSE3_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate,assigned_warehouse)VALUES(?,?,'warehouse',?,'packer',5,'molod')").run("pack3",bcrypt.hashSync(pw,10),"Пакувальник (Молодіжна)");
+  console.log("✅ Створено pack3, логін: pack3, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
+}
+if(!db.prepare("SELECT id FROM users WHERE username='final1'").get()){
+  const pw = process.env.FINALIZER_PASSWORD || genPassword();
+  db.prepare("INSERT INTO users(username,password_hash,role,name,worker_role,worker_rate)VALUES(?,?,'warehouse',?,'finalizer',5)").run("final1",bcrypt.hashSync(pw,10),"Пакувальниця 1");
+  console.log("✅ Створено final1, логін: final1, пароль: "+pw+" — увійдіть і одразу змініть пароль.");
+}
 // Seed default order statuses
 if(!db.prepare("SELECT id FROM order_statuses LIMIT 1").get()){
   const statuses = [

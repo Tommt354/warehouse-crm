@@ -163,8 +163,8 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div id="no-postomat-wrap" style="display:none;padding:8px;background:rgba(124,134,255,.08);border:1px solid rgba(124,134,255,.25);border-radius:8px;margin-bottom:10px"><div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:6px">Поштомат — вкажіть розміри посилки (см)</div><div class="fld-row"><div class="fld"><label>Ширина</label><input id="no-pw" type="number" value="20"></div><div class="fld"><label>Висота</label><input id="no-ph" type="number" value="20"></div><div class="fld"><label>Довжина</label><input id="no-pl" type="number" value="20"></div></div></div>
 <div id="no-courier-wrap" style="display:none"><div class="fld"><label>Вулиця</label><input id="no-street" placeholder="Назва вулиці"></div><div class="fld-row"><div class="fld"><label>Будинок</label><input id="no-house"></div><div class="fld"><label>Квартира</label><input id="no-flat"></div></div></div>
 <div class="fld"><label>Вага посилки (кг)</label><input id="no-weight" type="number" step="0.1" value="0.5" onchange="noWeightManual=true"></div>
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:rgba(193,127,78,.08);border:1px solid rgba(193,127,78,.25);border-radius:8px"><input type="checkbox" id="no-own-ttn" onchange="toggleOwnTtn()" style="width:18px;height:18px;accent-color:#c17f4e"><label style="font-size:12px;color:#c17f4e;margin:0;cursor:pointer;font-weight:600" onclick="document.getElementById('no-own-ttn').click()">Це мій ТТН (сам відправляю, не наша доставка) — менеджер внесе номер ТТН пізніше</label></div>
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px"><input type="checkbox" id="no-prepaid" onchange="togglePrepaid()" style="width:18px;height:18px;accent-color:var(--acc)"><label style="font-size:12px;color:var(--th);margin:0;cursor:pointer" onclick="document.getElementById('no-prepaid').disabled||document.getElementById('no-prepaid').click()">Повна оплата (без наложки)</label></div>
+<div class="sw" style="padding:8px;background:rgba(193,127,78,.08);border:1px solid rgba(193,127,78,.25);border-radius:8px"><div class="swb" id="no-own-ttn" onclick="toggleOwnTtn(this)"></div><label style="color:#c17f4e;font-weight:600" onclick="document.getElementById('no-own-ttn').click()">Це мій ТТН (сам відправляю, не наша доставка) — менеджер внесе номер ТТН пізніше</label></div>
+<div class="sw" style="padding:8px;background:var(--bg);border-radius:8px"><div class="swb" id="no-prepaid" onclick="togglePrepaid(this)"></div><label onclick="document.getElementById('no-prepaid').click()">Повна оплата (без наложки)</label></div>
 <div id="no-cod-wrap"><div class="fld"><label>Наложка ₴</label><input id="no-cod" type="number" oninput="calcPay()"></div></div>
 <div id="no-prepaid-wrap" style="display:none">
   <div class="fld"><label>Оціночна вартість ₴</label><input id="no-dval" type="number" value="0"></div>
@@ -368,8 +368,8 @@ async function openNewOrder(){
   document.getElementById("no-postomat-wrap").style.display="none";
   setDeliveryType("warehouse",document.querySelector("#no-dt-tabs .stab"));
   document.getElementById("no-pay").innerHTML="";document.getElementById("no-err").style.display="none";
-  document.getElementById("no-own-ttn").checked=false;
-  document.getElementById("no-prepaid").disabled=false;document.getElementById("no-prepaid").checked=false;togglePrepaid();
+  document.getElementById("no-own-ttn").classList.remove("on");
+  document.getElementById("no-prepaid").classList.remove("dis");document.getElementById("no-prepaid").classList.remove("on");togglePrepaid();
   receiptPhoto="";document.getElementById("no-receipt-preview").innerHTML="—";
   var d=await api("/api/variations?channel="+dropCh);allV=d.variations;allSz=d.sizes;
   try{var kd=await api("/api/kits?channel="+dropCh);kd.kits.forEach(function(k){k.is_kit=true;allV.push(k)})}catch(e){}
@@ -458,13 +458,19 @@ function renderOItems(){
 }
 
 var dropCityRef="",dropSettleRef="",receiptPhoto="",lastCities=[];
-function togglePrepaid(){var p=document.getElementById("no-prepaid").checked;document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";
+function togglePrepaid(el){
+  var pre=document.getElementById("no-prepaid");
+  if(pre.classList.contains("dis"))return;
+  if(el)pre.classList.toggle("on");
+  var p=pre.classList.contains("on");
+  document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";
   if(p){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
   calcPay()}
-function toggleOwnTtn(){
-  var own=document.getElementById("no-own-ttn").checked;
+function toggleOwnTtn(el){
+  el.classList.toggle("on");
+  var own=el.classList.contains("on");
   var pre=document.getElementById("no-prepaid");
-  if(own){pre.checked=true;pre.disabled=true}else{pre.disabled=false}
+  if(own){pre.classList.add("on");pre.classList.add("dis")}else{pre.classList.remove("dis")}
   togglePrepaid();
 }
 
@@ -493,13 +499,13 @@ function pickWh(desc,isPostomat){document.getElementById("no-wh").value=desc;doc
 
 async function uploadReceipt(e){var f=e.target.files[0];if(!f)return;var r=new FileReader;r.onload=async function(){try{var d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});receiptPhoto=d.url;document.getElementById("no-receipt-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){}};r.readAsDataURL(f);e.target.value=""}
 
-function calcPay(){var isPre=document.getElementById("no-prepaid").checked;var cod=isPre?0:(parseFloat(document.getElementById("no-cod").value)||0);var drop=oItems.reduce(function(s,c){return s+c.price*c.qty},0);var p=cod-drop;document.getElementById("no-pay").innerHTML=isPre?'Повна оплата · Дроп: '+drop.toFixed(0)+'₴':(cod?'Дроп: '+drop.toFixed(0)+'₴ · <strong style="color:'+(p>=0?'var(--acc)':'var(--red)')+'">Заробіток: '+p.toFixed(0)+'₴</strong>':'')}
+function calcPay(){var isPre=document.getElementById("no-prepaid").classList.contains("on");var cod=isPre?0:(parseFloat(document.getElementById("no-cod").value)||0);var drop=oItems.reduce(function(s,c){return s+c.price*c.qty},0);var p=cod-drop;document.getElementById("no-pay").innerHTML=isPre?'Повна оплата · Дроп: '+drop.toFixed(0)+'₴':(cod?'Дроп: '+drop.toFixed(0)+'₴ · <strong style="color:'+(p>=0?'var(--acc)':'var(--red)')+'">Заробіток: '+p.toFixed(0)+'₴</strong>':'')}
 
 async function submitOrder(){
   var err=document.getElementById("no-err");err.style.display="none";
   if(!oItems.length){err.textContent="Додайте товари";err.style.display="block";return}
-  var isPre=document.getElementById("no-prepaid").checked;
-  var isOwnTtn=document.getElementById("no-own-ttn").checked;
+  var isPre=document.getElementById("no-prepaid").classList.contains("on");
+  var isOwnTtn=document.getElementById("no-own-ttn").classList.contains("on");
   if(isPre&&!receiptPhoto){err.textContent="Завантажте скрін чеку оплати";err.style.display="block";return}
   if(!document.getElementById("no-name").value){err.textContent="Вкажіть ПІБ";err.style.display="block";return}
   if(!document.getElementById("no-phone").value){err.textContent="Вкажіть телефон";err.style.display="block";return}
