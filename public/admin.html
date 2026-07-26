@@ -360,11 +360,12 @@
 
 <div class="modal-bg" id="model-modal"><div class="modal" style="max-width:560px"><h3 id="mdl-t">Нова модель</h3>
 <div class="fld"><label>Назва</label><input id="mm-name" placeholder="Худі флісовий"></div>
-<div class="fld"><label>Категорія (склад база)</label><select id="mm-cat"><option value="">—</option></select></div>
+<div class="fld"><label>Категорія (<span id="mm-cat-label">склад база</span>)</label><select id="mm-cat"><option value="">—</option></select></div>
 <div class="fld"><label>Категорія (склад дроп)</label><select id="mm-cat-drop"><option value="">—</option></select></div>
 <div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="hot">HOT DROP</option><option value="ads">ADS DROP</option></select></div>
-<div class="fld"><label>Основний склад</label><select id="mm-warehouse"><option value="base">Склад База</option><option value="molod">Склад Молодіжна</option></select></div>
-<div class="sw"><div class="swb" id="mm-ready" onclick="this.classList.toggle('on');document.getElementById('mm-pw').style.display=this.classList.contains('on')?'none':'block'"></div><label>Готовий товар</label></div>
+<div class="fld" id="mm-wh-wrap"><label>Основний склад</label><select id="mm-warehouse"><option value="base">Склад База</option><option value="molod">Склад Молодіжна</option></select></div>
+<div class="fld" id="mm-ready-note" style="display:none"><label>Основний склад</label><div style="padding:10px 12px;background:var(--accbg);border:1px solid rgba(124,134,255,.25);border-radius:8px;color:var(--acc);font-size:12px;font-weight:600">Склад готовий товар</div></div>
+<div class="sw"><div class="swb" id="mm-ready" onclick="toggleReadyProduct(this)"></div><label onclick="document.getElementById('mm-ready').click()">Готовий товар</label></div>
 <div class="fld-row"><div class="fld"><label>Собівартість ₴</label><input id="mm-cost" type="number" value="0"></div><div class="fld"><label>Дроп-ціна ₴</label><input id="mm-drop" type="number" value="0"></div></div>
 <div class="fld"><label>Вага одиниці товару (кг)</label><input id="mm-weight" type="number" step="0.1" value="0.3"></div>
 <div class="fld"><label>Розмірна сітка (фото)</label><div style="display:flex;gap:6px;align-items:center"><div id="mm-sizegrid-preview" style="width:60px;height:60px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('mm-sizegrid-fi').click()"><i data-icon="ruler" data-size="13"></i> Завантажити</button><input type="file" id="mm-sizegrid-fi" accept="image/*" style="display:none" onchange="uploadModelSizeGrid(event)"></div></div>
@@ -708,6 +709,9 @@ async function editModelFields(id){
   document.getElementById("mm-sizegrid-preview").innerHTML=mmSizeGridPhoto?'<img src="'+mmSizeGridPhoto+'" style="width:100%;height:100%;object-fit:cover">':"—";
   document.getElementById("mm-ready").classList.toggle("on",!!m.is_ready_product);
   document.getElementById("mm-pw").style.display=m.is_ready_product?"none":"block";
+  document.getElementById("mm-wh-wrap").style.display=m.is_ready_product?"none":"";
+  document.getElementById("mm-ready-note").style.display=m.is_ready_product?"":"none";
+  document.getElementById("mm-cat-label").textContent=m.is_ready_product?"готовий товар":"склад база";
   const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';(CC.cats_base||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}"${c.id==m.category_id?" selected":""}>${esc(c.name)}</option>`);
   const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}"${c.id==m.category_drop_id?" selected":""}>${esc(c.name)}</option>`);
   document.getElementById("mm-channel").value=m.drop_channel||"hot";
@@ -741,6 +745,18 @@ async function deleteBp(id,modelId){if(!confirm("Видалити товар і 
 
 async function deleteVar(id,modelId){if(!confirm("Видалити варіацію?"))return;await api(`/api/variations/${id}`,{method:"DELETE"});viewModel(modelId)}
 
+// Ready-made models don't belong to Склад База / Склад Молодіжна's cut-and-sew
+// split — they live in their own Готовий товар warehouse, so the workshop
+// fields (print step, main warehouse picker) get replaced by a fixed note.
+function toggleReadyProduct(el){
+  el.classList.toggle("on");
+  const on=el.classList.contains("on");
+  document.getElementById("mm-pw").style.display=on?"none":"block";
+  document.getElementById("mm-wh-wrap").style.display=on?"none":"";
+  document.getElementById("mm-ready-note").style.display=on?"":"none";
+  document.getElementById("mm-cat-label").textContent=on?"готовий товар":"склад база";
+}
+
 // ── Create model ─────────────────────────────────────────────────
 async function openNewModel(){
   editModelId=null;
@@ -748,6 +764,8 @@ async function openNewModel(){
   document.getElementById("mdl-t").textContent="Нова модель";
   document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";document.getElementById("mm-weight").value="0.3";
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
+  document.getElementById("mm-wh-wrap").style.display="";document.getElementById("mm-ready-note").style.display="none";
+  document.getElementById("mm-cat-label").textContent="склад база";
   document.getElementById("mm-err").style.display="none";
   mmSizeGridPhoto="";document.getElementById("mm-sizegrid-preview").innerHTML="—";
   const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';(CC.cats_base||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
