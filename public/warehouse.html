@@ -75,6 +75,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div class="main-tab" onclick="showMain('returns')"><i data-icon="package" data-size="15"></i> Повернення</div>
     <div class="main-tab" onclick="showMain('stock')"><i data-icon="package" data-size="15"></i> Склад</div>
     <div class="main-tab" onclick="showMain('salary')"><i data-icon="wallet" data-size="15"></i> Моя зарплата</div>
+    <div class="main-tab" onclick="showMain('tasks')"><i data-icon="clipboardList" data-size="15"></i> Завдання</div>
   </div>
   <div id="v-orders">
     <div style="display:flex;gap:4px;margin-bottom:10px">
@@ -106,16 +107,19 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div style="margin-top:16px"><div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:8px"><i data-icon="package" data-size="15"></i> Повернення на складі:</div><div id="wh-ret-stock"></div></div>
   </div>
   <div id="v-salary" style="display:none">
-    <div class="acts" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">
+    <div class="acts" style="margin-bottom:6px;flex-wrap:wrap;gap:6px">
       <input type="date" id="sal-df"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="sal-dt">
       <button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadSalary()">OK</button>
-      <div style="display:flex;gap:3px;margin-left:auto"><button class="stab" id="sal-p-7" onclick="setSalaryPeriod(7)">7д</button><button class="stab" id="sal-p-15" onclick="setSalaryPeriod(15)">15д</button><button class="stab on" id="sal-p-30" onclick="setSalaryPeriod(30)">30д</button></div>
     </div>
+    <div style="display:flex;gap:3px;justify-content:flex-end;margin-bottom:10px"><button class="stab" id="sal-p-7" onclick="setSalaryPeriod(7)">7д</button><button class="stab" id="sal-p-15" onclick="setSalaryPeriod(15)">15д</button><button class="stab on" id="sal-p-30" onclick="setSalaryPeriod(30)">30д</button></div>
     <div id="sal-stats" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
     <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Нарахування за період:</div>
     <div id="sal-entries"></div>
     <div style="font-size:13px;font-weight:600;color:var(--th);margin:16px 0 8px">Історія виплат:</div>
     <div id="sal-payouts"></div>
+  </div>
+  <div id="v-tasks" style="display:none">
+    <div id="tasks-list"></div>
   </div>
 </div>
 
@@ -200,13 +204,30 @@ function clM(id){document.getElementById(id).classList.remove("on")}
 function opM(id){document.getElementById(id).classList.add("on")}
 
 function showMain(t){
-  document.querySelectorAll(".main-tab").forEach((b,i)=>{if(b.style.display!=="none")b.classList.toggle("on",["orders","returns","stock","salary"][i]===t)});
-  ["v-orders","v-returns","v-stock","v-salary"].forEach(id=>document.getElementById(id).style.display="none");
+  document.querySelectorAll(".main-tab").forEach((b,i)=>{if(b.style.display!=="none")b.classList.toggle("on",["orders","returns","stock","salary","tasks"][i]===t)});
+  ["v-orders","v-returns","v-stock","v-salary","v-tasks"].forEach(id=>document.getElementById(id).style.display="none");
   document.getElementById("v-"+t).style.display="";
   if(t==="orders")loadOrders();if(t==="returns"){document.getElementById("scan-ttn").value="";document.getElementById("scan-ttn").focus();document.getElementById("ret-result").innerHTML=""}
   if(t==="stock")loadWhStock();
   if(t==="salary")setSalaryPeriod(30);
+  if(t==="tasks")loadStaffTasks();
 }
+async function loadStaffTasks(){
+  try{
+    var r=await api("/api/my-tasks");
+    document.getElementById("tasks-list").innerHTML=r.tasks.length?r.tasks.map(function(t){
+      return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;'+(t.status==="done"?"opacity:.6":"")+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'+
+        '<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(t.title)+'</div>'+
+        (t.note?'<div style="font-size:11px;color:var(--td);margin-top:2px">'+esc(t.note)+'</div>':'')+'</div>'+
+        (t.is_paid&&t.amount>0?'<div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:var(--acc)">+'+t.amount.toFixed(0)+'₴</div>':'')+
+        '</div>'+
+        '<div style="margin-top:8px;text-align:right"><button class="btn btn-sm '+(t.status==="done"?"":"btn-p")+'" onclick="toggleMyTaskStatus('+t.id+',\''+(t.status==="done"?"pending":"done")+'\')">'+Icon(t.status==="done"?"undo2":"check",12)+' '+(t.status==="done"?"Повернути":"Виконано")+'</button></div>'+
+        '</div>';
+    }).join(""):'<div class="empty"><span class="ic">'+Icon('clipboardList',30)+'</span>Немає задач</div>';
+  }catch(e){}
+}
+async function toggleMyTaskStatus(id,status){await api("/api/my-tasks/"+id+"/status",{method:"PUT",body:JSON.stringify({status:status})});loadStaffTasks()}
 
 // ── ORDERS ────────────────────────────────────────────────────────
 function renderStabs(){

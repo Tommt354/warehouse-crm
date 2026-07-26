@@ -37,7 +37,7 @@
 <body>
 <div class="wrap">
 <div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:15px;margin-top:2px"><i data-icon="package" data-size="16"></i> Пакувальниця</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
-<div class="nav"><a class="on" data-p="scan"><i data-icon="camera" data-size="15"></i> Сканер</a><a data-p="stats"><i data-icon="barChart3" data-size="15"></i> Статистика</a><a data-p="salary"><i data-icon="wallet" data-size="15"></i> Моя зарплата</a></div>
+<div class="nav"><a class="on" data-p="scan"><i data-icon="camera" data-size="15"></i> Сканер</a><a data-p="stats"><i data-icon="barChart3" data-size="15"></i> Статистика</a><a data-p="salary"><i data-icon="wallet" data-size="15"></i> Моя зарплата</a><a data-p="tasks"><i data-icon="clipboardList" data-size="15"></i> Завдання</a></div>
 
 <div class="page on" id="pg-scan">
 <div class="sg">
@@ -56,16 +56,20 @@
 </div>
 
 <div class="page" id="pg-salary">
-  <div class="acts" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">
+  <div class="acts" style="margin-bottom:6px;flex-wrap:wrap;gap:6px">
     <input type="date" id="sal-df"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="sal-dt">
     <button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadSalary()">OK</button>
-    <div style="display:flex;gap:3px;margin-left:auto"><button class="stab" id="sal-p-7" onclick="setSalaryPeriod(7)">7д</button><button class="stab" id="sal-p-15" onclick="setSalaryPeriod(15)">15д</button><button class="stab on" id="sal-p-30" onclick="setSalaryPeriod(30)">30д</button></div>
   </div>
+  <div style="display:flex;gap:3px;justify-content:flex-end;margin-bottom:10px"><button class="stab" id="sal-p-7" onclick="setSalaryPeriod(7)">7д</button><button class="stab" id="sal-p-15" onclick="setSalaryPeriod(15)">15д</button><button class="stab on" id="sal-p-30" onclick="setSalaryPeriod(30)">30д</button></div>
   <div id="sal-stats" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
   <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Нарахування за період:</div>
   <div id="sal-entries"></div>
   <div style="font-size:13px;font-weight:600;color:var(--th);margin:16px 0 8px">Історія виплат:</div>
   <div id="sal-payouts"></div>
+</div>
+
+<div class="page" id="pg-tasks">
+  <div id="tasks-list"></div>
 </div>
 </div>
 
@@ -91,7 +95,25 @@ document.querySelectorAll(".nav a").forEach(function(a){a.addEventListener("clic
   document.getElementById("pg-"+a.dataset.p).classList.add("on");
   if(a.dataset.p==="stats")loadFullStats();
   if(a.dataset.p==="salary")setSalaryPeriod(30);
+  if(a.dataset.p==="tasks")loadStaffTasks();
 })});
+
+async function loadStaffTasks(){
+  try{
+    var r=await api("/api/my-tasks");
+    document.getElementById("tasks-list").innerHTML=r.tasks.length?r.tasks.map(function(t){
+      return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;'+(t.status==="done"?"opacity:.6":"")+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'+
+        '<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(t.title)+'</div>'+
+        (t.note?'<div style="font-size:11px;color:var(--td);margin-top:2px">'+esc(t.note)+'</div>':'')+'</div>'+
+        (t.is_paid&&t.amount>0?'<div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:var(--acc)">+'+t.amount.toFixed(0)+'₴</div>':'')+
+        '</div>'+
+        '<div style="margin-top:8px;text-align:right"><button class="btn btn-sm '+(t.status==="done"?"":"btn-p")+'" onclick="toggleMyTaskStatus('+t.id+',\''+(t.status==="done"?"pending":"done")+'\')">'+Icon(t.status==="done"?"undo2":"check",12)+' '+(t.status==="done"?"Повернути":"Виконано")+'</button></div>'+
+        '</div>';
+    }).join(""):'<div class="empty"><span class="ic">'+Icon('clipboardList',30)+'</span>Немає задач</div>';
+  }catch(e){}
+}
+async function toggleMyTaskStatus(id,status){await api("/api/my-tasks/"+id+"/status",{method:"PUT",body:JSON.stringify({status:status})});loadStaffTasks()}
 
 document.getElementById("scan-ttn").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();doScan()}});
 

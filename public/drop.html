@@ -74,16 +74,16 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 </div>
 
 <div class="page on" id="pg-dash">
-<div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
   <input type="date" id="stat-from" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">
   <span style="color:var(--td)">—</span>
   <input type="date" id="stat-to" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">
   <button class="btn btn-sm" style="font-size:11px;background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadStats()">OK</button>
-  <div style="display:flex;gap:3px;margin-left:auto">
-    <button class="stab" id="sp-7" onclick="setStatPeriod(7)">7д</button>
-    <button class="stab" id="sp-15" onclick="setStatPeriod(15)">15д</button>
-    <button class="stab on" id="sp-30" onclick="setStatPeriod(30)">30д</button>
-  </div>
+</div>
+<div style="display:flex;gap:3px;justify-content:flex-end;margin-bottom:12px">
+  <button class="stab" id="sp-7" onclick="setStatPeriod(7)">7д</button>
+  <button class="stab" id="sp-15" onclick="setStatPeriod(15)">15д</button>
+  <button class="stab on" id="sp-30" onclick="setStatPeriod(30)">30д</button>
 </div>
 <div id="stat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px"></div>
 <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:6px">Прибуток / Збиток по днях</div>

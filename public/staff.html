@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>ADS DROP — Моя зарплата</title>
+<title>ADS DROP — Кабінет</title>
 <link rel="icon" type="image/png" href="/public/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,17 +20,28 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:15px;margin-top:2px"><i data-icon="wallet" data-size="16"></i> Моя зарплата</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
-  <div class="acts" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">
-    <input type="date" id="sal-df"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="sal-dt">
-    <button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadSalary()">OK</button>
-    <div style="display:flex;gap:3px;margin-left:auto"><button class="stab" id="sal-p-7" onclick="setSalaryPeriod(7)">7д</button><button class="stab" id="sal-p-15" onclick="setSalaryPeriod(15)">15д</button><button class="stab on" id="sal-p-30" onclick="setSalaryPeriod(30)">30д</button></div>
+  <div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:15px;margin-top:2px"><i data-icon="layoutDashboard" data-size="16"></i> Кабінет</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
+  <div style="display:flex;gap:6px;margin-bottom:16px" id="staff-tabs">
+    <button class="stab on" id="tab-tasks" onclick="showStaffTab('tasks')"><i data-icon="clipboardList" data-size="13"></i> Завдання</button>
+    <button class="stab" id="tab-salary" onclick="showStaffTab('salary')"><i data-icon="wallet" data-size="13"></i> Зарплата</button>
   </div>
-  <div id="sal-stats" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
-  <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Нарахування за період:</div>
-  <div id="sal-entries"></div>
-  <div style="font-size:13px;font-weight:600;color:var(--th);margin:16px 0 8px">Історія виплат:</div>
-  <div id="sal-payouts"></div>
+
+  <div id="v-tasks">
+    <div id="tasks-list"></div>
+  </div>
+
+  <div id="v-salary" style="display:none">
+    <div class="acts" style="margin-bottom:6px;flex-wrap:wrap;gap:6px">
+      <input type="date" id="sal-df"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="sal-dt">
+      <button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadSalary()">OK</button>
+    </div>
+    <div style="display:flex;gap:3px;justify-content:flex-end;margin-bottom:10px"><button class="stab" id="sal-p-7" onclick="setSalaryPeriod(7)">7д</button><button class="stab" id="sal-p-15" onclick="setSalaryPeriod(15)">15д</button><button class="stab on" id="sal-p-30" onclick="setSalaryPeriod(30)">30д</button></div>
+    <div id="sal-stats" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
+    <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Нарахування за період:</div>
+    <div id="sal-entries"></div>
+    <div style="font-size:13px;font-weight:600;color:var(--th);margin:16px 0 8px">Історія виплат:</div>
+    <div id="sal-payouts"></div>
+  </div>
 </div>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
 <script>
@@ -39,7 +50,30 @@ var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(
 async function api(u,o){_ls();try{var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();_lh();if(!r.ok)throw new Error(d.error||"Err");return d}catch(e){_lh();throw e}}
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
-async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;setSalaryPeriod(30)}catch(e){location.href="/login"}}
+async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;loadStaffTasks();setSalaryPeriod(30)}catch(e){location.href="/login"}}
+
+function showStaffTab(tab){
+  document.getElementById("tab-tasks").classList.toggle("on",tab==="tasks");
+  document.getElementById("tab-salary").classList.toggle("on",tab==="salary");
+  document.getElementById("v-tasks").style.display=tab==="tasks"?"":"none";
+  document.getElementById("v-salary").style.display=tab==="salary"?"":"none";
+}
+async function loadStaffTasks(){
+  try{
+    var r=await api("/api/my-tasks");
+    document.getElementById("tasks-list").innerHTML=r.tasks.length?r.tasks.map(function(t){
+      return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;'+(t.status==="done"?"opacity:.6":"")+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'+
+        '<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(t.title)+'</div>'+
+        (t.note?'<div style="font-size:11px;color:var(--td);margin-top:2px">'+esc(t.note)+'</div>':'')+'</div>'+
+        (t.is_paid&&t.amount>0?'<div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:var(--acc)">+'+t.amount.toFixed(0)+'₴</div>':'')+
+        '</div>'+
+        '<div style="margin-top:8px;text-align:right"><button class="btn btn-sm '+(t.status==="done"?"":"btn-p")+'" onclick="toggleMyTaskStatus('+t.id+',\''+(t.status==="done"?"pending":"done")+'\')">'+Icon(t.status==="done"?"undo2":"check",12)+' '+(t.status==="done"?"Повернути":"Виконано")+'</button></div>'+
+        '</div>';
+    }).join(""):'<div class="empty"><span class="ic">'+Icon('clipboardList',30)+'</span>Немає задач</div>';
+  }catch(e){}
+}
+async function toggleMyTaskStatus(id,status){await api("/api/my-tasks/"+id+"/status",{method:"PUT",body:JSON.stringify({status:status})});loadStaffTasks()}
 
 function setSalaryPeriod(days){
   var to=new Date();var from=new Date(to);from.setDate(from.getDate()-(days-1));

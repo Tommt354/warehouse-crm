@@ -422,6 +422,25 @@ db.exec(`
     FOREIGN KEY (created_by) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    is_paid INTEGER DEFAULT 0,
+    amount REAL DEFAULT 0,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    completed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS task_assignees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    worker_id INTEGER NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (worker_id) REFERENCES workers(id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_orders_drop ON orders(dropshipper_id);
   CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
   CREATE INDEX IF NOT EXISTS idx_bp_model ON base_products(model_id);
@@ -481,6 +500,7 @@ addCol("orders","parcel_width","REAL DEFAULT 0");
 addCol("orders","parcel_height","REAL DEFAULT 0");
 addCol("orders","parcel_length","REAL DEFAULT 0");
 addCol("workers","use_daily_rate","INTEGER DEFAULT 1");
+addCol("worker_payroll","task_id","INTEGER DEFAULT NULL");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){

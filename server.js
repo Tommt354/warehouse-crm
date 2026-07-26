@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 // switches into a simplified solo-packing mode client-side for packer_ready.
 function warehouseRedirectFor(workerRole) {
   if (workerRole === "finalizer") return "/finalizer";
-  if (workerRole === "seamstress" || workerRole === "printer") return "/staff";
+  if (workerRole === "seamstress" || workerRole === "printer" || workerRole === "seo") return "/staff";
   return "/warehouse";
 }
 const PHOTO_DIR = process.env.DB_PATH ? path.join(path.dirname(process.env.DB_PATH), "photos") : path.join(__dirname, "photos");
@@ -62,7 +62,7 @@ app.post("/api/auth/dev-login/:role", (req, res) => {
     user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role='packer' AND assigned_warehouse='molod' AND active=1 ORDER BY id LIMIT 1").get();
   } else if (key === "packer") {
     user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role='packer' AND (assigned_warehouse='' OR assigned_warehouse='base') AND active=1 ORDER BY id LIMIT 1").get();
-  } else if (["packer_ready","seamstress","printer"].includes(key)) {
+  } else if (["packer_ready","seamstress","printer","seo"].includes(key)) {
     user = db.prepare("SELECT * FROM users WHERE role='warehouse' AND worker_role=? AND active=1 ORDER BY id LIMIT 1").get(key);
   } else {
     user = db.prepare("SELECT * FROM users WHERE role=? AND active=1 ORDER BY id LIMIT 1").get(key);
@@ -1775,7 +1775,7 @@ app.get("/api/workers", authMiddleware, (req, res) => {
   res.json({ workers });
 });
 
-const WORKER_ROLES = ["packer", "finalizer", "seamstress", "printer", "packer_ready"];
+const WORKER_ROLES = ["packer", "finalizer", "seamstress", "printer", "packer_ready", "seo"];
 
 app.post("/api/workers", authMiddleware, requireRole("admin"), (req, res) => {
   const { name, role, daily_rate, per_item_rate, per_return_item_rate, use_daily_rate, username, password } = req.body;
@@ -1813,6 +1813,90 @@ app.put("/api/workers/:id", authMiddleware, requireRole("admin"), (req, res) => 
 
 app.delete("/api/workers/:id", authMiddleware, requireRole("admin"), (req, res) => {
   db.prepare("UPDATE workers SET active=0 WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ── TASKS (СЕО/принтувальник/швея та будь-хто інший) ───────────────
+// Payment is independent from the done/pending status — as soon as a task
+// is saved with is_paid+amount set, every assignee is credited the full
+// amount (not split) via worker_payroll; editing amount/assignees just
+// re-syncs those rows so nothing doubles up or goes stale.
+function syncTaskPayroll(taskId) {
+  db.prepare("DELETE FROM worker_payroll WHERE task_id=?").run(taskId);
+  const task = db.prepare("SELECT * FROM tasks WHERE id=?").get(taskId);
+  if (!task.is_paid || task.amount <= 0) return;
+  const assignees = db.prepare("SELECT worker_id FROM task_assignees WHERE task_id=?").all(taskId);
+  const ins = db.prepare("INSERT INTO worker_payroll(worker_id,task_id,amount,type,note)VALUES(?,?,?,?,?)");
+  assignees.forEach(a => ins.run(a.worker_id, taskId, task.amount, "task", task.title));
+}
+function taskWithAssignees(id) {
+  const t = db.prepare("SELECT * FROM tasks WHERE id=?").get(id);
+  if (!t) return null;
+  t.assignees = db.prepare("SELECT w.id,w.name,w.role FROM task_assignees ta JOIN workers w ON ta.worker_id=w.id WHERE ta.task_id=?").all(id);
+  return t;
+}
+app.get("/api/tasks", authMiddleware, requireRole("admin"), (req, res) => {
+  const tasks = db.prepare("SELECT * FROM tasks ORDER BY status='done',created_at DESC").all().map(t => taskWithAssignees(t.id));
+  res.json({ tasks });
+});
+app.post("/api/tasks", authMiddleware, requireRole("admin"), (req, res) => {
+  const { title, note, worker_ids, is_paid, amount } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
+  if (!worker_ids?.length) return res.status(400).json({ error: "Оберіть відповідальних" });
+  const r = db.transaction(() => {
+    const ins = db.prepare("INSERT INTO tasks(title,note,is_paid,amount)VALUES(?,?,?,?)").run(title.trim(), note || "", is_paid ? 1 : 0, parseFloat(amount) || 0);
+    const taskId = ins.lastInsertRowid;
+    const la = db.prepare("INSERT INTO task_assignees(task_id,worker_id)VALUES(?,?)");
+    worker_ids.forEach(wid => la.run(taskId, wid));
+    syncTaskPayroll(taskId);
+    return taskId;
+  })();
+  res.json({ ok: true, id: r });
+});
+app.put("/api/tasks/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  const id = parseInt(req.params.id);
+  const existing = db.prepare("SELECT * FROM tasks WHERE id=?").get(id);
+  if (!existing) return res.status(404).json({ error: "Задачу не знайдено" });
+  const { title, note, worker_ids, is_paid, amount, status } = req.body;
+  db.transaction(() => {
+    const s = [], v = [];
+    if (title !== undefined) { s.push("title=?"); v.push(title.trim()); }
+    if (note !== undefined) { s.push("note=?"); v.push(note); }
+    if (is_paid !== undefined) { s.push("is_paid=?"); v.push(is_paid ? 1 : 0); }
+    if (amount !== undefined) { s.push("amount=?"); v.push(parseFloat(amount) || 0); }
+    if (status !== undefined) {
+      s.push("status=?"); v.push(status);
+      s.push("completed_at=?"); v.push(status === "done" ? new Date().toISOString() : null);
+    }
+    if (s.length) { v.push(id); db.prepare(`UPDATE tasks SET ${s.join(",")} WHERE id=?`).run(...v); }
+    if (worker_ids) {
+      db.prepare("DELETE FROM task_assignees WHERE task_id=?").run(id);
+      const la = db.prepare("INSERT INTO task_assignees(task_id,worker_id)VALUES(?,?)");
+      worker_ids.forEach(wid => la.run(id, wid));
+    }
+    syncTaskPayroll(id);
+  })();
+  res.json({ ok: true });
+});
+app.delete("/api/tasks/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("DELETE FROM worker_payroll WHERE task_id=?").run(req.params.id);
+  db.prepare("DELETE FROM tasks WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+// Worker's own assigned tasks
+app.get("/api/my-tasks", authMiddleware, (req, res) => {
+  const workerIds = db.prepare("SELECT id FROM workers WHERE user_id=?").all(req.user.id).map(w => w.id);
+  if (!workerIds.length) return res.json({ tasks: [] });
+  const placeholders = workerIds.map(() => "?").join(",");
+  const tasks = db.prepare(`SELECT DISTINCT t.* FROM tasks t JOIN task_assignees ta ON ta.task_id=t.id WHERE ta.worker_id IN (${placeholders}) ORDER BY t.status='done',t.created_at DESC`).all(...workerIds);
+  res.json({ tasks });
+});
+app.put("/api/my-tasks/:id/status", authMiddleware, (req, res) => {
+  const workerIds = db.prepare("SELECT id FROM workers WHERE user_id=?").all(req.user.id).map(w => w.id);
+  const owns = db.prepare(`SELECT 1 FROM task_assignees WHERE task_id=? AND worker_id IN (${workerIds.map(() => "?").join(",") || "NULL"})`).get(req.params.id, ...workerIds);
+  if (!owns) return res.status(403).json({ error: "Недостатньо прав" });
+  const status = req.body.status === "done" ? "done" : "pending";
+  db.prepare("UPDATE tasks SET status=?,completed_at=? WHERE id=?").run(status, status === "done" ? new Date().toISOString() : null, req.params.id);
   res.json({ ok: true });
 });
 

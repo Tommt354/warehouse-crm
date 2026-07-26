@@ -49,6 +49,7 @@
     <div class="nav-g">Користувачі</div>
     <a data-p="drops"><i data-icon="users" data-size="15"></i> Дропшипери</a>
     <a data-p="workers"><i data-icon="hardHat" data-size="15"></i> Працівники</a>
+    <a data-p="tasks"><i data-icon="clipboardList" data-size="15"></i> Задачі</a>
     <div class="nav-g">Система</div>
     <a data-p="payouts"><i data-icon="wallet" data-size="15"></i> Виплати</a>
     <a data-p="adm-returns"><i data-icon="undo2" data-size="15"></i> Повернення</a>
@@ -174,7 +175,8 @@
 <div class="page" id="pg-orders"><div class="pt"><i data-icon="clipboardList" data-size="17"></i> Замовлення</div>
 <button class="btn btn-p" style="margin-bottom:14px" onclick="openAdmNewOrder()"><i data-icon="plus" data-size="14"></i> Створити замовлення</button>
 <div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="check" data-size="15"></i> Готові товари</button></div>
-<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="admOrdPage=0;loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button><div style="display:flex;gap:3px;margin-left:auto"><button class="stab" id="adm-p-7" onclick="setAdmDatePeriod(7)">7д</button><button class="stab" id="adm-p-15" onclick="setAdmDatePeriod(15)">15д</button><button class="stab on" id="adm-p-30" onclick="setAdmDatePeriod(30)">30д</button></div></div>
+<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="admOrdPage=0;loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button></div>
+<div style="display:flex;gap:3px;justify-content:flex-end;margin-bottom:6px"><button class="stab" id="adm-p-7" onclick="setAdmDatePeriod(7)">7д</button><button class="stab" id="adm-p-15" onclick="setAdmDatePeriod(15)">15д</button><button class="stab on" id="adm-p-30" onclick="setAdmDatePeriod(30)">30д</button></div>
 <div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="admOrdPage=0;loadAdmOrders(admOrdFilter)"></div>
 <div class="acts" style="flex-wrap:wrap;gap:4px">
   <button class="btn" onclick="admOrdPage=0;loadAdmOrders('')" id="ao-all">Всі</button>
@@ -234,14 +236,18 @@
   <option value="packer_ready">Пакувальник (Готовий товар)</option>
   <option value="seamstress">Швея</option>
   <option value="printer">Принтувальник</option>
+  <option value="seo">СЕО</option>
 </select></div>
 <div id="wk-auth-wrap">
 <div class="fld-row"><div class="fld"><label>Логін</label><input id="wk-login"></div><div class="fld"><label>Пароль</label><input id="wk-pass" type="password"></div></div>
 </div>
+<div id="wk-pay-section">
 <div class="sw"><div class="swb on" id="wk-daily-toggle" onclick="toggleWkDaily(this)"></div><label onclick="document.getElementById('wk-daily-toggle').click()">Ставка за день</label></div>
 <div class="fld" id="wk-daily-wrap"><label>Сума ставки ₴</label><input id="wk-daily" type="number" value="0"></div>
 <div class="fld" id="wk-rate-wrap"><label id="wk-rate-label">Виробіток за 1 видану річ ₴</label><input id="wk-rate" type="number" value="0"></div>
 <div id="wk-return-wrap" class="fld"><label>Виробіток за 1 річ з повернення ₴</label><input id="wk-ret-rate" type="number" value="0"></div>
+</div>
+<div id="wk-seo-note" style="display:none;font-size:11px;color:var(--td);padding:8px 0">СЕО не має ставки чи виробітку — оплата нараховується лише через призначені задачі.</div>
 <div id="wk-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveWorker()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('wk-modal')">Скасувати</button></div>
 </div></div>
@@ -250,6 +256,23 @@
 <div class="modal-bg" id="wk-detail-modal"><div class="modal" style="max-width:550px"><h3 id="wkd-title">Працівник</h3>
 <div id="wkd-body"></div>
 <div style="margin-top:10px"><button class="btn" onclick="closeM('wk-detail-modal')">Закрити</button></div>
+</div></div>
+
+<div class="page" id="pg-tasks"><div class="pt"><i data-icon="clipboardList" data-size="17"></i> Задачі</div>
+<button class="btn btn-p" style="margin-bottom:14px" onclick="openAddTask()"><i data-icon="plus" data-size="14"></i> Задача</button>
+<div id="tasks-list"></div>
+</div>
+
+<!-- Task modal -->
+<div class="modal-bg" id="task-modal"><div class="modal" style="max-width:480px"><h3 id="task-title">+ Задача</h3>
+<div class="fld"><label>Назва</label><input id="task-name"></div>
+<div class="fld"><label>Опис</label><input id="task-note" placeholder="необов'язково"></div>
+<div class="fld"><label>Відповідальні</label><div id="task-assignees" style="max-height:160px;overflow-y:auto;background:var(--input);border:1px solid var(--brd2);border-radius:7px;padding:8px"></div></div>
+<div class="sw"><div class="swb" id="task-paid-toggle" onclick="toggleTaskPaid(this)"></div><label onclick="document.getElementById('task-paid-toggle').click()">Оплачувана</label></div>
+<div class="fld" id="task-amount-wrap" style="display:none"><label>Сума ₴ (нараховується кожному відповідальному)</label><input id="task-amount" type="number" value="0"></div>
+<div class="fld" id="task-status-wrap" style="display:none"><label>Статус</label><select id="task-status"><option value="pending">Не виконано</option><option value="done">Виконано</option></select></div>
+<div id="task-err" class="msg msg-err" style="display:none"></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveTask()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('task-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="task-del-btn" style="display:none;margin-left:auto" onclick="deleteTask()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
 
 <div class="page" id="pg-payouts"><div class="pt"><i data-icon="wallet" data-size="17"></i> Виплати</div>
@@ -577,7 +600,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,drops:loadDrops,workers:loadWorkers,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -1451,6 +1474,73 @@ async function fetchRetCost(id){
 function editTtn(id){var inp=document.getElementById("ttn-"+id);inp.readOnly=false;inp.style.opacity="1";inp.focus();document.getElementById("ttn-edit-"+id).style.display="none";document.getElementById("ttn-save-"+id).style.display=""}
 async function saveTtn(id){var inp=document.getElementById("ttn-"+id);var v=inp.value;var btn=document.getElementById("ttn-save-"+id);btn.innerHTML='<div style="display:inline-block;width:10px;height:10px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div>';try{await api("/api/orders/"+id+"/ttn",{method:"PUT",body:JSON.stringify({ttn:v})});btn.innerHTML=Icon('check',12);btn.style.color="var(--acc)";inp.readOnly=true;inp.style.opacity=".7";setTimeout(function(){loadAdmOrders(admOrdFilter)},1000)}catch(e){btn.innerHTML=Icon('x',12)}}
 
+// ── TASKS ────────────────────────────────────────────────────────
+let allTasks=[],taskWorkersCache=[],editTaskId=null;
+async function loadTasks(){
+  try{taskWorkersCache=(await api("/api/workers")).workers}catch(e){taskWorkersCache=[]}
+  try{const r=await api("/api/tasks");allTasks=r.tasks;renderTasks()}catch(e){}
+}
+function renderTasks(){
+  document.getElementById("tasks-list").innerHTML=allTasks.length?allTasks.map(function(t){
+    var names=t.assignees.map(function(a){return esc(a.name)}).join(", ")||"—";
+    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px;'+(t.status==="done"?"opacity:.6":"")+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'+
+      '<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(t.title)+(t.status==="done"?' <span class="tag tag-g">Виконано</span>':' <span class="tag" style="background:var(--brd);color:var(--td)">Не виконано</span>')+'</div>'+
+      (t.note?'<div style="font-size:11px;color:var(--td);margin-top:2px">'+esc(t.note)+'</div>':'')+
+      '<div style="font-size:11px;color:var(--blue);margin-top:4px">'+names+'</div></div>'+
+      '<div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+(t.is_paid&&t.amount>0?"var(--acc)":"var(--td)")+'">'+(t.is_paid&&t.amount>0?"+"+t.amount.toFixed(0)+"₴/люд":"безоплатно")+'</div></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">'+
+      '<button class="btn btn-sm" onclick="toggleTaskStatus('+t.id+',\''+(t.status==="done"?"pending":"done")+'\')">'+Icon(t.status==="done"?"undo2":"check",12)+' '+(t.status==="done"?"Повернути":"Виконано")+'</button>'+
+      '<button class="btn btn-sm btn-a" onclick="openEditTask('+t.id+')">'+Icon('pencil',12)+'</button>'+
+      '</div></div>';
+  }).join(""):'<div class="empty"><span class="ic">'+Icon('clipboardList',40)+'</span>Ще немає задач</div>';
+}
+async function toggleTaskStatus(id,status){await api("/api/tasks/"+id,{method:"PUT",body:JSON.stringify({status:status})});loadTasks()}
+function renderTaskAssigneeList(selectedIds){
+  document.getElementById("task-assignees").innerHTML=taskWorkersCache.length?taskWorkersCache.map(function(w){
+    var checked=selectedIds&&selectedIds.includes(w.id);
+    return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:12px;color:var(--th)"><input type="checkbox" value="'+w.id+'" '+(checked?"checked":"")+' style="width:15px;height:15px;accent-color:var(--acc)"> '+esc(w.name)+' <span style="color:var(--td);font-size:10px">('+(ROLES[w.role]?ROLES[w.role].label:w.role)+')</span></label>';
+  }).join(""):'<div style="font-size:11px;color:var(--td)">Спочатку додайте працівників</div>';
+}
+function toggleTaskPaid(el){el.classList.toggle("on");document.getElementById("task-amount-wrap").style.display=el.classList.contains("on")?"":"none"}
+async function openAddTask(){
+  editTaskId=null;document.getElementById("task-title").textContent="+ Задача";
+  document.getElementById("task-name").value="";document.getElementById("task-note").value="";document.getElementById("task-amount").value="0";
+  document.getElementById("task-paid-toggle").classList.remove("on");document.getElementById("task-amount-wrap").style.display="none";
+  document.getElementById("task-status-wrap").style.display="none";document.getElementById("task-del-btn").style.display="none";
+  document.getElementById("task-err").style.display="none";
+  try{taskWorkersCache=(await api("/api/workers")).workers}catch(e){}
+  renderTaskAssigneeList([]);
+  openM("task-modal");
+}
+async function openEditTask(id){
+  var t=allTasks.find(function(x){return x.id===id});if(!t)return;
+  editTaskId=id;document.getElementById("task-title").textContent="Редагувати задачу";
+  document.getElementById("task-name").value=t.title;document.getElementById("task-note").value=t.note||"";document.getElementById("task-amount").value=t.amount||0;
+  document.getElementById("task-paid-toggle").classList.toggle("on",!!t.is_paid);document.getElementById("task-amount-wrap").style.display=t.is_paid?"":"none";
+  document.getElementById("task-status-wrap").style.display="";document.getElementById("task-status").value=t.status;
+  document.getElementById("task-del-btn").style.display="";
+  document.getElementById("task-err").style.display="none";
+  try{taskWorkersCache=(await api("/api/workers")).workers}catch(e){}
+  renderTaskAssigneeList(t.assignees.map(function(a){return a.id}));
+  openM("task-modal");
+}
+async function saveTask(){
+  var err=document.getElementById("task-err");err.style.display="none";
+  var title=document.getElementById("task-name").value.trim();
+  if(!title){err.textContent="Введіть назву";err.style.display="block";return}
+  var workerIds=[...document.querySelectorAll("#task-assignees input:checked")].map(function(c){return parseInt(c.value)});
+  if(!workerIds.length){err.textContent="Оберіть хоча б одного відповідального";err.style.display="block";return}
+  var data={title:title,note:document.getElementById("task-note").value,worker_ids:workerIds,is_paid:document.getElementById("task-paid-toggle").classList.contains("on"),amount:document.getElementById("task-amount").value};
+  try{
+    if(editTaskId){data.status=document.getElementById("task-status").value;await api("/api/tasks/"+editTaskId,{method:"PUT",body:JSON.stringify(data)})}
+    else await api("/api/tasks",{method:"POST",body:JSON.stringify(data)});
+    closeM("task-modal");loadTasks();
+  }catch(e){err.textContent=e.message;err.style.display="block"}
+}
+async function deleteTask(){if(!editTaskId||!confirm("Видалити задачу?"))return;await api("/api/tasks/"+editTaskId,{method:"DELETE"});closeM("task-modal");loadTasks()}
+
 // ── ADMIN PAYOUTS ────────────────────────────────────────────────
 let allPayouts=[];
 async function loadAdmPayouts(){
@@ -1730,12 +1820,12 @@ function renderDropsList(){
     return '<div class="pcard" style="cursor:pointer" onclick="viewDropStats('+x.id+',\''+esc(x.name).replace(/'/g,"")+'\')">'+
       '<div class="pcard-body">'+
       '<div class="pcard-name">'+esc(x.name)+' <span style="color:var(--td);font-size:10px;font-weight:400">#'+x.id+'</span></div>'+
-      '<div class="pcard-sub">@'+esc(x.username)+' · '+(x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>')+((x.balance||0)>0?' · <span style="color:var(--acc);font-weight:700">Баланс: '+(x.balance||0).toFixed(0)+'₴</span>':'')+'</div>'+
+      '<div class="pcard-sub">@'+esc(x.username)+' · '+(x.active?'<span class="tag tag-g">On</span>':'<span class="tag tag-r">Off</span>')+' · <span style="color:'+((x.balance||0)>0?'var(--acc)':'var(--td)')+';font-weight:700">Баланс: '+(x.balance||0).toFixed(0)+'₴</span>'+'</div>'+
       '<div class="stock-row" style="margin-top:8px">'+
         '<div class="stock-sz"><b>'+x.total+'</b><br>замовлень</div>'+
         '<div class="stock-sz '+srClass+'"><b>'+x.success_rate+'%</b><br>успішних</div>'+
       '</div>'+
-      '<div style="margin-top:8px;text-align:right"><button class="btn btn-sm" onclick="event.stopPropagation();openDropBalance('+x.id+',\''+esc(x.name).replace(/'/g,"")+'\')">'+Icon('wallet',13)+'</button> <button class="btn btn-sm btn-a" onclick="event.stopPropagation();editU('+x.id+',\'dropshipper\')">'+Icon('pencil',13)+'</button></div>'+
+      '<div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end"><button class="btn btn-sm btn-p" onclick="event.stopPropagation();openDropBalance('+x.id+',\''+esc(x.name).replace(/'/g,"")+'\')">'+Icon('wallet',13)+' Баланс</button> <button class="btn btn-sm btn-a" onclick="event.stopPropagation();editU('+x.id+',\'dropshipper\')">'+Icon('pencil',13)+'</button></div>'+
       '</div></div>';
   }).join("");
 }
@@ -1744,7 +1834,8 @@ var ROLES={
   finalizer:{icon:'package',label:'Пакувальниця'},
   packer_ready:{icon:'check',label:'Пакувальник (Готовий товар)'},
   seamstress:{icon:'shirt',label:'Швея'},
-  printer:{icon:'printer',label:'Принтувальник'}
+  printer:{icon:'printer',label:'Принтувальник'},
+  seo:{icon:'megaphone',label:'СЕО'}
 };
 var wkCurrentRole=null,allWorkersCache=[];
 async function loadWorkers(){
@@ -1780,7 +1871,7 @@ function renderRolePeople(){
   }).join(""):'<div class="empty"><span class="ic">'+Icon('hardHat',40)+'</span>Ще нікого не додано</div>';
 }
 function toggleWkDaily(el){el.classList.toggle("on");document.getElementById("wk-daily-wrap").style.display=el.classList.contains("on")?"":"none"}
-function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none";var lbl=document.getElementById("wk-rate-label");if(r==="seamstress")lbl.textContent="Оплата за 1 нашивку ₴";else if(r==="printer")lbl.textContent="Оплата за 1 принт ₴";else if(r==="packer")lbl.textContent="Виробіток за 1 видану річ ₴";else if(r==="packer_ready")lbl.textContent="Оплата за 1 запаковану річ ₴";else lbl.textContent="Виробіток за 1 річ ₴"}
+function toggleWkRole(){var r=document.getElementById("wk-role").value;document.getElementById("wk-return-wrap").style.display=r==="packer"?"":"none";document.getElementById("wk-pay-section").style.display=r==="seo"?"none":"";document.getElementById("wk-seo-note").style.display=r==="seo"?"":"none";var lbl=document.getElementById("wk-rate-label");if(r==="seamstress")lbl.textContent="Оплата за 1 нашивку ₴";else if(r==="printer")lbl.textContent="Оплата за 1 принт ₴";else if(r==="packer")lbl.textContent="Виробіток за 1 видану річ ₴";else if(r==="packer_ready")lbl.textContent="Оплата за 1 запаковану річ ₴";else lbl.textContent="Виробіток за 1 річ ₴"}
 var editWorkerId=null;
 function openAddWorker(){editWorkerId=null;document.getElementById("wk-title").textContent="+ Працівник";["wk-name","wk-login","wk-pass"].forEach(function(id){document.getElementById(id).value=""});document.getElementById("wk-daily").value="0";document.getElementById("wk-rate").value="0";document.getElementById("wk-ret-rate").value="0";document.getElementById("wk-role").value=wkCurrentRole||"packer";document.getElementById("wk-role").disabled=false;document.getElementById("wk-auth-wrap").style.display="";document.getElementById("wk-daily-toggle").classList.add("on");document.getElementById("wk-daily-wrap").style.display="";toggleWkRole();document.getElementById("wk-err").style.display="none";openM("wk-modal")}
 function openEditWorker(w){
