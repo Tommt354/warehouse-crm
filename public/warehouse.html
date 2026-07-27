@@ -218,6 +218,8 @@ function ttnColor(o){if(o.own_ttn)return'#c17f4e';var s=o.status||'';if(s==='del
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.innerHTML=Icon('check',13)+" "+esc(t)+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Err");return d}
+function catParentId(breadcrumb){return breadcrumb.length>1?breadcrumb[breadcrumb.length-2].id:null}
+function catBackBtn(breadcrumb,onclickJs){return breadcrumb.length?'<button class="btn btn-sm" style="margin-right:6px" onclick="'+onclickJs+'">'+Icon('arrowLeft',13)+' Назад</button>':''}
 function clM(id){document.getElementById(id).classList.remove("on")}
 function opM(id){document.getElementById(id).classList.add("on")}
 
@@ -470,7 +472,8 @@ var whPage=0,whStockReady="",whStockCatP=null,whCats=[];
 async function loadWhStock(){
   // Categories
   var cd=await api("/api/categories?parent_id="+(whStockCatP||"")+"&scope=base");
-  var bc='<div class="bread"><a onclick="whStockCatP=null;loadWhStock()">'+Icon('package',13)+' Склад</a>';
+  var bc=catBackBtn(cd.breadcrumb,"whStockCatP="+catParentId(cd.breadcrumb)+";loadWhStock()");
+  bc+='<div class="bread"><a onclick="whStockCatP=null;loadWhStock()">'+Icon('package',13)+' Склад</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span style="color:var(--td);margin:0 3px">›</span><a onclick="whStockCatP='+b.id+';loadWhStock()">'+esc(b.name)+'</a>'});
   bc+='</div>';document.getElementById("wh-stock-bread").innerHTML=bc;
   document.getElementById("wh-stock-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="whStockCatP='+c.id+';loadWhStock()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',20))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
@@ -520,7 +523,8 @@ function openWhBpPicker(onSelect){
 }
 async function loadWhBpPicker(){
   var cd=await api("/api/categories?parent_id="+(whbppCatP||"")+"&scope=base");
-  var bc='<div class="bread"><a onclick="whbppCatP=null;loadWhBpPicker()">'+Icon('package',13)+' Всі товари</a>';
+  var bc=catBackBtn(cd.breadcrumb,"whbppCatP="+catParentId(cd.breadcrumb)+";loadWhBpPicker()");
+  bc+='<div class="bread"><a onclick="whbppCatP=null;loadWhBpPicker()">'+Icon('package',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="whbppCatP='+b.id+';loadWhBpPicker()">'+esc(b.name)+'</a>'});
   bc+="</div>";document.getElementById("whbpp-bread").innerHTML=bc;
   document.getElementById("whbpp-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="whbppCatP='+c.id+';loadWhBpPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");

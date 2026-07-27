@@ -678,6 +678,11 @@ function ttnColor(o){if(o.own_ttn)return'#c17f4e';var s=o.status||'';if(s==='del
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.textContent=t+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
 function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 async function api(u,o){const r=await fetch(u,{headers:{"Content-Type":"application/json"},...o});const d=await r.json();if(!r.ok)throw new Error(d.error||"Помилка");return d}
+// One level up from the current category — used for a "← Назад" button next
+// to every category breadcrumb, since clicking through a chain of category
+// links to go back up several levels at once was the only option before.
+function catParentId(breadcrumb){return breadcrumb.length>1?breadcrumb[breadcrumb.length-2].id:null}
+function catBackBtn(breadcrumb,onclickJs){return breadcrumb.length?'<button class="btn btn-sm" style="margin-right:6px" onclick="'+onclickJs+'">'+Icon('arrowLeft',13)+' Назад</button>':''}
 function closeM(id){document.getElementById(id).classList.remove("on")}
 function openM(id){document.getElementById(id).classList.add("on")}
 
@@ -929,7 +934,8 @@ function setStockViewMode(mode){
 async function loadSBase(){
   // Load categories
   const cd=await api(`/api/categories?parent_id=${sbCatP||""}&scope=base`);
-  let bc='<div class="bread"><a onclick="sbCatP=null;loadSBase()">'+Icon('package',13)+' Всі товари</a>';
+  let bc=catBackBtn(cd.breadcrumb,`sbCatP=${catParentId(cd.breadcrumb)};loadSBase()`);
+  bc+='<div class="bread"><a onclick="sbCatP=null;loadSBase()">'+Icon('package',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sbCatP=${b.id};loadSBase()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("sbase-bread").innerHTML=bc;
   // Category cards
@@ -964,7 +970,8 @@ function searchSBase(q){if(!q){renderSBase(sbProducts);return}renderSBase(sbProd
 let sreadyProducts=[],sreadySizes=[],sreadyCatP=null,sreadyPage=0;
 async function loadSReady(){
   const cd=await api(`/api/categories?parent_id=${sreadyCatP||""}&scope=base`);
-  let bc='<div class="bread"><a onclick="sreadyCatP=null;loadSReady()">'+Icon('check',13)+' Всі товари</a>';
+  let bc=catBackBtn(cd.breadcrumb,`sreadyCatP=${catParentId(cd.breadcrumb)};loadSReady()`);
+  bc+='<div class="bread"><a onclick="sreadyCatP=null;loadSReady()">'+Icon('check',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sreadyCatP=${b.id};loadSReady()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("sready-bread").innerHTML=bc;
   document.getElementById("sready-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sreadyCatP=${c.id};loadSReady()">
@@ -996,7 +1003,8 @@ let sdVars=[],sdSizes=[],sdCatP=null,sdChannel="";
 async function loadSDrop(){
   document.querySelectorAll("[id^=dc-]").forEach(function(b){b.className="btn";if(b.id==="dc-"+(sdChannel||"all"))b.className="btn btn-a"});
   const cd=await api(`/api/categories?parent_id=${sdCatP||""}&scope=drop`);
-  let bc='<div class="bread"><a onclick="sdCatP=null;loadSDrop()">'+Icon('shoppingCart',13)+' Всі варіації</a>';
+  let bc=catBackBtn(cd.breadcrumb,`sdCatP=${catParentId(cd.breadcrumb)};loadSDrop()`);
+  bc+='<div class="bread"><a onclick="sdCatP=null;loadSDrop()">'+Icon('shoppingCart',13)+' Всі варіації</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sdCatP=${b.id};loadSDrop()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("sdrop-bread").innerHTML=bc;
   document.getElementById("sdrop-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sdCatP=${c.id};loadSDrop()">
@@ -1172,7 +1180,8 @@ async function loadBpPicker(){
   document.getElementById("bpp-base").classList.toggle("on",bppWarehouse==="base");
   document.getElementById("bpp-molod").classList.toggle("on",bppWarehouse==="molod");
   var cd=await api("/api/categories?parent_id="+(bppCatP||"")+"&scope=base");
-  var bc='<div class="bread"><a onclick="bppCatP=null;loadBpPicker()">'+Icon('package',13)+' Всі товари</a>';
+  var bc=catBackBtn(cd.breadcrumb,"bppCatP="+catParentId(cd.breadcrumb)+";loadBpPicker()");
+  bc+='<div class="bread"><a onclick="bppCatP=null;loadBpPicker()">'+Icon('package',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="bppCatP='+b.id+';loadBpPicker()">'+esc(b.name)+'</a>'});
   bc+="</div>";document.getElementById("bpp-bread").innerHTML=bc;
   document.getElementById("bpp-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="bppCatP='+c.id+';loadBpPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
@@ -1940,7 +1949,8 @@ let rcProducts=[],rcSizes=[],rcCatP=null,rcChanges={},rcSession=null;
 async function loadRecount(){
   rcChanges={};renderRcChanges();
   const cd=await api(`/api/categories?parent_id=${rcCatP||""}&scope=base`);
-  let bc='<div class="bread"><a onclick="rcCatP=null;loadRecount()">'+Icon('package',13)+' Всі товари</a>';
+  let bc=catBackBtn(cd.breadcrumb,`rcCatP=${catParentId(cd.breadcrumb)};loadRecount()`);
+  bc+='<div class="bread"><a onclick="rcCatP=null;loadRecount()">'+Icon('package',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="rcCatP=${b.id};loadRecount()">${esc(b.name)}</a>`});
   bc+="</div>";document.getElementById("rc-bread").innerHTML=bc;
   document.getElementById("rc-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="rcCatP=${c.id};loadRecount()">

@@ -231,6 +231,8 @@ function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElemen
 function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
 var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(function(){if(_lc>0){var l=document.getElementById("loader");if(l)l.style.display="flex"}},800)}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){if(_lt){clearTimeout(_lt);_lt=null}var l=document.getElementById("loader");if(l)l.style.display="none"}}
 async function api(u,o){_ls();try{var r=await fetch(u,Object.assign({headers:{"Content-Type":"application/json"}},o||{}));var d=await r.json();_lh();if(!r.ok)throw new Error(d.error||"Err");return d}catch(e){_lh();throw e}}
+function catParentId(breadcrumb){return breadcrumb.length>1?breadcrumb[breadcrumb.length-2].id:null}
+function catBackBtn(breadcrumb,onclickJs){return breadcrumb.length?'<button class="btn btn-sm" style="margin-right:6px" onclick="'+onclickJs+'">'+Icon('arrowLeft',13)+' Назад</button>':''}
 function clM(id){document.getElementById(id).classList.remove("on")}
 function opM(id){document.getElementById(id).classList.add("on")}
 
@@ -384,7 +386,8 @@ function filterCatPicker(q){cpSearchQ=q;renderCpProds()}
 async function loadCatPicker(){
   document.querySelectorAll("[id^=cpt-]").forEach(function(b){b.className="stab";if(b.id==="cpt-"+dropCh)b.className="stab on"});
   var cd=await api("/api/categories?parent_id="+(cpCatP||"")+"&scope=drop");
-  var bc='<div class="bread"><a onclick="cpCatP=null;loadCatPicker()">'+Icon('package',13)+' Каталог</a>';
+  var bc=catBackBtn(cd.breadcrumb,"cpCatP="+catParentId(cd.breadcrumb)+";loadCatPicker()");
+  bc+='<div class="bread"><a onclick="cpCatP=null;loadCatPicker()">'+Icon('package',13)+' Каталог</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="cpCatP='+b.id+';loadCatPicker()">'+esc(b.name)+'</a>'});
   bc+='</div>';document.getElementById("cp-bread").innerHTML=bc;
   var cats=cd.categories.filter(function(c){return!c.hidden_from_drop});
@@ -572,7 +575,8 @@ async function submitOrder(){
 async function loadCatalog(){
   document.querySelectorAll("[id^=ct-]").forEach(function(b){b.className="stab";if(b.id==="ct-"+dropCh)b.className="stab on"});
   var cd=await api("/api/categories?parent_id="+(catP||"")+"&scope=drop");
-  var bc='<div class="bread"><a onclick="catP=null;loadCatalog()">'+Icon('package',13)+' Каталог</a>';
+  var bc=catBackBtn(cd.breadcrumb,"catP="+catParentId(cd.breadcrumb)+";loadCatalog()");
+  bc+='<div class="bread"><a onclick="catP=null;loadCatalog()">'+Icon('package',13)+' Каталог</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="catP='+b.id+';loadCatalog()">'+esc(b.name)+'</a>'});
   bc+='</div>';document.getElementById("cat-bread").innerHTML=bc;
   var cats=cd.categories.filter(function(c){return!c.hidden_from_drop});
