@@ -481,7 +481,7 @@ app.get("/api/base-products/:id", authMiddleware, (req, res) => {
 });
 
 app.put("/api/base-products/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, active, color_id, cost_price, drop_price } = req.body;
+  const { name, photo, active, color_id, cost_price, drop_price, allow_negative_order } = req.body;
   const s=[],v=[];
   if(name!==undefined){s.push("name=?");v.push(name)}
   if(photo!==undefined){s.push("photo=?");v.push(photo)}
@@ -490,6 +490,13 @@ app.put("/api/base-products/:id", authMiddleware, requireRole("admin"), (req, re
   if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
   if(drop_price!==undefined){s.push("drop_price=?");v.push(parseFloat(drop_price)||0)}
   if(s.length){v.push(req.params.id);db.prepare(`UPDATE base_products SET ${s.join(",")} WHERE id=?`).run(...v)}
+  // This is a bulk convenience switch for the whole color/product — it just
+  // sets every one of its variations' own allow_negative_order flag, rather
+  // than being a separate stored setting (that flag is still the one
+  // actually enforced at order time).
+  if(allow_negative_order!==undefined){
+    db.prepare("UPDATE variations SET allow_negative_order=? WHERE base_product_id=?").run(allow_negative_order?1:0, req.params.id);
+  }
   res.json({ ok: true });
 });
 
@@ -1721,6 +1728,11 @@ async function trackOneOrder(apiKey, o) {
   db.prepare("UPDATE orders SET np_status_text=? WHERE id=?").run(st.Status || "", o.id);
   const code = parseInt(st.StatusCode);
   let ns = null;
+  // Codes 5/6/41 mean NP has the parcel physically moving (departed the
+  // sender's city / en route to the destination city) — the actual "shipped"
+  // moment, as opposed to the finalizer's scan which only confirms it's
+  // packed and handed off, before NP has necessarily picked it up.
+  if (code === 5 || code === 6 || code === 41) ns = "shipped";
   if (code >= 7 && code <= 8) ns = "delivering";
   if (code === 9 || code === 10 || code === 11) ns = "delivered";
   if (code === 17 || code === 102 || code === 103) ns = "refused";
@@ -1729,6 +1741,9 @@ async function trackOneOrder(apiKey, o) {
   if (ns && ns !== o.status) {
     db.prepare("UPDATE orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(ns, o.id);
     statusChanged = true;
+  }
+  if (ns === "shipped") {
+    db.prepare("UPDATE orders SET shipped_at=datetime('now','localtime') WHERE id=? AND (shipped_at IS NULL OR shipped_at='')").run(o.id);
   }
   if (ns === "refused" || ns === "return_transit" || o.status === "refused" || o.status === "return_transit") {
     db.prepare("UPDATE orders SET return_flagged_at=datetime('now','localtime') WHERE id=? AND (return_flagged_at IS NULL OR return_flagged_at='')").run(o.id);
@@ -2097,7 +2112,13 @@ app.post("/api/scan", authMiddleware, (req, res) => {
 app.post("/api/scan/finalize/:order_id", authMiddleware, (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.order_id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
-  db.prepare("UPDATE orders SET status='shipped',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
+  // This confirms the parcel is packed and handed off — it does NOT mean NP
+  // has shipped it yet. "shipped"/shipped_at only gets set later, by NP
+  // tracking actually reporting the parcel in transit (see trackOneOrder).
+  if (!["shipped", "delivering", "delivered", "refused", "return_transit"].includes(o.status)) {
+    db.prepare("UPDATE orders SET status='packed',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
+  }
+  db.prepare("UPDATE orders SET packed_at=datetime('now','localtime') WHERE id=? AND (packed_at IS NULL OR packed_at='')").run(o.id);
   // Find active shift and calc payroll
   const shift = db.prepare("SELECT s.id FROM shifts s JOIN shift_workers sw ON s.id=sw.shift_id WHERE s.status='open' ORDER BY s.id DESC LIMIT 1").get();
   if (shift) calcOrderPayroll(o.id, shift.id);

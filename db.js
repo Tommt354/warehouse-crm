@@ -483,6 +483,10 @@ addCol("orders","return_cost","REAL DEFAULT 0");
 // day-count from when NP first signaled a return, independent of later
 // order edits that would otherwise bump updated_at.
 addCol("orders","return_flagged_at","TEXT DEFAULT ''");
+// Set only once — the moment NP tracking actually reports the parcel as
+// departed/in transit, not when the finalizer scans+confirms it (that just
+// means it's packed and handed off; NP may not have picked it up yet).
+addCol("orders","shipped_at","TEXT DEFAULT ''");
 addCol("orders","return_received","INTEGER DEFAULT 0");
 addCol("orders","return_received_at","TEXT DEFAULT ''");
 addCol("orders","return_received_by","INTEGER DEFAULT NULL");

@@ -508,6 +508,7 @@
 <div class="fld"><label>Варіації</label><div id="ebp-vars" style="font-size:11px;color:var(--td);max-height:100px;overflow-y:auto"></div></div>
 <div class="fld"><label>Модель</label><div id="ebp-model" style="font-size:11px;color:var(--td)"></div></div>
 <div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ebp-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ebp-fi').click()"><i data-icon="camera" data-size="13"></i></button><input type="file" id="ebp-fi" accept="image/*" style="display:none" onchange="uploadBpPhoto(event)"></div></div>
+<div class="sw" style="padding:8px;background:var(--bg);border-radius:8px"><div class="swb on" id="ebp-allow-neg" onclick="this.classList.toggle('on')"></div><label onclick="document.getElementById('ebp-allow-neg').click()">Дозволити замовлення при відсутності на складі</label></div>
 <div class="fld"><label>Статус</label><select id="ebp-active"><option value="1">Активний</option><option value="0">Вимкнений</option></select></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveEditBp()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('edit-bp-modal')">Скасувати</button><button class="btn btn-d btn-sm" style="margin-left:auto" onclick="deleteEditBp()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
@@ -570,7 +571,7 @@
 <div class="fld"><label>ПІБ клієнта</label><input id="eo-name"></div>
 <div class="fld"><label>Телефон</label><input id="eo-phone"></div>
 <div class="fld-row"><div class="fld"><label>Місто</label><input id="eo-city"></div><div class="fld"><label>Відділення</label><input id="eo-wh"></div></div>
-<div class="fld-row"><div class="fld"><label>Наложка ₴</label><input id="eo-cod" type="number"></div><div class="fld"><label>Оціночна вартість ₴</label><input id="eo-dval" type="number"></div></div>
+<div class="fld-row"><div class="fld" id="eo-cod-wrap"><label>Наложка ₴</label><input id="eo-cod" type="number"></div><div class="fld" id="eo-dval-wrap" style="display:none"><label>Оціночна вартість ₴</label><input id="eo-dval" type="number"></div></div>
 <div class="fld"><label>Вага посилки (кг)</label><input id="eo-weight" type="number" step="0.1"></div>
 <div class="fld"><label>Примітка</label><input id="eo-note"></div>
 <div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveEditOrder()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('eo-modal')">Скасувати</button></div>
@@ -1029,6 +1030,7 @@ async function openEditBp(id){
   document.getElementById("ebp-cost").value=p.cost_price||0;
   document.getElementById("ebp-drop").value=p.drop_price||0;
   document.getElementById("ebp-active").value=p.active?"1":"0";
+  document.getElementById("ebp-allow-neg").classList.toggle("on",(p.variations||[]).every(v=>v.allow_negative_order!==0));
   document.getElementById("ebp-model").textContent=`${p.model_name||"—"} (ID: ${p.model_id})`;
   // Color select
   const cs=document.getElementById("ebp-color");
@@ -1061,7 +1063,8 @@ async function saveEditBp(){
       cost_price:parseFloat(document.getElementById("ebp-cost").value)||0,
       drop_price:parseFloat(document.getElementById("ebp-drop").value)||0,
       color_id:document.getElementById("ebp-color").value||null,
-      active:document.getElementById("ebp-active").value==="1"
+      active:document.getElementById("ebp-active").value==="1",
+      allow_negative_order:document.getElementById("ebp-allow-neg").classList.contains("on")
     })});
     // Save stock quantities
     const stocks=[...document.querySelectorAll("#ebp-stock input[data-sid]")];
@@ -1395,7 +1398,7 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     // TTN block
     html+='<div style="padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
     if(o.own_ttn)html+='<div style="width:100%;font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+Icon('alertTriangle',10)+' ТТН дропера — не наша доставка'+(o.receipt_photo?' · <a href="'+o.receipt_photo+'" target="_blank" style="color:#c17f4e;text-decoration:underline">'+Icon('image',10)+' чек</a>':' · <span style="color:var(--red)">чек не завантажено</span>')+'</div>';
-    if(o.ttn)html+='<div style="flex:1;background:'+(o.own_ttn?'rgba(193,127,78,.1)':'rgba(255,167,38,.06)')+';border:1px solid '+(o.own_ttn?'rgba(193,127,78,.3)':'rgba(255,167,38,.15)')+';border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">'+Icon('package',11)+' '+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div>';
+    if(o.ttn)html+='<div style="flex:1;background:'+(o.own_ttn?'rgba(193,127,78,.1)':'rgba(255,167,38,.06)')+';border:1px solid '+(o.own_ttn?'rgba(193,127,78,.3)':'rgba(255,167,38,.15)')+';border-radius:8px;padding:6px 10px"><span style="font-size:9px;color:var(--td)">ТТН </span><span style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:'+ttnColor(o)+';letter-spacing:.5px;cursor:pointer" onclick="copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px">'+Icon('package',11)+' '+esc(o.np_status_text)+'</div>':'')+(o.shipped_at?'<div style="font-size:10px;color:var(--acc);margin-top:2px">'+Icon('truck',11)+' Відправлено: '+esc(o.shipped_at.slice(0,16))+'</div>':'')+(o.return_ttn?'<div style="font-size:9px;color:var(--red)">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div>';
     html+='<input id="ttn-'+o.id+'" value="'+(o.ttn||"")+'" placeholder="'+(o.own_ttn?"Вставте ТТН дропера сюди...":"Вставте ТТН...")+'" readonly style="'+(o.ttn?'width:200px':'flex:1')+';padding:6px 10px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid '+(o.own_ttn&&!o.ttn?'#c17f4e':'var(--brd)')+';border-radius:6px;color:#fff;opacity:.7"><button id="ttn-edit-'+o.id+'" class="btn btn-sm" onclick="editTtn('+o.id+')" style="font-size:10px">'+Icon('pencil',11)+'</button><button id="ttn-save-'+o.id+'" class="btn btn-sm btn-p" onclick="saveTtn('+o.id+')" style="font-size:10px;display:none">'+Icon('save',11)+'</button>';
     if(!o.ttn&&!o.own_ttn&&o.ttn_pending)html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default"><div style="display:inline-block;width:11px;height:11px;border:2px solid rgba(255,167,38,.3);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></div>ТТН генерується...</div>';
     else if(!o.ttn&&!o.own_ttn)html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="admCreateTTN('+o.id+',this)">'+Icon('package',13)+' Створити ТТН</button>';
@@ -1441,6 +1444,8 @@ async function openEditOrder(id){
   document.getElementById("eo-name").value=o.client_name;document.getElementById("eo-phone").value=o.client_phone;
   document.getElementById("eo-city").value=o.client_city;document.getElementById("eo-wh").value=o.client_warehouse;
   document.getElementById("eo-cod").value=o.cod_amount;document.getElementById("eo-dval").value=o.declared_value||0;
+  document.getElementById("eo-cod-wrap").style.display=o.is_prepaid?"none":"";
+  document.getElementById("eo-dval-wrap").style.display=o.is_prepaid?"":"none";
   document.getElementById("eo-weight").value=o.weight||0.5;
   document.getElementById("eo-note").value=o.note||"";openM("eo-modal")}catch(e){}
 }
