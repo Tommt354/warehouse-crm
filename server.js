@@ -1184,15 +1184,27 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
 // Swap size in order item
 app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { new_size_id } = req.body;
-  const item = db.prepare("SELECT oi.*,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
+  const item = db.prepare("SELECT oi.*,v.base_product_id,o.status as order_status FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
-  
+
+  // Whether this swap is a real physical re-tag or just moving a
+  // reservation depends on whether the order's items were ever physically
+  // pulled in the first place: while status is still 'new', the in_progress
+  // transition hasn't decremented quantity_actual for this order yet, so
+  // touching it here would credit/debit a shelf count that was never
+  // actually moved. Only orders already at in_progress/packed/etc — where
+  // the old size's unit really did leave the shelf — get both counters
+  // updated; a still-'new' order only moves the allocated reservation.
+  const touchActual = item.order_status !== "new";
+
   db.transaction(() => {
-    // A physical swap (packer is actually re-tagging the shelf item to this
-    // order's new size), so it moves both counters — allocated and actual —
-    // together, floored at 0 on the actual side since a shelf can't go negative.
-    db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=MAX(0,quantity_actual+?) WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, item.size_id);
-    db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, new_size_id);
+    if (touchActual) {
+      db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=MAX(0,quantity_actual+?) WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, item.size_id);
+      db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, new_size_id);
+    } else {
+      db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, item.size_id);
+      db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, new_size_id);
+    }
     // Save original size if not already saved
     if (!item.original_size_id) {
       db.prepare("UPDATE order_items SET original_size_id=?,size_id=? WHERE id=?").run(item.size_id, new_size_id, item.id);
@@ -1253,8 +1265,10 @@ app.put("/api/orders/:id/ttn", authMiddleware, requireRole("admin","warehouse"),
 // Change order status
 app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { status } = req.body;
-  const validStatuses = ['new','in_progress','packed','shipped','delivering','delivered','refused','return_transit','return_warehouse','return_received','cancelled'];
-  if (!validStatuses.includes(status)) return res.status(400).json({ error: "Невірний статус" });
+  // Any status in order_statuses is a valid target — including custom ones
+  // an admin added in Налаштування, not just the built-in lifecycle codes.
+  const validStatus = db.prepare("SELECT 1 FROM order_statuses WHERE code=?").get(status);
+  if (!validStatus) return res.status(400).json({ error: "Невірний статус" });
 
   const existing = db.prepare("SELECT status FROM orders WHERE id=?").get(req.params.id);
   if (!existing) return res.status(404).json({ error: "Не знайдено" });
@@ -1677,63 +1691,66 @@ app.delete("/api/order-statuses/:id", authMiddleware, requireRole("admin"), (req
   res.json({ ok: true });
 });
 
+// Shared by the manual "Create TTN" endpoint and the edit-triggered
+// regeneration below — creates the recipient counterparty + InternetDocument
+// for an order and returns {ttn, np_ref}, or throws with a user-facing message.
+async function createTtnForOrder(o) {
+  const apiKey = getActiveApiKey();
+  if (!apiKey) throw new Error("Налаштуйте API ключ НП");
+
+  const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
+  if (!sender) throw new Error("Додайте контрагента НП і позначте його активним");
+  if (!sender.sender_city_ref || !sender.sender_warehouse_ref) throw new Error("У контрагента не вказано відділення відправлення — додайте його в Налаштуваннях");
+
+  const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
+  const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 1;
+  const weight = o.weight > 0 ? o.weight : Math.max(0.5, itemsCount * 0.3);
+
+  // Sender ships from an NP branch — its city/warehouse are whatever the
+  // admin explicitly picked for this contractor in Налаштування.
+  const senderCity = sender.sender_city_ref;
+
+  const nameParts = o.client_name.trim().split(/\s+/);
+  const recipRes = await npApi(apiKey, "Counterparty", "save", {
+    FirstName: nameParts[1] || nameParts[0] || "Клієнт",
+    MiddleName: nameParts[2] || "",
+    LastName: nameParts[0] || "Клієнт",
+    Phone: cleanPhone(o.client_phone),
+    Email: "",
+    CounterpartyType: "PrivatePerson",
+    CounterpartyProperty: "Recipient"
+  });
+  if (!recipRes.success || !recipRes.data?.[0]) {
+    throw new Error("Помилка створення отримувача: " + (recipRes.errors?.join(", ") || ""));
+  }
+  const recipRef = recipRes.data[0].Ref;
+  const recipContact = recipRes.data[0].ContactPerson?.data?.[0]?.Ref || "";
+
+  const docData = await buildNpDocData(apiKey, sender, o, senderCity, recipRef, recipContact, weight);
+
+  const result = await npApi(apiKey, "InternetDocument", "save", docData);
+  if (!result.success || !result.data?.[0]) {
+    throw new Error("Помилка НП: " + (result.errors?.join(", ") || JSON.stringify(result.warnings || result)));
+  }
+
+  return { ttn: result.data[0].IntDocNumber, np_ref: result.data[0].Ref };
+}
+
 // Create TTN for an order
 app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, requireRole("admin"), async (req, res) => {
   try {
-const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.order_id);
+    const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.order_id);
     if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
     if (o.ttn) return res.status(400).json({ error: "ТТН вже створено: " + o.ttn });
     if (o.ttn_pending) return res.status(409).json({ error: "ТТН вже генерується, зачекайте кілька секунд" });
     if (o.delivery_type === "pickup") return res.status(400).json({ error: "Самовивіз — ТТН не потрібне" });
 
-    const apiKey = getActiveApiKey();
-    if (!apiKey) return res.status(400).json({ error: "Налаштуйте API ключ НП" });
-
-    // Get active sender
-    const sender = db.prepare("SELECT * FROM np_senders WHERE is_active=1").get();
-    if (!sender) return res.status(400).json({ error: "Додайте контрагента НП і позначте його активним" });
-    if (!sender.sender_city_ref || !sender.sender_warehouse_ref) return res.status(400).json({ error: "У контрагента не вказано відділення відправлення — додайте його в Налаштуваннях" });
-
     db.prepare("UPDATE orders SET ttn_pending=1 WHERE id=?").run(o.id);
-    const cleanPhone = (p) => p.replace(/[^\d]/g, "").replace(/^(\+?38)?/, "38");
-    const itemsCount = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 1;
-    const weight = o.weight > 0 ? o.weight : Math.max(0.5, itemsCount * 0.3);
-
-    // Sender ships from an NP branch — its city/warehouse are whatever the
-    // admin explicitly picked for this contractor in Налаштування.
-    const senderCity = sender.sender_city_ref;
-
-    // Create recipient counterparty
-    const nameParts = o.client_name.trim().split(/\s+/);
-    const recipRes = await npApi(apiKey, "Counterparty", "save", {
-      FirstName: nameParts[1] || nameParts[0] || "Клієнт",
-      MiddleName: nameParts[2] || "",
-      LastName: nameParts[0] || "Клієнт",
-      Phone: cleanPhone(o.client_phone),
-      Email: "",
-      CounterpartyType: "PrivatePerson",
-      CounterpartyProperty: "Recipient"
-    });
-    if (!recipRes.success || !recipRes.data?.[0]) {
-      return res.status(400).json({ error: "Помилка створення отримувача: " + (recipRes.errors?.join(", ")||"") });
-    }
-    const recipRef = recipRes.data[0].Ref;
-    const recipContact = recipRes.data[0].ContactPerson?.data?.[0]?.Ref || "";
-
-    const docData = await buildNpDocData(apiKey, sender, o, senderCity, recipRef, recipContact, weight);
-
-    const result = await npApi(apiKey, "InternetDocument", "save", docData);
-    if (!result.success || !result.data?.[0]) {
-      return res.status(400).json({ error: "Помилка НП: " + (result.errors?.join(", ") || JSON.stringify(result.warnings || result)) });
-    }
-
-    const ttn = result.data[0].IntDocNumber;
-    const npRef = result.data[0].Ref;
-
-    db.prepare("UPDATE orders SET ttn=?,np_ref=?,updated_at=datetime('now','localtime') WHERE id=?").run(ttn, npRef, o.id);
-    res.json({ ok: true, ttn, np_ref: npRef });
+    const { ttn, np_ref } = await createTtnForOrder(o);
+    db.prepare("UPDATE orders SET ttn=?,np_ref=?,updated_at=datetime('now','localtime') WHERE id=?").run(ttn, np_ref, o.id);
+    res.json({ ok: true, ttn, np_ref });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(400).json({ error: e.message });
   } finally {
     db.prepare("UPDATE orders SET ttn_pending=0 WHERE id=?").run(req.params.order_id);
   }
@@ -2385,25 +2402,59 @@ app.get("/api/dashboard/accounting", authMiddleware, requireRole("admin"), (req,
 });
 
 // Edit order (admin)
-app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), (req, res) => {
+app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), async (req, res) => {
   const { client_name, client_phone, client_city, client_warehouse, cod_amount, declared_value, note, weight, delivery_type, client_street, client_house, client_flat, is_postomat, parcel_width, parcel_height, parcel_length } = req.body;
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Not found" });
   const cod = parseFloat(cod_amount) ?? o.cod_amount;
   const payout = o.is_prepaid ? 0 : Math.round((cod - o.total_drop_price) * 100) / 100;
+
+  const newName = client_name||o.client_name, newPhone = client_phone||o.client_phone, newCity = client_city||o.client_city, newWarehouse = client_warehouse||o.client_warehouse;
+  const newStreet = client_street!==undefined?client_street:o.client_street, newHouse = client_house!==undefined?client_house:o.client_house, newFlat = client_flat!==undefined?client_flat:o.client_flat;
+
   db.prepare("UPDATE orders SET client_name=?,client_phone=?,client_city=?,client_warehouse=?,cod_amount=?,declared_value=?,note=?,payout_amount=?,weight=?,delivery_type=?,client_street=?,client_house=?,client_flat=?,is_postomat=?,parcel_width=?,parcel_height=?,parcel_length=?,updated_at=datetime('now','localtime') WHERE id=?")
-    .run(client_name||o.client_name, client_phone||o.client_phone, client_city||o.client_city, client_warehouse||o.client_warehouse, cod, parseFloat(declared_value)||o.declared_value, note??o.note, payout,
+    .run(newName, newPhone, newCity, newWarehouse, cod, parseFloat(declared_value)||o.declared_value, note??o.note, payout,
       weight!==undefined?(parseFloat(weight)||o.weight):o.weight,
       delivery_type||o.delivery_type,
-      client_street!==undefined?client_street:o.client_street,
-      client_house!==undefined?client_house:o.client_house,
-      client_flat!==undefined?client_flat:o.client_flat,
+      newStreet, newHouse, newFlat,
       is_postomat!==undefined?(is_postomat?1:0):o.is_postomat,
       parcel_width!==undefined?(parseFloat(parcel_width)||0):o.parcel_width,
       parcel_height!==undefined?(parseFloat(parcel_height)||0):o.parcel_height,
       parcel_length!==undefined?(parseFloat(parcel_length)||0):o.parcel_length,
       o.id);
-  res.json({ ok: true });
+
+  // Recipient data on an already-issued TTN can't just be changed in place —
+  // the label's name/phone/address is fixed at NP's end. If anything that
+  // actually feeds the shipping document changed, void the old TTN and
+  // create a new one. Only while the parcel is still ours to reissue (not
+  // yet physically shipped/refused/cancelled) and not a dropshipper's own
+  // TTN, which our NP account never controlled in the first place.
+  const shippingFieldsChanged = o.client_name!==newName || o.client_phone!==newPhone || o.client_city!==newCity || o.client_warehouse!==newWarehouse || o.client_street!==newStreet || o.client_house!==newHouse || o.client_flat!==newFlat;
+  const preShipmentStatuses = ["new","in_progress","packed"];
+  let ttnRegenerated = false, ttnRegenError = null;
+  if (shippingFieldsChanged && o.ttn && !o.own_ttn && preShipmentStatuses.includes(o.status) && o.delivery_type !== "pickup") {
+    const apiKey = getActiveApiKey();
+    if (apiKey && o.np_ref) {
+      try { await npApi(apiKey, "InternetDocument", "delete", { DocumentRefs: [o.np_ref] }); }
+      catch (e) { /* best-effort — proceed even if voiding the old one failed */ }
+    }
+    // Clear the old TTN now regardless of how the delete call above went —
+    // it no longer matches the order's recipient data, so leaving it in
+    // place would show a stale/possibly-voided number as if it were valid.
+    // If issuing the replacement below fails, the order is left the same
+    // as any other not-yet-shipped order: no TTN, "Створити ТТН" available.
+    db.prepare("UPDATE orders SET ttn='',np_ref='' WHERE id=?").run(o.id);
+    try {
+      const updated = db.prepare("SELECT * FROM orders WHERE id=?").get(o.id);
+      const { ttn, np_ref } = await createTtnForOrder(updated);
+      db.prepare("UPDATE orders SET ttn=?,np_ref=? WHERE id=?").run(ttn, np_ref, o.id);
+      ttnRegenerated = true;
+    } catch (e) {
+      ttnRegenError = e.message;
+    }
+  }
+
+  res.json({ ok: true, ttn_regenerated: ttnRegenerated, ttn_regen_error: ttnRegenError });
 });
 
 // ── PAGES ────────────────────────────────────────────────────────

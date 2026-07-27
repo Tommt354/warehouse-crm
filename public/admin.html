@@ -568,6 +568,7 @@
 
 <!-- Edit order modal -->
 <div class="modal-bg" id="eo-modal"><div class="modal" style="max-width:500px"><h3><i data-icon="pencil" data-size="16"></i> Редагувати замовлення #<span id="eo-id"></span></h3>
+<div class="fld"><label>Товари</label><div id="eo-items" style="font-size:11px;color:var(--td)"></div></div>
 <div class="fld"><label>ПІБ клієнта</label><input id="eo-name"></div>
 <div class="fld"><label>Телефон</label><input id="eo-phone"></div>
 <div class="fld-row"><div class="fld"><label>Місто</label><input id="eo-city"></div><div class="fld"><label>Відділення</label><input id="eo-wh"></div></div>
@@ -575,6 +576,11 @@
 <div class="fld"><label>Вага посилки (кг)</label><input id="eo-weight" type="number" step="0.1"></div>
 <div class="fld"><label>Примітка</label><input id="eo-note"></div>
 <div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="saveEditOrder()"><i data-icon="save" data-size="15"></i> Зберегти</button><button class="btn" onclick="closeM('eo-modal')">Скасувати</button></div>
+</div></div>
+
+<div class="modal-bg" id="eo-swap-modal" style="z-index:300"><div class="modal" style="max-width:380px"><h3><i data-icon="refreshCw" data-size="16"></i> Замінити розмір — <span id="eo-swap-name"></span></h3>
+<div id="eo-swap-options" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+<div style="margin-top:12px"><button class="btn" onclick="closeM('eo-swap-modal')">Закрити</button></div>
 </div></div>
 
 <!-- Admin new order modal -->
@@ -648,8 +654,11 @@ async function uploadModelSizeGrid(e){const f=e.target.files[0];if(!f)return;con
 function addModelOp(){var r=document.getElementById("mm-op-role").value;var c=parseInt(document.getElementById("mm-op-count").value)||1;if(!r)return;var rl={"seamstress":Icon('shirt',13)+" Швея","printer":Icon('printer',13)+" Принтувальник"};if(modelOps.find(function(o){return o.worker_role===r}))return;modelOps.push({worker_role:r,operations_count:c});renderModelOps();document.getElementById("mm-op-role").value=""}
 function renderModelOps(){document.getElementById("mm-ops").innerHTML=modelOps.map(function(o,i){var rl={"seamstress":Icon('shirt',13)+" Швея (нашивки)","printer":Icon('printer',13)+" Принтувальник (принти)"};return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+rl[o.worker_role]+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="modelOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="modelOps.splice('+i+',1);renderModelOps()">'+Icon('x',12)+'</button></div>'}).join("")}
 
+var ordStatusList=[];
+async function loadOrdStatusList(){try{ordStatusList=(await api("/api/order-statuses")).statuses.filter(s=>s.active)}catch(e){}}
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-name").textContent=ME.name||ME.username;
   const h=location.hash.slice(1);const navBtn=h&&document.querySelector(`.side-nav a[data-p="${h}"]`);
+  await loadOrdStatusList();
   if(navBtn)navBtn.click();else loadDash();
   refreshUnrecBadge();
 }catch(e){location.href="/login"}}
@@ -1423,7 +1432,7 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     else
       html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
     html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">';
-    ["new","in_progress","packed","shipped","delivering","delivered","refused","cancelled"].forEach(function(s){html+='<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+({new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"}[s])+'</option>'});
+    ordStatusList.forEach(function(s){html+='<option value="'+s.code+'"'+(o.status===s.code?' selected':'')+'>'+esc(s.name)+'</option>'});
     html+='</select>';
     html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">'+Icon('pencil',13)+'</button>';
 
@@ -1448,11 +1457,46 @@ async function openEditOrder(id){
   document.getElementById("eo-cod-wrap").style.display=o.is_prepaid?"none":"";
   document.getElementById("eo-dval-wrap").style.display=o.is_prepaid?"":"none";
   document.getElementById("eo-weight").value=o.weight||0.5;
-  document.getElementById("eo-note").value=o.note||"";openM("eo-modal")}catch(e){}
+  document.getElementById("eo-note").value=o.note||"";
+  renderEoItems(o);
+  openM("eo-modal")}catch(e){}
+}
+function renderEoItems(o){
+  var canSwap=["new","in_progress","packed"].includes(o.status);
+  document.getElementById("eo-items").innerHTML=(o.items||[]).map(function(i){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--brd)"><div>'+esc(i.var_name)+' · <b style="color:var(--th)">'+esc(i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')+'</div>'+
+      (canSwap?'<button class="btn btn-sm" onclick="eoOpenSwapSize('+i.id+',\''+esc(i.var_name).replace(/'/g,"")+'\')">'+Icon('refreshCw',12)+' Розмір</button>':'')+
+      '</div>';
+  }).join("")||'<div style="color:var(--td)">Немає товарів</div>';
+}
+var eoSwapItemId=null;
+async function eoOpenSwapSize(itemId,name){
+  eoSwapItemId=itemId;
+  document.getElementById("eo-swap-name").textContent=name;
+  try{
+    var r=await api("/api/order-items/"+itemId+"/available-sizes");
+    document.getElementById("eo-swap-options").innerHTML=r.sizes.map(function(s){
+      var isCurrent=s.id===r.current_size_id;
+      return '<button style="padding:8px 14px;font-size:13px;font-weight:700;border-radius:8px;border:2px solid '+(isCurrent?'var(--td)':s.stock>0?'var(--acc)':'var(--brd)')+';background:'+(isCurrent?'var(--bg)':s.stock>0?'var(--accbg)':'var(--card)')+';color:'+(isCurrent?'var(--td)':s.stock>0?'var(--acc)':'var(--red)')+';cursor:'+(isCurrent||s.stock<=0?'default':'pointer')+';font-family:JetBrains Mono,monospace" '+(isCurrent||s.stock<=0?'disabled':'')+' onclick="eoDoSwapSize('+s.id+',this)"><div>'+s.name+'</div><div style="font-size:10px;font-weight:400">'+s.stock+' шт</div></button>';
+    }).join("");
+    openM("eo-swap-modal");
+  }catch(e){}
+}
+async function eoDoSwapSize(newSizeId,btn){
+  btn.disabled=true;
+  try{
+    await api("/api/order-items/"+eoSwapItemId+"/swap-size",{method:"POST",body:JSON.stringify({new_size_id:newSizeId})});
+    closeM("eo-swap-modal");
+    var r=await api("/api/orders/"+editOrderId);renderEoItems(r.order);
+  }catch(e){alert(e.message);btn.disabled=false}
 }
 async function saveEditOrder(){
-  try{await api("/api/orders/"+editOrderId+"/edit",{method:"PUT",body:JSON.stringify({client_name:document.getElementById("eo-name").value,client_phone:document.getElementById("eo-phone").value,client_city:document.getElementById("eo-city").value,client_warehouse:document.getElementById("eo-wh").value,cod_amount:document.getElementById("eo-cod").value,declared_value:document.getElementById("eo-dval").value,weight:document.getElementById("eo-weight").value,note:document.getElementById("eo-note").value})});
-  closeM("eo-modal");loadAdmOrders(admOrdFilter)}catch(e){}
+  try{
+    var r=await api("/api/orders/"+editOrderId+"/edit",{method:"PUT",body:JSON.stringify({client_name:document.getElementById("eo-name").value,client_phone:document.getElementById("eo-phone").value,client_city:document.getElementById("eo-city").value,client_warehouse:document.getElementById("eo-wh").value,cod_amount:document.getElementById("eo-cod").value,declared_value:document.getElementById("eo-dval").value,weight:document.getElementById("eo-weight").value,note:document.getElementById("eo-note").value})});
+    closeM("eo-modal");loadAdmOrders(admOrdFilter);
+    if(r.ttn_regenerated)alert("Дані отримувача змінились — ТТН перестворено.");
+    else if(r.ttn_regen_error)alert("Дані збережено, але не вдалось перестворити ТТН: "+r.ttn_regen_error+". Створіть ТТН вручну.");
+  }catch(e){}
 }
 
 // ── ADMIN NEW ORDER ────────────────────────────────────────────────
@@ -2260,6 +2304,7 @@ async function activateNpSender(id){await api("/api/np-senders/"+id+"/activate",
 async function deleteNpSender(id){if(!confirm("Видалити?"))return;await api("/api/np-senders/"+id,{method:"DELETE"});loadNpSenders()}
 async function loadOrderStatuses(){
   try{const{statuses}=await api("/api/order-statuses");
+  ordStatusList=statuses.filter(s=>s.active);
   document.getElementById("order-statuses-list").innerHTML=statuses.length?statuses.map(s=>'<div style="display:flex;align-items:center;gap:6px;padding:8px;background:var(--bg);border-radius:8px;margin-bottom:4px"><div style="width:18px;height:18px;border-radius:4px;background:'+esc(s.color)+'"></div><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(s.name)+' <span style="color:var(--td);font-size:10px;font-weight:normal">('+esc(s.code)+')</span>'+(s.is_system?' <span class="tag" style="background:var(--brd);color:var(--td)">system</span>':'')+'</div></div>'+(s.is_system?'':'<button class="btn btn-sm btn-d" onclick="deleteOrderStatus('+s.id+')" style="font-size:9px">'+Icon('x',10)+'</button>')+'</div>').join(""):'<div style="font-size:11px;color:var(--td)">Немає статусів</div>'}catch(e){}
 }
 async function addOrderStatus(){

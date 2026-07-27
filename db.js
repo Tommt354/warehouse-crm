@@ -629,6 +629,24 @@ if(!db.prepare("SELECT id FROM order_statuses LIMIT 1").get()){
   const ins = db.prepare("INSERT INTO order_statuses(code,name,color,sort_order,is_system)VALUES(?,?,?,?,?)");
   statuses.forEach(s => ins.run(s.code, s.name, s.color, s.sort, s.system));
 }
+// Reconcile: "delivering" is a real status the NP-tracking cron assigns
+// (see trackOneOrder in server.js) but was missing from the original seed
+// above, and "delivered"/"return_transit" also drive real stock/payout
+// logic — none of these are safe for an admin to delete via the custom
+// order-statuses UI, so make sure they exist and are flagged is_system,
+// without touching any status an admin has since customized.
+(() => {
+  const maxSort = db.prepare("SELECT MAX(sort_order) as m FROM order_statuses").get().m || 0;
+  const required = [
+    { code: "delivering", name: "Доставка", color: "#f59e0b", sort: maxSort + 1 },
+  ];
+  required.forEach(s => {
+    if (!db.prepare("SELECT id FROM order_statuses WHERE code=?").get(s.code)) {
+      db.prepare("INSERT INTO order_statuses(code,name,color,sort_order,is_system)VALUES(?,?,?,?,1)").run(s.code, s.name, s.color, s.sort);
+    }
+  });
+  db.prepare("UPDATE order_statuses SET is_system=1 WHERE code IN ('new','in_progress','packed','shipped','delivering','delivered','refused','return_transit','cancelled')").run();
+})();
 if(!db.prepare("SELECT id FROM sizes LIMIT 1").get()){
   const s=db.prepare("INSERT INTO sizes(name,sort_order)VALUES(?,?)");
   ["XXS","XS","S","M","L","XL","2XL","3XL"].forEach((n,i)=>s.run(n,i));
