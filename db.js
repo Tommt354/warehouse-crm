@@ -422,6 +422,21 @@ db.exec(`
     FOREIGN KEY (created_by) REFERENCES users(id)
   );
 
+  -- A recount session freezes stock_base.quantity (allocated) for whichever
+  -- products it covers, so a physical count in progress isn't disturbed by
+  -- new orders quietly decrementing the number mid-count. New orders placed
+  -- while a row is frozen still go through normally (order_items get
+  -- created as usual), they just don't touch that row's quantity — the
+  -- deferred decrement gets reconciled all at once when the session is saved.
+  CREATE TABLE IF NOT EXISTS recount_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category_id INTEGER,
+    status TEXT DEFAULT 'active',
+    started_by INTEGER,
+    started_at TEXT DEFAULT (datetime('now','localtime')),
+    finished_at TEXT DEFAULT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -544,6 +559,9 @@ addCol("worker_payroll","task_id","INTEGER DEFAULT NULL");
 if(addCol("stock_base","quantity_actual","INTEGER DEFAULT 0")){
   db.exec("UPDATE stock_base SET quantity_actual=quantity");
 }
+// Set while an active recount_sessions row covers this product/size — see
+// the recount_sessions table comment for what freezing means.
+addCol("stock_base","recount_session_id","INTEGER DEFAULT NULL");
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){

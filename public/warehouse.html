@@ -95,6 +95,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div id="ret-result"></div>
   </div>
   <div id="v-stock" style="display:none">
+    <div class="acts" style="margin-bottom:4px"><button class="btn svm-btn" data-mode="alloc" onclick="setStockViewMode('alloc')">Списана</button><button class="btn on svm-btn" data-mode="fact" onclick="setStockViewMode('fact')">Фактична</button></div>
     <div class="acts">
       <button class="btn btn-a" onclick="openWhInc()"><i data-icon="download" data-size="14"></i> Прихід</button>
       <button class="btn btn-d" onclick="openWhWO()"><i data-icon="upload" data-size="14"></i> Списати</button>
@@ -179,6 +180,15 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
 
 <script>
 let ME,whStatus="",whReady="",whCh="",whProducts=[],whSizes=[],whOrdPage=0,ordStatusList=[];
+// Списана vs фактична — pure display toggle for the packer's own stock
+// browse page, defaulting to фактична here (packer cares what's really on
+// the shelf right now), unlike admin's default of списана.
+var stockViewMode='fact';
+function setStockViewMode(mode){
+  stockViewMode=mode;
+  document.querySelectorAll('.svm-btn').forEach(function(b){b.classList.toggle('on',b.dataset.mode===mode)});
+  renderWhStockPage();
+}
 const SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 const WHS=[{key:"",label:Icon('clipboardList',13)+" Всі"},{key:"new",label:Icon('download',13)+" Нові",next:"in_progress",nl:Icon('settings',13)+" Взяти"},{key:"in_progress",label:Icon('settings',13)+" В роботі",next:"packed",nl:Icon('check',13)+" Готово"},{key:"packed",label:Icon('check',13)+" Готові"},{key:"shipped",label:Icon('truck',13)+" Відправлені"},{key:"delivered",label:Icon('packageOpen',13)+" Отримані"},{key:"refused",label:Icon('x',13)+" Відмови"},{key:"cancelled",label:Icon('x',13)+" Скасовані"}];
@@ -489,7 +499,7 @@ function renderWhStockPage(){
   var start=whPage*perPage;var slice=whProducts.slice(start,start+perPage);
   el.innerHTML='<div class="cards">'+slice.map(function(p){
     var szs=whSizes.filter(function(s){return p.stock[s.id]!==undefined});
-    return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',18))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+'</div><div style="font-size:9px;color:var(--td);margin-bottom:3px">'+esc(p.category_name||"")+'</div><div style="margin-bottom:4px"><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span> <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--accbg);color:var(--acc)">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(function(s){var q=p.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+(q<0?" neg":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div></div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',18))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+'</div><div style="font-size:9px;color:var(--td);margin-bottom:3px">'+esc(p.category_name||"")+'</div><div style="margin-bottom:4px"><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg);color:var(--td)">'+p.cost_price+'₴</span> <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--accbg);color:var(--acc)">'+p.drop_price+'₴</span></div><div class="stock-row">'+szs.map(function(s){var q=(stockViewMode==='alloc'?(p.stockAlloc&&p.stockAlloc[s.id]):p.stock[s.id])||0;return '<div class="stock-sz '+(q<=0?"zero":"")+(q<0?" neg":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div></div></div>';
   }).join("")+'</div>';
   if(pages>1){
     var pg='<div style="display:flex;justify-content:center;gap:4px;margin-top:12px">';

@@ -463,12 +463,11 @@ app.get("/api/base-products", authMiddleware, (req, res) => {
   const products = db.prepare(q).all(...params);
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
   products.forEach(p => {
-    // .stock is the physical (actual) count — this feeds the packer's
-    // product pickers, the Склад/Готовий товар lists and переоблік, all of
-    // which need "what's really on the shelf", not the allocated count
-    // that already reflects unpicked orders.
-    p.stock = {};
-    db.prepare("SELECT size_id,quantity_actual FROM stock_base WHERE base_product_id=?").all(p.id).forEach(r => p.stock[r.size_id] = r.quantity_actual);
+    // .stock is the physical (actual) count, .stockAlloc is the allocated
+    // ("списана") count — shown as the primary number in the product-card
+    // lists per the shop's own convention, with actual as a secondary hint.
+    p.stock = {}; p.stockAlloc = {};
+    db.prepare("SELECT size_id,quantity,quantity_actual FROM stock_base WHERE base_product_id=?").all(p.id).forEach(r => { p.stock[r.size_id] = r.quantity_actual; p.stockAlloc[r.size_id] = r.quantity; });
     p.total_stock = Object.values(p.stock).reduce((s, q) => s + q, 0);
   });
   res.json({ products, sizes });
@@ -517,26 +516,100 @@ app.post("/api/stock/set", authMiddleware, requireRole("admin"), (req, res) => {
 });
 
 // ── RECOUNT (переоблік) ────────────────────────────────────────────
+// Resolves which base_products a category covers, matching exactly what
+// GET /api/base-products?category_id= would return — recount freezes and
+// applies to exactly the same set the person doing the count is looking at.
+function recountCategoryProductIds(categoryId) {
+  const q = categoryId
+    ? "SELECT bp.id FROM base_products bp JOIN models m ON bp.model_id=m.id WHERE bp.active=1 AND m.category_id=?"
+    : "SELECT bp.id FROM base_products bp JOIN models m ON bp.model_id=m.id WHERE bp.active=1";
+  return db.prepare(q).all(...(categoryId ? [categoryId] : [])).map(r => r.id);
+}
+
+// Starts a recount session for a category (or the whole catalog if no
+// category given): freezes stock_base.quantity for its products so new
+// orders placed during the count don't change the number the counter is
+// comparing against — see the recount_sessions table comment in db.js.
+app.post("/api/recount/start", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const categoryId = req.body.category_id ? parseInt(req.body.category_id) : null;
+  const existing = db.prepare("SELECT id FROM recount_sessions WHERE status='active' AND (category_id IS ?)").get(categoryId);
+  if (existing) return res.status(400).json({ error: "Переоблік для цієї категорії вже триває" });
+  const productIds = recountCategoryProductIds(categoryId);
+  if (!productIds.length) return res.status(400).json({ error: "Немає товарів для переобліку" });
+  let sessionId;
+  db.transaction(() => {
+    sessionId = db.prepare("INSERT INTO recount_sessions(category_id,status,started_by)VALUES(?,'active',?)").run(categoryId, req.user.id).lastInsertRowid;
+    const mark = db.prepare("UPDATE stock_base SET recount_session_id=? WHERE base_product_id=?");
+    productIds.forEach(id => mark.run(sessionId, id));
+  })();
+  res.json({ ok: true, session_id: sessionId });
+});
+
+// Reports whether a category currently has an active recount session, so
+// the UI can show "in progress" instead of a plain "start" button.
+app.get("/api/recount/active-session", authMiddleware, (req, res) => {
+  const categoryId = req.query.category_id ? parseInt(req.query.category_id) : null;
+  const session = db.prepare("SELECT * FROM recount_sessions WHERE status='active' AND (category_id IS ?)").get(categoryId);
+  res.json({ session: session || null });
+});
+
+// Abandons a recount session without touching any quantities — just
+// unfreezes the rows it covered. Needed so a recount someone starts and
+// never saves doesn't leave those products permanently frozen (new orders
+// would then never decrement their allocated count again).
+app.post("/api/recount/cancel", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const sessionId = parseInt(req.body.session_id);
+  const session = db.prepare("SELECT * FROM recount_sessions WHERE id=? AND status='active'").get(sessionId);
+  if (!session) return res.status(404).json({ error: "Сесію переобліку не знайдено" });
+  db.transaction(() => {
+    db.prepare("UPDATE stock_base SET recount_session_id=NULL WHERE recount_session_id=?").run(sessionId);
+    db.prepare("UPDATE recount_sessions SET status='cancelled',finished_at=datetime('now','localtime') WHERE id=?").run(sessionId);
+  })();
+  res.json({ ok: true });
+});
+
 // Apply a batch of physically-counted quantities. A recount corrects the
 // actual shelf count directly; the allocated count shifts by the same
 // delta so the gap between them (stock already reserved by unpicked
-// orders) is preserved instead of being wiped out by the correction.
+// orders) is preserved instead of being wiped out by the correction. For
+// a row that was frozen under an active session, this is also where the
+// orders placed during the freeze finally get deducted — exactly once,
+// summed up and applied here instead of one at a time as they came in.
 app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { adjustments } = req.body;
   if (!Array.isArray(adjustments) || !adjustments.length) return res.status(400).json({ error: "Немає змін" });
   let changed = 0;
+  const touchedSessions = new Set();
   db.transaction(() => {
     adjustments.forEach(a => {
       const bpId = parseInt(a.base_product_id), sizeId = parseInt(a.size_id), actual = parseInt(a.actual_quantity);
       if (!bpId || !sizeId || isNaN(actual)) return;
-      const row = db.prepare("SELECT quantity,quantity_actual FROM stock_base WHERE base_product_id=? AND size_id=?").get(bpId, sizeId);
+      const row = db.prepare("SELECT quantity,quantity_actual,recount_session_id FROM stock_base WHERE base_product_id=? AND size_id=?").get(bpId, sizeId);
       const current = row ? row.quantity_actual : 0;
-      const diff = actual - current;
-      if (diff === 0) return;
-      db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=? WHERE base_product_id=? AND size_id=?").run(diff, actual, bpId, sizeId);
+      let diff = actual - current;
+
+      let deferredNote = "";
+      if (row && row.recount_session_id) {
+        const session = db.prepare("SELECT started_at FROM recount_sessions WHERE id=?").get(row.recount_session_id);
+        if (session) {
+          const demand = db.prepare(`SELECT COALESCE(SUM(oi.quantity),0) as c FROM order_items oi
+            JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id
+            WHERE v.base_product_id=? AND oi.size_id=? AND o.created_at>=? AND o.status!='cancelled'`)
+            .get(bpId, sizeId, session.started_at).c;
+          if (demand > 0) { diff -= demand; deferredNote = ` (з них ${demand} замовлено під час переобліку)`; }
+        }
+        touchedSessions.add(row.recount_session_id);
+      }
+
+      if (diff === 0 && !deferredNote) return;
+      db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=?,recount_session_id=NULL WHERE base_product_id=? AND size_id=?").run(diff, actual, bpId, sizeId);
       db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)")
-        .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual, req.user.id);
+        .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual + deferredNote, req.user.id);
       changed++;
+    });
+    touchedSessions.forEach(id => {
+      db.prepare("UPDATE stock_base SET recount_session_id=NULL WHERE recount_session_id=?").run(id);
+      db.prepare("UPDATE recount_sessions SET status='saved',finished_at=datetime('now','localtime') WHERE id=?").run(id);
     });
   })();
   res.json({ ok: true, changed });
@@ -961,7 +1034,9 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         for (const comp of kitComps) {
           const v = db.prepare("SELECT v.*,bp.id as bpid FROM variations v JOIN base_products bp ON v.base_product_id=bp.id WHERE v.id=?").get(comp.variation_id);
           if (!v) continue;
-          db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=?").run(qty, v.bpid, item.size_id);
+          // A frozen row (active recount) skips the decrement here — it
+          // gets reconciled in one shot by /api/recount/apply instead.
+          db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, v.bpid, item.size_id);
           orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: 0, from_returns: 0, kit_id: item.kit_id });
         }
         // First component gets the kit price for display
@@ -986,7 +1061,9 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         totalDrop += dropPrice * qty;
         totalWeight += (v.m_weight || 0.3) * qty;
 
-        db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, v.base_product_id, item.size_id);
+        // A frozen row (active recount) skips the decrement here — it
+        // gets reconciled in one shot by /api/recount/apply instead.
+        db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, v.base_product_id, item.size_id);
         orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: 0, kit_id: null });
       }
     }
