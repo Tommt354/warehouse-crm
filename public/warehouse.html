@@ -297,7 +297,7 @@ async function loadOrders(silent){if(!silent)document.getElementById("wh-orders"
       }
     }
     if(!o.ttn&&o.ttn_pending&&(o.status==="packed"||o.status==="in_progress"))html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default"><div style="display:inline-block;width:11px;height:11px;border:2px solid rgba(255,167,38,.3);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></div>ТТН генерується...</div>';
-    else if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn)" onclick="createTTN('+o.id+',this)">'+Icon('package',13)+' Створити ТТН</button>';
+    else if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default">'+Icon('package',13)+' Очікує ТТН від адміністратора</div>';
     if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="printTTN('+o.id+')">'+Icon('printer',13)+' Друк ТТН</button>';
 
     html+='</div></div></div>';
@@ -331,14 +331,6 @@ async function doSwapSize(itemId,newSizeId,btn){
   try{await api("/api/order-items/"+itemId+"/swap-size",{method:"POST",body:JSON.stringify({new_size_id:newSizeId})});clM("swap-sz-modal");loadOrders(true)}catch(e){btnDone(btn)}
 }
 
-async function createTTN(id,btn){
-  btnSpin(btn);
-  try{var r=await api("/api/nova-poshta/create-ttn/"+id,{method:"POST"});loadOrders(true)}catch(e){
-    btnDone(btn);
-    var msg=e.message||"Помилка";
-    document.getElementById("wh-orders").insertAdjacentHTML("afterbegin",'<div class="msg msg-err" style="margin-bottom:10px">'+Icon('x',13)+' '+esc(msg)+'</div>');
-  }
-}
 async function printTTN(id){
   try{var r=await api("/api/nova-poshta/print/"+id);if(r.url)window.open(r.url,"_blank")}catch(e){}
 }

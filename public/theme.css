@@ -1180,6 +1180,13 @@ input[type="number"]::-webkit-outer-spin-button {
   border-color: rgba(245, 158, 11, 0.25);
 }
 
+/* Dropshipper-facing catalog only shows availability, never a real count —
+   green means "in stock", the .zero rule above already covers "none". */
+.stock-sz.avail {
+  color: var(--success);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    COMPONENTS: BREADCRUMB (matches .bread)

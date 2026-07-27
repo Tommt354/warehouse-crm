@@ -449,7 +449,7 @@ db.exec(`
 `);
 
 // Migrations
-const addCol=(t,c,d)=>{try{db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${d}`)}catch(e){}};
+const addCol=(t,c,d)=>{try{db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${d}`);return true}catch(e){return false}};
 addCol("categories","photo","TEXT DEFAULT ''");
 addCol("categories","hidden_from_drop","INTEGER DEFAULT 0");
 addCol("categories","scope","TEXT DEFAULT 'base'");
@@ -529,6 +529,21 @@ addCol("orders","parcel_height","REAL DEFAULT 0");
 addCol("orders","parcel_length","REAL DEFAULT 0");
 addCol("workers","use_daily_rate","INTEGER DEFAULT 1");
 addCol("worker_payroll","task_id","INTEGER DEFAULT NULL");
+// stock_base.quantity ("списана"/allocated) is decremented the instant a
+// dropshipper places an order, before anyone has physically touched the
+// shelf — so it can run negative when allow_negative_order permits, and a
+// packer reading it saw "0 left" for stock that was still sitting there.
+// quantity_actual ("фактична") is the real physical count: it only moves
+// when a packer actually takes an order into work (see the in_progress
+// status transition) or on a real physical event (incoming/write-off/swap/
+// return-to-stock/recount), and it's floored at 0 since a shelf can't hold
+// a negative amount of anything. Backfilled once from the existing
+// quantity on the migration that adds the column — there's no way to
+// recover the true historical physical count, so this is the best
+// approximation available at that point in time.
+if(addCol("stock_base","quantity_actual","INTEGER DEFAULT 0")){
+  db.exec("UPDATE stock_base SET quantity_actual=quantity");
+}
 
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){

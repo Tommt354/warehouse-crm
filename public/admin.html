@@ -1036,8 +1036,9 @@ async function openEditBp(id){
   const cs=document.getElementById("ebp-color");
   cs.innerHTML=`<option value="">— без кольору —</option>`;
   (p.all_colors||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}"${c.id==p.color_id?" selected":""}>${esc(c.name)}</option>`);
-  // Stock - editable inputs
-  document.getElementById("ebp-stock").innerHTML=p.stock.map(s=>`<div class="fld-row" style="margin-bottom:3px"><div style="padding:5px 0;font-size:11px;color:var(--th)">${s.size_name}</div><div><input type="number" data-sid="${s.size_id}" value="${s.quantity}" min="0" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff;width:70px;text-align:center"></div></div>`).join("");
+  // Stock - editable inputs. Shows/edits the physical (actual) count; saving
+  // resets both the actual and allocated counters to match (see /api/stock/set).
+  document.getElementById("ebp-stock").innerHTML=p.stock.map(s=>`<div class="fld-row" style="margin-bottom:3px"><div style="padding:5px 0;font-size:11px;color:var(--th)">${s.size_name}${s.quantity!==s.quantity_actual?` <span style="color:var(--td)">(з урах. замовлень: ${s.quantity})</span>`:""}</div><div><input type="number" data-sid="${s.size_id}" value="${s.quantity_actual}" min="0" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff;width:70px;text-align:center"></div></div>`).join("");
   // Workers
   bpEditModelId=p.model_id;
   try{var opsR=await api("/api/product-worker-ops/"+p.model_id);bpOps=(opsR.ops||[]).map(function(o){return{worker_role:o.worker_role,operations_count:o.operations_count}})}catch(e){bpOps=[]}

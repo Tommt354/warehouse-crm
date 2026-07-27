@@ -265,7 +265,7 @@ app.get("/api/models/:id", authMiddleware, (req, res) => {
   m.base_products = db.prepare("SELECT bp.*,cl.name as color_name,cl.hex_code FROM base_products bp LEFT JOIN colors cl ON bp.color_id=cl.id WHERE bp.model_id=? ORDER BY cl.sort_order").all(m.id);
   const modelSizes = db.prepare("SELECT size_id FROM model_sizes WHERE model_id=?").all(m.id).map(r=>r.size_id);
   m.base_products.forEach(bp => {
-    bp.stock = db.prepare("SELECT sb.size_id,sb.quantity,s.name as size_name FROM stock_base sb JOIN sizes s ON sb.size_id=s.id WHERE sb.base_product_id=? ORDER BY s.sort_order").all(bp.id);
+    bp.stock = db.prepare("SELECT sb.size_id,sb.quantity_actual as quantity,s.name as size_name FROM stock_base sb JOIN sizes s ON sb.size_id=s.id WHERE sb.base_product_id=? ORDER BY s.sort_order").all(bp.id);
     bp.variations = db.prepare("SELECT v.*,p.name as print_name,p.photo as print_photo FROM variations v LEFT JOIN prints p ON v.print_id=p.id WHERE v.base_product_id=?").all(bp.id);
     bp.variations.forEach(v => {
       v.stock_returns = db.prepare("SELECT sr.size_id,sr.quantity,s.name as size_name FROM stock_returns sr JOIN sizes s ON sr.size_id=s.id WHERE sr.variation_id=? ORDER BY s.sort_order").all(v.id);
@@ -463,8 +463,12 @@ app.get("/api/base-products", authMiddleware, (req, res) => {
   const products = db.prepare(q).all(...params);
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
   products.forEach(p => {
+    // .stock is the physical (actual) count — this feeds the packer's
+    // product pickers, the Склад/Готовий товар lists and переоблік, all of
+    // which need "what's really on the shelf", not the allocated count
+    // that already reflects unpicked orders.
     p.stock = {};
-    db.prepare("SELECT size_id,quantity FROM stock_base WHERE base_product_id=?").all(p.id).forEach(r => p.stock[r.size_id] = r.quantity);
+    db.prepare("SELECT size_id,quantity_actual FROM stock_base WHERE base_product_id=?").all(p.id).forEach(r => p.stock[r.size_id] = r.quantity_actual);
     p.total_stock = Object.values(p.stock).reduce((s, q) => s + q, 0);
   });
   res.json({ products, sizes });
@@ -500,17 +504,23 @@ app.put("/api/base-products/:id", authMiddleware, requireRole("admin"), (req, re
   res.json({ ok: true });
 });
 
-// Directly set stock quantity for a product+size
+// Directly set stock quantity for a product+size — a hard override (product
+// setup/correction), so it resets both the actual physical count and the
+// allocated count to the same number rather than trying to preserve
+// whatever reservation gap existed before.
 app.post("/api/stock/set", authMiddleware, requireRole("admin"), (req, res) => {
   const { base_product_id, size_id, quantity } = req.body;
   if(!base_product_id || !size_id) return res.status(400).json({ error: "Missing fields" });
   const qty = parseInt(quantity) || 0;
-  db.prepare("UPDATE stock_base SET quantity=? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, size_id);
+  db.prepare("UPDATE stock_base SET quantity=?,quantity_actual=? WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, size_id);
   res.json({ ok: true });
 });
 
 // ── RECOUNT (переоблік) ────────────────────────────────────────────
-// Apply a batch of counted quantities, logging each real change to stock_log
+// Apply a batch of physically-counted quantities. A recount corrects the
+// actual shelf count directly; the allocated count shifts by the same
+// delta so the gap between them (stock already reserved by unpicked
+// orders) is preserved instead of being wiped out by the correction.
 app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { adjustments } = req.body;
   if (!Array.isArray(adjustments) || !adjustments.length) return res.status(400).json({ error: "Немає змін" });
@@ -519,11 +529,11 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
     adjustments.forEach(a => {
       const bpId = parseInt(a.base_product_id), sizeId = parseInt(a.size_id), actual = parseInt(a.actual_quantity);
       if (!bpId || !sizeId || isNaN(actual)) return;
-      const row = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(bpId, sizeId);
-      const current = row ? row.quantity : 0;
+      const row = db.prepare("SELECT quantity,quantity_actual FROM stock_base WHERE base_product_id=? AND size_id=?").get(bpId, sizeId);
+      const current = row ? row.quantity_actual : 0;
       const diff = actual - current;
       if (diff === 0) return;
-      db.prepare("UPDATE stock_base SET quantity=? WHERE base_product_id=? AND size_id=?").run(actual, bpId, sizeId);
+      db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=? WHERE base_product_id=? AND size_id=?").run(diff, actual, bpId, sizeId);
       db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)")
         .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual, req.user.id);
       changed++;
@@ -615,7 +625,7 @@ app.post("/api/base-products/:id/duplicate", authMiddleware, requireRole("admin"
   const r = db.prepare("INSERT INTO base_products(model_id,color_id,name,photo,cost_price,drop_price,active)VALUES(?,?,?,?,?,?,?)").run(orig.model_id,orig.color_id,orig.name+" (копія)",orig.photo,orig.cost_price,orig.drop_price,orig.active);
   // Copy stock entries
   const stocks = db.prepare("SELECT * FROM stock_base WHERE base_product_id=?").all(orig.id);
-  stocks.forEach(s => db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity)VALUES(?,?,?)").run(r.lastInsertRowid,s.size_id,s.quantity));
+  stocks.forEach(s => db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity,quantity_actual)VALUES(?,?,?,?)").run(r.lastInsertRowid,s.size_id,s.quantity,s.quantity_actual));
   // Copy variations
   const vars = db.prepare("SELECT * FROM variations WHERE base_product_id=?").all(orig.id);
   vars.forEach(v => {
@@ -633,7 +643,7 @@ app.get("/api/export/stock", authMiddleware, (req, res) => {
   let csv = "\uFEFF" + "Товар;Колір;Собівартість;Дроп-ціна;" + sizes.map(s=>s.name).join(";") + ";Всього\n";
   products.forEach(p => {
     const stocks = {};
-    db.prepare("SELECT size_id,quantity FROM stock_base WHERE base_product_id=?").all(p.id).forEach(s=>stocks[s.size_id]=s.quantity);
+    db.prepare("SELECT size_id,quantity_actual FROM stock_base WHERE base_product_id=?").all(p.id).forEach(s=>stocks[s.size_id]=s.quantity_actual);
     const total = Object.values(stocks).reduce((a,b)=>a+b,0);
     csv += `${p.name};${p.color_name||""};${p.cost_price};${p.drop_price};${sizes.map(s=>stocks[s.id]||0).join(";")};${total}\n`;
   });
@@ -735,7 +745,7 @@ app.post("/api/stock/incoming-bulk", authMiddleware, requireRole("admin","wareho
       const qty = parseInt(item.quantity);
       if (qty > 0) {
         db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id,item.size_id,qty,note||"",req.user.id);
-        db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty,base_product_id,item.size_id);
+        db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(qty,qty,base_product_id,item.size_id);
         db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('incoming',?,?,?,?,?)").run(base_product_id,item.size_id,qty,note||"",req.user.id);
         // Deduct from cuts if workshop specified
         if (workshop_id) {
@@ -754,7 +764,7 @@ app.post("/api/stock/write-off", authMiddleware, requireRole("admin","warehouse"
   if (!base_product_id || !size_id || !quantity) return res.status(400).json({ error: "Всі поля обов'язкові" });
   const qty = parseInt(quantity);
   if (qty <= 0) return res.status(400).json({ error: "Кількість має бути більше 0" });
-  db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, size_id);
+  db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, size_id);
   db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, size_id, -qty, "Списання: "+(note||""), req.user.id);
   db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?)").run(base_product_id,size_id,qty,"Списання: "+(note||""),req.user.id);
   res.json({ ok: true });
@@ -768,7 +778,7 @@ app.post("/api/stock/write-off-bulk", authMiddleware, requireRole("admin","wareh
     for (const item of items) {
       const qty = parseInt(item.quantity);
       if (qty > 0) {
-        db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, item.size_id);
+        db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, item.size_id);
         db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, item.size_id, -qty, "Списання: "+(note||""), req.user.id);
         db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?)").run(base_product_id, item.size_id, qty, "Списання: "+(note||""), req.user.id);
       }
@@ -785,8 +795,8 @@ app.post("/api/stock/swap-size", authMiddleware, requireRole("admin","warehouse"
   const qty = parseInt(quantity);
   if (qty <= 0) return res.status(400).json({ error: "Кількість має бути більше 0" });
   db.transaction(() => {
-    db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, from_size_id);
-    db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty, base_product_id, to_size_id);
+    db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, from_size_id);
+    db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, to_size_id);
     db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, from_size_id, -qty, "Заміна розміру", req.user.id);
     db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, to_size_id, qty, "Заміна розміру", req.user.id);
     const fromName = db.prepare("SELECT name FROM sizes WHERE id=?").get(from_size_id)?.name||"";
@@ -1161,8 +1171,12 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
       const ret = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(i.variation_id, i.size_id);
       if (ret && ret.quantity > 0) i.return_available = Math.min(ret.quantity, i.quantity);
     }
-    const stk = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(i.base_product_id, i.size_id);
-    i.current_stock = stk ? stk.quantity : 0;
+    // Actual physical count, not the allocated count — allocated is already
+    // decremented the instant the order was placed, so it would falsely
+    // show "out of stock" here for an item that's still sitting on the
+    // shelf and simply hasn't been picked for this order yet.
+    const stk = db.prepare("SELECT quantity_actual FROM stock_base WHERE base_product_id=? AND size_id=?").get(i.base_product_id, i.size_id);
+    i.current_stock = stk ? stk.quantity_actual : 0;
   });
   res.json({ order: o });
 });
@@ -1174,10 +1188,11 @@ app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   
   db.transaction(() => {
-    // Return old size to stock (+1 per quantity)
-    db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, item.size_id);
-    // Take new size from stock (-1 per quantity)
-    db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, new_size_id);
+    // A physical swap (packer is actually re-tagging the shelf item to this
+    // order's new size), so it moves both counters — allocated and actual —
+    // together, floored at 0 on the actual side since a shelf can't go negative.
+    db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=MAX(0,quantity_actual+?) WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, item.size_id);
+    db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, new_size_id);
     // Save original size if not already saved
     if (!item.original_size_id) {
       db.prepare("UPDATE order_items SET original_size_id=?,size_id=? WHERE id=?").run(item.size_id, new_size_id, item.id);
@@ -1197,8 +1212,8 @@ app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","
 app.get("/api/order-items/:id/available-sizes", authMiddleware, (req, res) => {
   const item = db.prepare("SELECT oi.*,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
-  const sizes = db.prepare(`SELECT s.id,s.name,COALESCE(sb.quantity,0) as stock 
-    FROM stock_base sb JOIN sizes s ON sb.size_id=s.id 
+  const sizes = db.prepare(`SELECT s.id,s.name,COALESCE(sb.quantity_actual,0) as stock
+    FROM stock_base sb JOIN sizes s ON sb.size_id=s.id
     WHERE sb.base_product_id=? ORDER BY s.sort_order`).all(item.base_product_id);
   res.json({ sizes, current_size_id: item.size_id });
 });
@@ -1253,7 +1268,22 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
   }
 
   vals.push(req.params.id);
-  db.prepare(`UPDATE orders SET ${updates.join(",")} WHERE id=?`).run(...vals);
+
+  db.transaction(() => {
+    db.prepare(`UPDATE orders SET ${updates.join(",")} WHERE id=?`).run(...vals);
+
+    // The order's items only left the shelf for real the moment a packer
+    // actually picked it up — whether that's "взяв у роботу" (in_progress)
+    // for a regular packer, or the single new→packed step packer_ready
+    // uses. This is the one place the physical (actual) count moves for an
+    // order; stock_base.quantity (allocated) was already decremented back
+    // at order creation and stays untouched here.
+    if (existing.status === "new" && status !== "cancelled") {
+      const items = db.prepare("SELECT oi.quantity,v.base_product_id,oi.size_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(req.params.id);
+      const dec = db.prepare("UPDATE stock_base SET quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?");
+      items.forEach(i => dec.run(i.quantity, i.base_product_id, i.size_id));
+    }
+  })();
 
   // Пакувальник готовий товар packs solo start-to-finish — marking the
   // order "packed" IS his finalize step, so credit his own open shift right
@@ -1372,8 +1402,10 @@ app.post("/api/order-items/:id/return-to-stock", authMiddleware, requireRole("ad
         // Has print → goes to returns stock as variation+size
         db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(item.quantity, item.variation_id, item.size_id);
       } else {
-        // Ready product → goes back to base stock
-        db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, item.size_id);
+        // Ready product → goes back to base stock. The item was already
+        // physically picked (order passed through in_progress/packed), so
+        // this restores both the allocated and the actual physical count.
+        db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, item.size_id);
       }
     } else {
       // Damaged → log write-off, do not restock
@@ -1646,7 +1678,7 @@ app.delete("/api/order-statuses/:id", authMiddleware, requireRole("admin"), (req
 });
 
 // Create TTN for an order
-app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, async (req, res) => {
+app.post("/api/nova-poshta/create-ttn/:order_id", authMiddleware, requireRole("admin"), async (req, res) => {
   try {
 const o = db.prepare("SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.order_id);
     if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
@@ -2286,9 +2318,9 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
 
   if (req.user.role === "admin") {
     const threshold = parseInt(db.prepare("SELECT value FROM settings WHERE key='stock_warning_threshold'").get()?.value) || 3;
-    const lowStock = db.prepare(`SELECT bp.id as base_product_id, bp.name, bp.photo, m.name as model_name, s.name as size_name, sb.quantity
+    const lowStock = db.prepare(`SELECT bp.id as base_product_id, bp.name, bp.photo, m.name as model_name, s.name as size_name, sb.quantity_actual as quantity
       FROM stock_base sb JOIN base_products bp ON sb.base_product_id=bp.id JOIN models m ON bp.model_id=m.id JOIN sizes s ON sb.size_id=s.id
-      WHERE bp.active=1 AND sb.quantity<? ORDER BY sb.quantity ASC LIMIT 40`).all(threshold);
+      WHERE bp.active=1 AND sb.quantity_actual<? ORDER BY sb.quantity_actual ASC LIMIT 40`).all(threshold);
     res.json({
       dropshippers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='dropshipper' AND active=1").get().c,
       warehouse_workers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='warehouse' AND active=1").get().c,

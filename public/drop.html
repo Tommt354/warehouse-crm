@@ -56,6 +56,7 @@
 .stock-sz{font-size:10px;padding:4px 8px;border-radius:var(--radius-sm);background:var(--bg-deep);color:var(--text-primary);border:1px solid var(--border-default);font-family:'JetBrains Mono',monospace;text-align:center;min-width:36px;cursor:pointer;transition:all var(--duration-fast)}
 .stock-sz:hover{border-color:var(--accent);background:var(--accent-soft)}
 .stock-sz.zero{color:var(--error);border-color:rgba(239,68,68,.2)}
+.stock-sz.avail{color:var(--success);border-color:rgba(52,211,153,.25)}
 /* Date inputs */
 input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);border:1px solid var(--border-glow);border-radius:var(--radius-md);color:var(--text-primary);font-family:inherit;color-scheme:dark}
 </style>
@@ -401,7 +402,7 @@ function renderCpProds(){
   el.innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('gift',11)+' Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')">'+s.name+'<br>'+q+'</div>'}).join("")+'</div>')+'</div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('gift',11)+' Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')">'+s.name+'</div>'}).join("")+'</div>')+'</div></div>';
   }).join("")||'<div class="empty"><span class="ic">'+Icon('package',30)+'</span>Немає товарів</div>';
 }
 
@@ -425,7 +426,7 @@ function openKitPick(kitId){
     allSz.forEach(function(s){
       var q=ci.component_stock?ci.component_stock[s.id]:0;
       if(q===undefined)return;
-      html+='<div class="stock-sz '+(q<=0?"zero":"")+'" style="cursor:pointer" onclick="selectKitSize('+idx+','+s.id+',\''+s.name+'\',this)">'+s.name+'<br>'+q+'</div>';
+      html+='<div class="stock-sz '+(q<=0?"zero":"avail")+'" style="cursor:pointer" onclick="selectKitSize('+idx+','+s.id+',\''+s.name+'\',this)">'+s.name+'</div>';
     });
     html+='</div></div>';
   });
@@ -581,7 +582,7 @@ async function loadCatalog(){
   document.getElementById("cat-prods").innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'"><b>'+s.name+'</b><br>'+q+'</div>'}).join("")+'</div>'+(v.size_grid_photo?'<button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();showSizeGrid(\''+v.size_grid_photo+'\')">'+Icon('ruler',11)+' Розмірна сітка</button>':'')+'</div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"><b>'+s.name+'</b></div>'}).join("")+'</div>'+(v.size_grid_photo?'<button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();showSizeGrid(\''+v.size_grid_photo+'\')">'+Icon('ruler',11)+' Розмірна сітка</button>':'')+'</div></div>';
   }).join("");
 }
 function showSizeGrid(photo){document.getElementById("sizegrid-img").src=photo;opM("sizegrid-modal")}
