@@ -497,6 +497,15 @@ input[type="number"]::-webkit-outer-spin-button {
   cursor: not-allowed;
 }
 
+/* Active/selected state for a plain .btn used as a toggle (e.g. HOT/ADS
+   channel filters, списана/фактична stock view) — same visual language as
+   .stab.on so a selected toggle actually looks selected. */
+.btn.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(124, 134, 255, 0.35);
+}
+
 .btn .ico {
   width: 15px;
   height: 15px;
