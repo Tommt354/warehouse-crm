@@ -124,9 +124,17 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
 </div>
 
 <!-- Modals -->
+<div class="modal-bg" id="wh-bpp-modal" style="z-index:300"><div class="modal" style="max-width:650px">
+<h3><i data-icon="package" data-size="16"></i> Оберіть товар</h3>
+<input id="whbpp-search" placeholder="Пошук товару..." oninput="filterWhBpPicker(this.value)" style="width:100%;padding:8px 12px;font-size:13px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
+<div id="whbpp-bread"></div>
+<div id="whbpp-cats" class="cards" style="margin-bottom:8px"></div>
+<div id="whbpp-list" class="pcards"></div>
+<div style="margin-top:10px"><button class="btn" onclick="clM('wh-bpp-modal')">Закрити</button></div>
+</div></div>
+
 <div class="modal-bg" id="wh-inc-modal"><div class="modal"><h3><i data-icon="download" data-size="16"></i> Прихід товару</h3>
-<div class="fld"><label>Категорія</label><select id="whi-cat" onchange="filterWhBp('whi')"><option value="">— Всі —</option></select></div>
-<div class="fld"><label>Товар</label><select id="whi-bp" onchange="loadWhIncSz()"></select></div>
+<div class="fld"><label>Товар</label><input type="hidden" id="whi-bp"><button type="button" class="btn" id="whi-bp-btn" style="width:100%;justify-content:flex-start;text-align:left" onclick="openWhBpPicker(function(p){selectWhBpFor('whi',p)})">— Оберіть товар —</button></div>
 <div class="fld"><label>Цех</label><select id="whi-ws" style="width:100%;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"></select>
 <label style="margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="whi-no-ws" onchange="document.getElementById('whi-ws').disabled=this.checked;document.getElementById('whi-ws').style.opacity=this.checked?'.3':'1'" style="width:16px;height:16px;accent-color:var(--acc)"><span style="font-size:11px;color:var(--td)">Не з цеху</span></label></div>
 <div id="whi-sizes"></div>
@@ -135,16 +143,14 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
 </div></div>
 
 <div class="modal-bg" id="wh-wo-modal"><div class="modal"><h3><i data-icon="upload" data-size="16"></i> Списати товар</h3>
-<div class="fld"><label>Категорія</label><select id="whw-cat" onchange="filterWhBp('whw')"><option value="">— Всі —</option></select></div>
-<div class="fld"><label>Товар</label><select id="whw-bp" onchange="loadWhWoSz()"></select></div>
+<div class="fld"><label>Товар</label><input type="hidden" id="whw-bp"><button type="button" class="btn" id="whw-bp-btn" style="width:100%;justify-content:flex-start;text-align:left" onclick="openWhBpPicker(function(p){selectWhBpFor('whw',p)})">— Оберіть товар —</button></div>
 <div id="whw-sz"></div>
 <div class="fld"><label>Причина</label><input id="whw-note"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-d" onclick="saveWhWO()"><i data-icon="upload" data-size="14"></i> Списати</button><button class="btn" onclick="clM('wh-wo-modal')">Скасувати</button></div>
 </div></div>
 
 <div class="modal-bg" id="wh-swap-modal"><div class="modal"><h3><i data-icon="refreshCw" data-size="16"></i> Заміна розміру</h3>
-<div class="fld"><label>Категорія</label><select id="whs-cat" onchange="filterWhBp('whs')"><option value="">— Всі —</option></select></div>
-<div class="fld"><label>Товар</label><select id="whs-bp" onchange="loadWhSwSz()"></select></div>
+<div class="fld"><label>Товар</label><input type="hidden" id="whs-bp"><button type="button" class="btn" id="whs-bp-btn" style="width:100%;justify-content:flex-start;text-align:left" onclick="openWhBpPicker(function(p){selectWhBpFor('whs',p)})">— Оберіть товар —</button></div>
 <div class="fld-row"><div class="fld"><label>З розміру</label><select id="whs-from"></select></div><div class="fld"><label>На розмір</label><select id="whs-to"></select></div></div>
 <div class="fld"><label>Кількість</label><input id="whs-qty" type="number" min="1" value="1"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveWhSwap()"><i data-icon="refreshCw" data-size="14"></i> Замінити</button><button class="btn" onclick="clM('wh-swap-modal')">Скасувати</button></div>
@@ -466,35 +472,58 @@ function renderWhStockPage(){
   }
 }
 
-// Shared: populate category dropdown and filter products
-function populateCatSelect(prefix){
-  var sel=document.getElementById(prefix+"-cat");
-  sel.innerHTML='<option value="">— Всі —</option>';
-  whCats.forEach(function(c){sel.innerHTML+='<option value="'+c.id+'">'+esc(c.name)+'</option>'});
+// Base-product picker (Прихід / Списати / Заміна розміру) — category
+// drill-down + text search. Locked to main_warehouse='base': the only
+// warehouse a regular packer's own stock tools ever touch (packer_ready
+// works Молодіжна but doesn't get these three actions on the Склад tab).
+var whbppCatP=null,whbppProducts=[],whbppSizes=[],whbppSearchQ="",whbppOnSelect=null;
+function openWhBpPicker(onSelect){
+  whbppCatP=null;whbppSearchQ="";whbppOnSelect=onSelect;
+  document.getElementById("whbpp-search").value="";
+  loadWhBpPicker();opM("wh-bpp-modal");
 }
-function filterWhBp(prefix){
-  var catId=document.getElementById(prefix+"-cat").value;
-  var filtered=catId?whProducts.filter(function(p){return p.category_id==catId}):whProducts;
-  var sel=document.getElementById(prefix+"-bp");
-  sel.innerHTML='<option value="">— Оберіть товар —</option>'+filtered.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join("");
-  if(prefix==="whi")document.getElementById("whi-sizes").innerHTML="";
-  if(prefix==="whw")document.getElementById("whw-sizes")&&(document.getElementById("whw-sizes").innerHTML="");
-  if(prefix==="whs")document.getElementById("whs-sizes")&&(document.getElementById("whs-sizes").innerHTML="");
+async function loadWhBpPicker(){
+  var cd=await api("/api/categories?parent_id="+(whbppCatP||"")+"&scope=base");
+  var bc='<div class="bread"><a onclick="whbppCatP=null;loadWhBpPicker()">'+Icon('package',13)+' Всі товари</a>';
+  cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="whbppCatP='+b.id+';loadWhBpPicker()">'+esc(b.name)+'</a>'});
+  bc+="</div>";document.getElementById("whbpp-bread").innerHTML=bc;
+  document.getElementById("whbpp-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="whbppCatP='+c.id+';loadWhBpPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
+  var d=await api("/api/base-products"+(whbppCatP?"?category_id="+whbppCatP:""));
+  whbppSizes=d.sizes;
+  whbppProducts=d.products.filter(function(p){return p.main_warehouse==="base"});
+  renderWhBpPickerList();
+}
+function filterWhBpPicker(q){whbppSearchQ=q;renderWhBpPickerList()}
+function renderWhBpPickerList(){
+  var q=whbppSearchQ.toLowerCase();
+  var list=whbppProducts.filter(function(p){return !q||p.name.toLowerCase().includes(q)});
+  document.getElementById("whbpp-list").innerHTML=list.length?list.map(function(p){return '<div class="pcard" style="cursor:pointer" onclick="pickWhBpFromPicker('+p.id+')"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.name)+'</div><div class="pcard-sub">'+esc(p.category_name||"")+'</div></div></div>'}).join(""):'<div class="empty"><span class="ic">'+Icon('package',30)+'</span>Немає товарів</div>';
+}
+function pickWhBpFromPicker(id){
+  var p=whbppProducts.find(function(x){return x.id===id});if(!p)return;
+  clM("wh-bpp-modal");
+  if(whbppOnSelect)whbppOnSelect(p);
+}
+function selectWhBpFor(prefix,p){
+  document.getElementById(prefix+"-bp").value=p.id;
+  document.getElementById(prefix+"-bp-btn").textContent=p.name;
+  if(prefix==="whi"){whiSelectedP=p;loadWhIncSz()}
+  else if(prefix==="whw"){whwSelectedP=p;loadWhWoSz()}
+  else if(prefix==="whs"){whsSelectedP=p;loadWhSwSz()}
 }
 
 // Incoming
+var whiSelectedP=null,whwSelectedP=null,whsSelectedP=null;
 async function openWhInc(){
-  var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
-  try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
+  whiSelectedP=null;document.getElementById("whi-bp").value="";document.getElementById("whi-bp-btn").textContent="— Оберіть товар —";
   var ws=await api("/api/workshops");
   document.getElementById("whi-ws").innerHTML=ws.workshops.map(function(w){return '<option value="'+w.id+'">'+esc(w.name)+'</option>'}).join("");
   document.getElementById("whi-no-ws").checked=false;document.getElementById("whi-ws").disabled=false;document.getElementById("whi-ws").style.opacity="1";
-  populateCatSelect("whi");filterWhBp("whi");
-  loadWhIncSz();opM("wh-inc-modal");
+  document.getElementById("whi-sizes").innerHTML="";opM("wh-inc-modal");
 }
 function loadWhIncSz(){
-  var id=parseInt(document.getElementById("whi-bp").value);var p=whProducts.find(function(x){return x.id===id});if(!p)return;
-  document.getElementById("whi-sizes").innerHTML=whSizes.filter(function(s){return p.stock[s.id]!==undefined}).map(function(s){
+  var p=whiSelectedP;if(!p)return;
+  document.getElementById("whi-sizes").innerHTML=whbppSizes.filter(function(s){return p.stock[s.id]!==undefined}).map(function(s){
     return '<div class="fld-row" style="margin-bottom:4px"><div style="padding:6px 0;font-size:11px">'+s.name+' ('+( p.stock[s.id]||0)+')</div><div><input type="number" data-sid="'+s.id+'" value="0" min="0" style="padding:6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;width:70px"></div></div>';
   }).join("");
 }
@@ -511,15 +540,13 @@ async function saveWhInc(){
 
 // Write-off
 async function openWhWO(){
-  var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
-  try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
-  populateCatSelect("whw");filterWhBp("whw");
-  loadWhWoSz();opM("wh-wo-modal");
+  whwSelectedP=null;document.getElementById("whw-bp").value="";document.getElementById("whw-bp-btn").textContent="— Оберіть товар —";
+  document.getElementById("whw-sz").innerHTML="";opM("wh-wo-modal");
 }
 function loadWhWoSz(){
-  var id=parseInt(document.getElementById("whw-bp").value);var p=whProducts.find(function(x){return x.id===id});if(!p){document.getElementById("whw-sz").innerHTML="";return}
+  var p=whwSelectedP;if(!p){document.getElementById("whw-sz").innerHTML="";return}
   document.getElementById("whw-sz").innerHTML='<div style="display:flex;justify-content:flex-end;margin-bottom:4px"><button type="button" class="btn btn-sm" style="font-size:10px" onclick="whWoFillAll()">Списати все</button></div>'+
-    whSizes.filter(function(s){return p.stock[s.id]!==undefined}).map(function(s){return '<div class="fld-row" style="margin-bottom:4px"><div style="padding:6px 0;font-size:11px">'+s.name+' <span style="color:var(--td)">('+(p.stock[s.id]||0)+')</span></div><div><input type="number" data-sid="'+s.id+'" data-max="'+(p.stock[s.id]||0)+'" value="0" min="0" style="padding:6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;width:70px"></div></div>'}).join("");
+    whbppSizes.filter(function(s){return p.stock[s.id]!==undefined}).map(function(s){return '<div class="fld-row" style="margin-bottom:4px"><div style="padding:6px 0;font-size:11px">'+s.name+' <span style="color:var(--td)">('+(p.stock[s.id]||0)+')</span></div><div><input type="number" data-sid="'+s.id+'" data-max="'+(p.stock[s.id]||0)+'" value="0" min="0" style="padding:6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;width:70px"></div></div>'}).join("");
 }
 function whWoFillAll(){
   [].slice.call(document.querySelectorAll("#whw-sz input[data-sid]")).forEach(function(el){el.value=el.dataset.max});
@@ -534,14 +561,12 @@ async function saveWhWO(){
 
 // Swap size
 async function openWhSwap(){
-  var d=await api("/api/base-products");whProducts=d.products;whSizes=d.sizes;
-  try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
-  populateCatSelect("whs");filterWhBp("whs");
-  loadWhSwSz();opM("wh-swap-modal");
+  whsSelectedP=null;document.getElementById("whs-bp").value="";document.getElementById("whs-bp-btn").textContent="— Оберіть товар —";
+  document.getElementById("whs-from").innerHTML="";document.getElementById("whs-to").innerHTML="";opM("wh-swap-modal");
 }
 function loadWhSwSz(){
-  var id=parseInt(document.getElementById("whs-bp").value);var p=whProducts.find(function(x){return x.id===id});if(!p)return;
-  var opts=whSizes.filter(function(s){return p.stock[s.id]!==undefined}).map(function(s){return '<option value="'+s.id+'">'+s.name+' ('+(p.stock[s.id]||0)+')</option>'}).join("");
+  var p=whsSelectedP;if(!p)return;
+  var opts=whbppSizes.filter(function(s){return p.stock[s.id]!==undefined}).map(function(s){return '<option value="'+s.id+'">'+s.name+' ('+(p.stock[s.id]||0)+')</option>'}).join("");
   document.getElementById("whs-from").innerHTML=opts;document.getElementById("whs-to").innerHTML=opts;
 }
 async function saveWhSwap(){

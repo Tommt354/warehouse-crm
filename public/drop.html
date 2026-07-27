@@ -195,6 +195,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div class="modal-bg" id="cp-modal"><div class="modal" style="max-width:650px">
 <h3><i data-icon="package" data-size="15"></i> Оберіть товар</h3>
 <div style="display:flex;gap:4px;margin-bottom:8px"><button class="stab" id="cpt-hot" onclick="dropCh='hot';cpCatP=null;loadCatPicker()"><i data-icon="flame" data-size="12"></i> HOT</button><button class="stab on" id="cpt-ads" onclick="dropCh='ads';cpCatP=null;loadCatPicker()"><i data-icon="megaphone" data-size="12"></i> ADS</button></div>
+<input id="cp-search" placeholder="Пошук товару..." oninput="filterCatPicker(this.value)" style="width:100%;padding:8px 12px;font-size:13px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
 <div id="cp-bread"></div>
 <div id="cp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="cp-prods" class="cards"></div>
@@ -376,7 +377,9 @@ async function openNewOrder(){
   opM("no-modal");
 }
 
-function openCatPicker(){cpCatP=null;loadCatPicker();opM("cp-modal")}
+var cpSearchQ="";
+function openCatPicker(){cpCatP=null;cpSearchQ="";document.getElementById("cp-search").value="";loadCatPicker();opM("cp-modal")}
+function filterCatPicker(q){cpSearchQ=q;renderCpProds()}
 async function loadCatPicker(){
   document.querySelectorAll("[id^=cpt-]").forEach(function(b){b.className="stab";if(b.id==="cpt-"+dropCh)b.className="stab on"});
   var cd=await api("/api/categories?parent_id="+(cpCatP||"")+"&scope=drop");
@@ -387,13 +390,19 @@ async function loadCatPicker(){
   document.getElementById("cp-cats").innerHTML=cats.map(function(c){return '<div class="crd" onclick="cpCatP='+c.id+';loadCatPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',32))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
   // Products
   if(!allV.length||true){var dd=await api("/api/variations?channel="+dropCh);allV=dd.variations;allSz=dd.sizes;try{var kd=await api("/api/kits?channel="+dropCh);kd.kits.forEach(function(k){k.is_kit=true;allV.push(k)})}catch(e){}}
-  var filtered=cpCatP?allV.filter(function(v){return v.category_drop_id==cpCatP}):allV;
+  renderCpProds();
+}
+function renderCpProds(){
+  var q=cpSearchQ.toLowerCase();
+  // A search query looks across the whole channel, ignoring the category
+  // drill-down — same behavior as the admin order-creation picker.
+  var filtered=q?allV.filter(function(v){return (v.name||"").toLowerCase().includes(q)}):(cpCatP?allV.filter(function(v){return v.category_drop_id==cpCatP}):allV);
   var el=document.getElementById("cp-prods");
-  el.innerHTML=filtered.slice(0,40).map(function(v){
+  el.innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||"";
     return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('gift',11)+' Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')">'+s.name+'<br>'+q+'</div>'}).join("")+'</div>')+'</div></div>';
-  }).join("");
+  }).join("")||'<div class="empty"><span class="ic">'+Icon('package',30)+'</span>Немає товарів</div>';
 }
 
 async function trackNP(){var b=document.getElementById("np-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></div>Оновлення...';try{await api("/api/nova-poshta/track-all",{method:"POST"});b.innerHTML=Icon('check',12)+' Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='';b.disabled=false;loadOrders()},1500)}catch(e){b.innerHTML=Icon('x',12)+' Помилка';b.style.color='var(--red)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='';b.disabled=false},2000)}}
