@@ -486,7 +486,7 @@ addCol("orders","ttn_return","TEXT DEFAULT ''");
 addCol("models","drop_channel","TEXT DEFAULT 'hot'");
 addCol("models","no_workshop","INTEGER DEFAULT 0");
 addCol("order_items","drop_channel","TEXT DEFAULT ''");
-addCol("kits","drop_channel","TEXT DEFAULT 'hot'");
+addCol("kits","drop_channel","TEXT DEFAULT 'ads'");
 addCol("orders","drop_channel","TEXT DEFAULT ''");
 addCol("order_items","original_size_id","INTEGER DEFAULT NULL");
 addCol("orders","np_status_text","TEXT DEFAULT ''");

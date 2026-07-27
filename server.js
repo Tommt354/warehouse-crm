@@ -941,12 +941,12 @@ app.get("/api/kits/:id", authMiddleware, (req, res) => {
 });
 
 app.post("/api/kits", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, category_drop_id, drop_price, cost_price, weight, variation_ids } = req.body;
+  const { name, photo, category_drop_id, drop_price, cost_price, weight, variation_ids, drop_channel } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
   if (!variation_ids?.length) return res.status(400).json({ error: "Додайте товари до комплекту" });
 
   const r = db.transaction(() => {
-    const k = db.prepare("INSERT INTO kits(name,photo,category_drop_id,drop_price,cost_price,weight)VALUES(?,?,?,?,?,?)").run(name.trim(), photo||"", category_drop_id||null, parseFloat(drop_price)||0, parseFloat(cost_price)||0, parseFloat(weight)||0.5);
+    const k = db.prepare("INSERT INTO kits(name,photo,category_drop_id,drop_price,cost_price,weight,drop_channel)VALUES(?,?,?,?,?,?,?)").run(name.trim(), photo||"", category_drop_id||null, parseFloat(drop_price)||0, parseFloat(cost_price)||0, parseFloat(weight)||0.5, drop_channel||"ads");
     const addItem = db.prepare("INSERT INTO kit_items(kit_id,variation_id)VALUES(?,?)");
     variation_ids.forEach(vid => addItem.run(k.lastInsertRowid, vid));
     return k.lastInsertRowid;
@@ -955,7 +955,7 @@ app.post("/api/kits", authMiddleware, requireRole("admin"), (req, res) => {
 });
 
 app.put("/api/kits/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, category_drop_id, drop_price, cost_price, weight, active, variation_ids } = req.body;
+  const { name, photo, category_drop_id, drop_price, cost_price, weight, active, variation_ids, drop_channel } = req.body;
   const s=[],v=[];
   if(name!==undefined){s.push("name=?");v.push(name.trim())}
   if(photo!==undefined){s.push("photo=?");v.push(photo)}
@@ -964,6 +964,7 @@ app.put("/api/kits/:id", authMiddleware, requireRole("admin"), (req, res) => {
   if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
   if(weight!==undefined){s.push("weight=?");v.push(parseFloat(weight)||0.5)}
   if(active!==undefined){s.push("active=?");v.push(active?1:0)}
+  if(drop_channel!==undefined){s.push("drop_channel=?");v.push(drop_channel)}
   db.transaction(() => {
     if(s.length){v.push(req.params.id);db.prepare(`UPDATE kits SET ${s.join(",")} WHERE id=?`).run(...v)}
     if(variation_ids!==undefined){
