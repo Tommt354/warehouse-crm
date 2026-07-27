@@ -396,7 +396,14 @@ app.post("/api/models/:id/regenerate", authMiddleware, requireRole("admin"), (re
 });
 
 app.delete("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  db.prepare("DELETE FROM models WHERE id=?").run(req.params.id);res.json({ok:true});
+  // product_worker_ops has no ON DELETE CASCADE to models (schema gap), so
+  // deleting a model that ever had seamstress/printer ops set would 500
+  // with a foreign-key-constraint error unless this is cleared first.
+  db.transaction(() => {
+    db.prepare("DELETE FROM product_worker_ops WHERE model_id=?").run(req.params.id);
+    db.prepare("DELETE FROM models WHERE id=?").run(req.params.id);
+  })();
+  res.json({ok:true});
 });
 
 // Delete base product

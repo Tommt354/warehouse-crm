@@ -34,8 +34,13 @@
   };
 
   // Global top progress bar: hooks fetch() so every API call gives visual feedback,
-  // without needing to touch each page's own fetch/api() calls.
-  var active = 0, bar = null;
+  // without needing to touch each page's own fetch/api() calls. Most pages fire
+  // several sequential fetches per navigation (categories, then products, ...);
+  // finishing+hiding the bar after each one and immediately restarting it for the
+  // next made the bar visibly snap/jitter on every page change. The hide is now
+  // debounced — if another fetch starts within the grace window, the pending
+  // hide is cancelled and the bar just keeps running instead of resetting.
+  var active = 0, bar = null, hideTimer = null;
   function ensureBar(){
     if(!bar){
       bar = document.createElement('div');
@@ -47,14 +52,20 @@
   var origFetch = window.fetch.bind(window);
   window.fetch = function(){
     var b = ensureBar();
+    if(hideTimer){ clearTimeout(hideTimer); hideTimer = null; }
     active++;
-    b.classList.remove('done');
-    b.classList.add('on');
+    if(!b.classList.contains('on')){
+      b.classList.remove('done');
+      b.classList.add('on');
+    }
     return origFetch.apply(null, arguments).finally(function(){
       active = Math.max(0, active - 1);
       if(active === 0){
-        b.classList.add('done');
-        setTimeout(function(){ b.classList.remove('on','done'); }, 250);
+        hideTimer = setTimeout(function(){
+          hideTimer = null;
+          b.classList.add('done');
+          setTimeout(function(){ b.classList.remove('on','done'); }, 250);
+        }, 150);
       }
     });
   };

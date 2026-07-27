@@ -333,7 +333,7 @@ db.exec(`
     model_id INTEGER NOT NULL,
     worker_role TEXT NOT NULL,
     operations_count INTEGER DEFAULT 1,
-    FOREIGN KEY(model_id) REFERENCES models(id)
+    FOREIGN KEY(model_id) REFERENCES models(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS workshops (
