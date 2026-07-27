@@ -395,25 +395,52 @@ app.post("/api/models/:id/regenerate", authMiddleware, requireRole("admin"), (re
   res.json({ok:true,base_products_created:result.bc,variations_created:result.vc});
 });
 
+// order_items.variation_id deliberately has no ON DELETE CASCADE — an order
+// that was ever placed for a variation must keep pointing at real product
+// data, not be silently orphaned. So once any real order exists for a
+// model/base_product/variation, a hard delete is refused by SQLite itself;
+// the only correct move is to deactivate it instead (it disappears from
+// catalogs/pickers, but existing orders still resolve correctly). This
+// helper tries the hard delete first and only falls back to deactivating
+// on that specific constraint error — anything else still throws.
+function deleteOrDeactivate(res, delFn, deactivateFn) {
+  try {
+    delFn();
+    res.json({ ok: true, deactivated: false });
+  } catch (e) {
+    if (!/FOREIGN KEY constraint failed/.test(e.message)) throw e;
+    deactivateFn();
+    res.json({ ok: true, deactivated: true });
+  }
+}
+
 app.delete("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  // product_worker_ops has no ON DELETE CASCADE to models (schema gap), so
-  // deleting a model that ever had seamstress/printer ops set would 500
-  // with a foreign-key-constraint error unless this is cleared first.
-  db.transaction(() => {
-    db.prepare("DELETE FROM product_worker_ops WHERE model_id=?").run(req.params.id);
-    db.prepare("DELETE FROM models WHERE id=?").run(req.params.id);
-  })();
-  res.json({ok:true});
+  deleteOrDeactivate(res,
+    () => db.transaction(() => {
+      // product_worker_ops has no ON DELETE CASCADE to models (schema gap),
+      // so deleting a model that ever had seamstress/printer ops set would
+      // 500 with a foreign-key-constraint error unless this is cleared first.
+      db.prepare("DELETE FROM product_worker_ops WHERE model_id=?").run(req.params.id);
+      db.prepare("DELETE FROM models WHERE id=?").run(req.params.id);
+    })(),
+    () => db.prepare("UPDATE models SET active=0 WHERE id=?").run(req.params.id)
+  );
 });
 
 // Delete base product
 app.delete("/api/base-products/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  db.prepare("DELETE FROM base_products WHERE id=?").run(req.params.id);res.json({ok:true});
+  deleteOrDeactivate(res,
+    () => db.prepare("DELETE FROM base_products WHERE id=?").run(req.params.id),
+    () => db.prepare("UPDATE base_products SET active=0 WHERE id=?").run(req.params.id)
+  );
 });
 
 // Delete variation
 app.delete("/api/variations/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  db.prepare("DELETE FROM variations WHERE id=?").run(req.params.id);res.json({ok:true});
+  deleteOrDeactivate(res,
+    () => db.prepare("DELETE FROM variations WHERE id=?").run(req.params.id),
+    () => db.prepare("UPDATE variations SET active=0 WHERE id=?").run(req.params.id)
+  );
 });
 
 // Add print/color to existing model

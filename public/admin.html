@@ -856,7 +856,7 @@ async function saveModelEdit(){
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
-async function deleteModel(id){if(!confirm("Видалити модель і ВСІ її товари?"))return;await api(`/api/models/${id}`,{method:"DELETE"});closeM("mdl-view");loadModels()}
+async function deleteModel(id){if(!confirm("Видалити модель і ВСІ її товари?"))return;const r=await api(`/api/models/${id}`,{method:"DELETE"});closeM("mdl-view");loadModels();if(r.deactivated)alert("На цю модель вже є реальні замовлення, тому повністю видалити не можна — позначено як неактивну (зникне з каталогів і підбору).")}
 
 async function regenerateModel(id){if(!confirm("Перегенерувати всі товари?\nВсі залишки і фото товарів будуть скинуті!"))return;const r=await api(`/api/models/${id}/regenerate`,{method:"POST"});closeM("mdl-view");loadModels();alert(`Перегенеровано: ${r.base_products_created} товарів, ${r.variations_created} варіацій`)}
 
@@ -1107,7 +1107,7 @@ async function saveEditBp(){
     closeM("edit-bp-modal");loadSBase();
   }catch(e){alert(e.message)}
 }
-async function deleteEditBp(){if(!confirm("Видалити товар і всі його варіації?"))return;await api(`/api/base-products/${editBpId}`,{method:"DELETE"});closeM("edit-bp-modal");loadSBase()}
+async function deleteEditBp(){if(!confirm("Видалити товар і всі його варіації?"))return;const r=await api(`/api/base-products/${editBpId}`,{method:"DELETE"});closeM("edit-bp-modal");loadSBase();if(r.deactivated)alert("На цей товар вже є реальні замовлення, тому повністю видалити не можна — позначено як неактивний (зникне з каталогів і підбору).")}
 async function dupBp(id){if(!confirm("Дублювати товар з усіма варіаціями?"))return;await api(`/api/base-products/${id}/duplicate`,{method:"POST"});loadSBase()}
 
 // ── Edit variation ───────────────────────────────────────────────
@@ -1159,7 +1159,7 @@ async function saveEditVar(){
     closeM("edit-var-modal");loadSDrop();
   }catch(e){alert(e.message)}
 }
-async function deleteEditVar(){if(!confirm("Видалити варіацію?"))return;await api(`/api/variations/${editVarId}`,{method:"DELETE"});closeM("edit-var-modal");loadSDrop()}
+async function deleteEditVar(){if(!confirm("Видалити варіацію?"))return;const r=await api(`/api/variations/${editVarId}`,{method:"DELETE"});closeM("edit-var-modal");loadSDrop();if(r.deactivated)alert("На цю варіацію вже є реальні замовлення, тому повністю видалити не можна — позначено як неактивну (зникне з каталогів і підбору).")}
 
 // ── Incoming ─────────────────────────────────────────────────────
 // ── Base-product picker (Прихід / Списати / Заміна розміру) ─────────
