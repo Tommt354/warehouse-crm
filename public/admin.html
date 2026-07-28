@@ -1458,7 +1458,9 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     html+='</select>';
     html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">'+Icon('pencil',13)+'</button>';
 
-    html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button></div></div></div>';
+    if(o.status!=='cancelled')html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button>';
+    if(o.status==='new'||o.status==='cancelled')html+='<button class="btn btn-d btn-sm" onclick="delAdmOrder('+o.id+')" title="Видалити замовлення">'+Icon('trash2',13)+'</button>';
+    html+='</div></div></div>';
   }
   el.innerHTML=html;
   var admPages=Math.max(1,Math.ceil(r.total/admPp));admOrdPage=Math.min(admOrdPage||0,admPages-1);
@@ -1467,7 +1469,8 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
   if(orders.some(o=>o.ttn_pending))admTtnPollT=setTimeout(()=>loadAdmOrders(admOrdFilter,true),2000);
 }
 async function chAdmSt(id,st){try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadAdmOrders(admOrdFilter)}catch(e){}}
-async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення?"))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){}}
+async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення? Сток повернеться на склад."))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
+async function delAdmOrder(id){if(!confirm("Видалити замовлення повністю? Дію не можна відмінити."))return;try{await api("/api/orders/"+id,{method:"DELETE"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
 
 let editOrderId=null;
 async function openEditOrder(id){

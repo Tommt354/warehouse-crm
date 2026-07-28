@@ -1456,33 +1456,71 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Cancel order (return stock) - only for status "new"
+// Reverse the stock-counter effects of an order's items so the goods become
+// available again. This mirrors exactly what order creation (+ the optional
+// use-return step) and the new→work transition subtracted:
+//   • allocated ("списана", stock_base.quantity / stock_returns) is always
+//     restored — it was decremented the moment the order was placed;
+//   • the physical count ("фактична", quantity_actual) is restored only when
+//     the order had already left "new", i.e. a packer had physically pulled
+//     the goods off the shelf (that's the one place actual is decremented).
+// Items already reconciled through the returns flow (returned_to_stock=1) are
+// skipped so their stock is never counted back twice.
+function restoreOrderStock(orderId, status) {
+  const items = db.prepare("SELECT oi.*,v.base_product_id,v.print_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
+  const restoreActual = status !== "new";
+  items.forEach(i => {
+    if (i.returned_to_stock) return;
+    const fromRet = i.from_returns || 0;
+    if (fromRet > 0 && i.print_id) {
+      db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(fromRet, i.variation_id, i.size_id);
+    }
+    const toBase = i.quantity - fromRet;
+    if (toBase > 0) {
+      db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(toBase, i.base_product_id, i.size_id);
+    }
+    if (restoreActual) {
+      // Mirrors the full-quantity decrement in the new→work transition.
+      db.prepare("UPDATE stock_base SET quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(i.quantity, i.base_product_id, i.size_id);
+    }
+  });
+}
+
+// Cancel order (returns stock) — allowed from ANY status. Stock is put back
+// per restoreOrderStock above, and the order is detached from any payout so a
+// cancelled order never lingers as "owed" or "paid".
 app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (o.status === "cancelled") return res.status(400).json({ error: "Вже скасовано" });
-  if (o.status !== "new") return res.status(400).json({ error: "Скасувати можна тільки нові замовлення" });
 
   db.transaction(() => {
-    // Return stock
-    const items = db.prepare("SELECT oi.*,v.base_product_id,v.print_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(o.id);
-    items.forEach(i => {
-      if (i.from_returns > 0 && i.print_id) {
-        db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(i.from_returns, i.variation_id, i.size_id);
-      }
-      const toBase = i.quantity - (i.from_returns || 0);
-      if (toBase > 0) {
-        db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(toBase, i.base_product_id, i.size_id);
-      }
-    });
+    restoreOrderStock(o.id, o.status);
+    db.prepare("DELETE FROM payout_items WHERE order_id=?").run(o.id);
     db.prepare("UPDATE orders SET status='cancelled',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
   })();
   res.json({ ok: true });
 });
 
-// Delete order
+// Delete order (admin only) — restricted to new/cancelled so shipped/delivered
+// history can't be silently erased. A still-"new" order is holding allocated
+// stock, so release it first; a "cancelled" order already had its stock
+// returned by the cancel step, so don't restore twice. payout_items and
+// balance_transactions reference orders without ON DELETE CASCADE, so they
+// must be cleared/unlinked here or the DELETE fails the foreign-key check.
 app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  db.prepare("DELETE FROM orders WHERE id=?").run(req.params.id);
+  const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
+  if (!o) return res.status(404).json({ error: "Не знайдено" });
+  if (o.status !== "new" && o.status !== "cancelled") {
+    return res.status(400).json({ error: "Видалити можна тільки нове або скасоване замовлення" });
+  }
+
+  db.transaction(() => {
+    if (o.status === "new") restoreOrderStock(o.id, o.status);
+    db.prepare("DELETE FROM payout_items WHERE order_id=?").run(o.id);
+    db.prepare("UPDATE balance_transactions SET order_id=NULL WHERE order_id=?").run(o.id);
+    db.prepare("DELETE FROM orders WHERE id=?").run(o.id);
+  })();
   res.json({ ok: true });
 });
 
