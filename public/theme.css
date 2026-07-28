@@ -1112,7 +1112,7 @@ input[type="number"]::-webkit-outer-spin-button {
 
 .pcard-img {
   width: 100%;
-  height: 130px;
+  aspect-ratio: 1 / 1;
   background: var(--bg-deep);
   display: flex;
   align-items: center;
