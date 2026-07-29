@@ -231,6 +231,31 @@ app.delete("/api/categories/:id", authMiddleware, requireRole("admin"), (req, re
   db.prepare("DELETE FROM categories WHERE id=?").run(req.params.id);res.json({ ok: true });
 });
 
+// Bulk-set allow_negative_order (oversell) for every variation in a category
+// and its sub-categories. For a drop-scope category the membership follows the
+// dropshipper catalog — COALESCE(variation override, model's drop category);
+// for base/ready it follows the model's warehouse category.
+app.post("/api/categories/:id/allow-negative", authMiddleware, requireRole("admin"), (req, res) => {
+  const rootId = parseInt(req.params.id);
+  if (!rootId) return res.status(400).json({ error: "Невірна категорія" });
+  const allow = req.body.allow ? 1 : 0;
+  const scope = req.body.scope === "drop" ? "drop" : "base";
+  // collect the category + all descendants
+  const all = db.prepare("SELECT id,parent_id FROM categories").all();
+  const ids = [rootId];
+  let added = true;
+  while (added) { added = false; for (const c of all) { if (c.parent_id && ids.includes(c.parent_id) && !ids.includes(c.id)) { ids.push(c.id); added = true; } } }
+  const ph = ids.map(() => "?").join(",");
+  const membership = scope === "drop"
+    ? `COALESCE(v.category_drop_id, m.category_drop_id) IN (${ph})`
+    : `m.category_id IN (${ph})`;
+  const sql = `UPDATE variations SET allow_negative_order=? WHERE id IN (
+    SELECT v.id FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id
+    WHERE ${membership})`;
+  const r = db.prepare(sql).run(allow, ...ids);
+  res.json({ ok: true, updated: r.changes });
+});
+
 // ── PHOTOS ───────────────────────────────────────────────────────
 app.post("/api/photos/upload", authMiddleware, (req, res) => {
   const { data } = req.body;

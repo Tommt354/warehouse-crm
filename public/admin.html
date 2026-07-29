@@ -435,6 +435,9 @@
 <div class="fld"><label>Назва</label><input id="cm-name"></div>
 <div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="cm-photo-preview" style="width:60px;height:60px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('cm-photo-input').click()"><i data-icon="camera" data-size="13"></i> Обрати</button><input type="file" id="cm-photo-input" accept="image/*" style="display:none" onchange="uploadCatPhoto(event)"></div></div>
 <div class="fld"><label>Прихована від дропшиперів</label><select id="cm-hidden"><option value="0">Ні</option><option value="1">Так</option></select></div>
+<div class="fld" id="cm-bulk" style="display:none"><label>Замовлення при відсутності на складі — масово для всіх товарів категорії</label>
+  <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn btn-sm btn-a" onclick="bulkAllowNeg(1)"><i data-icon="check" data-size="12"></i> Дозволити всім</button><button type="button" class="btn btn-sm btn-d" onclick="bulkAllowNeg(0)"><i data-icon="x" data-size="12"></i> Заборонити всім</button></div>
+</div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveCat()">Зберегти</button><button class="btn" onclick="closeM('cat-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="cm-del" style="display:none;margin-left:auto" onclick="delCat()"><i data-icon="trash2" data-size="13"></i></button></div>
 </div></div>
 
@@ -1185,8 +1188,13 @@ function searchSDrop(q){if(!q){renderSDrop(sdVars);return}renderSDrop(sdVars.fil
 
 // Add category from within stock pages
 let catScope="base";
-function addCatIn(scope){catScope=scope;editCatId=null;catPhoto="";document.getElementById("cm-t").textContent="Нова категорія";document.getElementById("cm-name").value="";document.getElementById("cm-hidden").value="0";document.getElementById("cm-photo-preview").innerHTML="—";document.getElementById("cm-del").style.display="none";openM("cat-modal")}
-async function editCatFn(id,scope){catScope=scope||"base";const all=(await api("/api/categories?parent_id=")).flat;const c=all.find(x=>x.id===id);if(!c)return;editCatId=id;catPhoto=c.photo||"";document.getElementById("cm-t").textContent=c.name;document.getElementById("cm-name").value=c.name;document.getElementById("cm-hidden").value=c.hidden_from_drop?"1":"0";document.getElementById("cm-photo-preview").innerHTML=c.photo?`<img src="${c.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";document.getElementById("cm-del").style.display="block";openM("cat-modal")}
+function addCatIn(scope){catScope=scope;editCatId=null;catPhoto="";document.getElementById("cm-t").textContent="Нова категорія";document.getElementById("cm-name").value="";document.getElementById("cm-hidden").value="0";document.getElementById("cm-photo-preview").innerHTML="—";document.getElementById("cm-del").style.display="none";document.getElementById("cm-bulk").style.display="none";openM("cat-modal")}
+async function editCatFn(id,scope){catScope=scope||"base";const all=(await api("/api/categories?parent_id=")).flat;const c=all.find(x=>x.id===id);if(!c)return;editCatId=id;catPhoto=c.photo||"";document.getElementById("cm-t").textContent=c.name;document.getElementById("cm-name").value=c.name;document.getElementById("cm-hidden").value=c.hidden_from_drop?"1":"0";document.getElementById("cm-photo-preview").innerHTML=c.photo?`<img src="${c.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";document.getElementById("cm-del").style.display="block";document.getElementById("cm-bulk").style.display="block";openM("cat-modal")}
+async function bulkAllowNeg(allow){
+  if(!editCatId)return;
+  if(!confirm(allow?"Дозволити замовлення при відсутності на складі для ВСІХ товарів цієї категорії (і підкатегорій)?":"Заборонити замовлення при відсутності на складі для ВСІХ товарів цієї категорії?"))return;
+  try{var r=await api("/api/categories/"+editCatId+"/allow-negative",{method:"POST",body:JSON.stringify({allow:!!allow,scope:catScope})});alert("Оновлено товарів: "+r.updated)}catch(e){alert(e.message)}
+}
 function reloadForScope(scope){(scope==="base"?loadSBase:scope==="ready"?loadSReady:loadSDrop)()}
 async function saveCat(){const parent=catScope==="base"?sbCatP:catScope==="ready"?sreadyCatP:sdCatP;const data={name:document.getElementById("cm-name").value,parent_id:parent||null,photo:catPhoto,hidden_from_drop:document.getElementById("cm-hidden").value==="1",scope:catScope};try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");reloadForScope(catScope)}catch(e){alert(e.message)}}
 async function delCatFn(id,name,scope){if(!confirm(`Видалити "${name}"?`))return;await api(`/api/categories/${id}`,{method:"DELETE"});reloadForScope(scope||catScope)}
