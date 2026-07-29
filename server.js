@@ -1456,67 +1456,110 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Reverse the stock-counter effects of an order's items so the goods become
-// available again. This mirrors exactly what order creation (+ the optional
-// use-return step) and the new→work transition subtracted:
-//   • allocated ("списана", stock_base.quantity / stock_returns) is always
-//     restored — it was decremented the moment the order was placed;
-//   • the physical count ("фактична", quantity_actual) is restored only when
-//     the order had already left "new", i.e. a packer had physically pulled
-//     the goods off the shelf (that's the one place actual is decremented).
+// Where an order's physical goods go when it is removed. The destination is
+// applied per order item; a ready product with NO print was never modified by
+// us, so it always goes back to base regardless of the chosen destination —
+// only printed goods (база+принт) can be registered as a return.
+//   destination:
+//     "base"     → back onto the base shelf (stock_base). Allocated is always
+//                  restored; the physical count only when the order had left
+//                  "new" (i.e. a packer had already pulled it — leftBase).
+//     "returns"  → registered as a return (stock_returns, variation+size) for
+//                  printed items; ready no-print items fall back to "base".
+//     "writeoff" → goods lost/scrapped: nothing re-enters stock, just logged.
 // Items already reconciled through the returns flow (returned_to_stock=1) are
-// skipped so their stock is never counted back twice.
-function restoreOrderStock(orderId, status) {
-  const items = db.prepare("SELECT oi.*,v.base_product_id,v.print_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
-  const restoreActual = status !== "new";
+// skipped so their stock is never counted twice.
+function applyOrderStockRemoval(orderId, status, destination, userId) {
+  const items = db.prepare("SELECT oi.*,v.base_product_id,v.print_id,v.name as var_name FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
+  const leftBase = status !== "new"; // physical (actual) count was decremented
   items.forEach(i => {
     if (i.returned_to_stock) return;
+    const hasPrint = !!i.print_id;
     const fromRet = i.from_returns || 0;
-    if (fromRet > 0 && i.print_id) {
-      db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(fromRet, i.variation_id, i.size_id);
-    }
     const toBase = i.quantity - fromRet;
-    if (toBase > 0) {
-      db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(toBase, i.base_product_id, i.size_id);
-    }
-    if (restoreActual) {
-      // Mirrors the full-quantity decrement in the new→work transition.
-      db.prepare("UPDATE stock_base SET quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(i.quantity, i.base_product_id, i.size_id);
+
+    let dest = destination === "auto" ? (hasPrint ? "returns" : "base") : destination;
+    if (dest === "returns" && !hasPrint) dest = "base"; // ready product never a return
+
+    if (dest === "returns") {
+      // A variation that has never had a return yet has no stock_returns row —
+      // ensure one exists before incrementing, or the return would vanish.
+      db.prepare("INSERT OR IGNORE INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,0)").run(i.variation_id, i.size_id);
+      db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(i.quantity, i.variation_id, i.size_id);
+      db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('return_in',?,?,?,?,?,?)").run(i.base_product_id, i.variation_id, i.size_id, i.quantity, "Видалення замовлення → повернення", userId);
+    } else if (dest === "writeoff") {
+      db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?,?)").run(i.base_product_id, i.variation_id, i.size_id, i.quantity, "Видалення замовлення → списано: " + i.var_name, userId);
+    } else { // base
+      db.prepare("INSERT OR IGNORE INTO stock_base(base_product_id,size_id,quantity,quantity_actual)VALUES(?,?,0,0)").run(i.base_product_id, i.size_id);
+      if (fromRet > 0 && hasPrint) {
+        db.prepare("INSERT OR IGNORE INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,0)").run(i.variation_id, i.size_id);
+        db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(fromRet, i.variation_id, i.size_id);
+      }
+      if (toBase > 0) {
+        db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(toBase, i.base_product_id, i.size_id);
+      }
+      if (leftBase) {
+        db.prepare("UPDATE stock_base SET quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(i.quantity, i.base_product_id, i.size_id);
+      }
     }
   });
 }
 
-// Cancel order (returns stock) — allowed from ANY status. Stock is put back
-// per restoreOrderStock above, and the order is detached from any payout so a
-// cancelled order never lingers as "owed" or "paid".
+// Removing an order past "в роботі" needs the admin to choose where the goods
+// go (they're physically off the base shelf). "new" (still on the shelf →
+// base), "packed"/"shipped" (auto: printed→return, ready→base) and "cancelled"
+// (stock already handled) are decided automatically and need no menu.
+function deleteNeedsChoice(status) {
+  return !["new", "packed", "shipped", "cancelled"].includes(status);
+}
+function autoDestinationFor(status) {
+  if (status === "new") return "base";
+  if (status === "packed" || status === "shipped") return "auto";
+  return null; // cancelled → no stock movement; menu statuses → caller supplies
+}
+
+// Cancel order — only "new" or "в роботі", where the goods are still physically
+// at the warehouse so returning them to base is unambiguous. Marks the order
+// "Скасовано" (kept in history) and detaches it from any payout. Packed/shipped
+// and later statuses must use delete, which routes the goods explicitly.
 app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (o.status === "cancelled") return res.status(400).json({ error: "Вже скасовано" });
+  if (o.status !== "new" && o.status !== "in_progress") {
+    return res.status(400).json({ error: "Скасувати можна тільки нове або в роботі. Для запакованих/відправлених — видаліть замовлення." });
+  }
 
   db.transaction(() => {
-    restoreOrderStock(o.id, o.status);
+    applyOrderStockRemoval(o.id, o.status, "base", req.user.id);
     db.prepare("DELETE FROM payout_items WHERE order_id=?").run(o.id);
     db.prepare("UPDATE orders SET status='cancelled',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
   })();
   res.json({ ok: true });
 });
 
-// Delete order (admin only) — restricted to new/cancelled so shipped/delivered
-// history can't be silently erased. A still-"new" order is holding allocated
-// stock, so release it first; a "cancelled" order already had its stock
-// returned by the cancel step, so don't restore twice. payout_items and
-// balance_transactions reference orders without ON DELETE CASCADE, so they
-// must be cleared/unlinked here or the DELETE fails the foreign-key check.
+// Delete order (admin only) — fully removes it, routing its physical goods per
+// status. new→base, packed/shipped→auto (printed→return, ready→base),
+// cancelled→no movement; every other status requires an explicit destination
+// ("base" | "returns" | "writeoff") from the delete menu. payout_items and
+// balance_transactions reference orders without ON DELETE CASCADE, so they must
+// be cleared/unlinked here or the DELETE fails the foreign-key check.
 app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
-  if (o.status !== "new" && o.status !== "cancelled") {
-    return res.status(400).json({ error: "Видалити можна тільки нове або скасоване замовлення" });
+
+  let destination;
+  if (deleteNeedsChoice(o.status)) {
+    destination = req.body?.destination;
+    if (!["base", "returns", "writeoff"].includes(destination)) {
+      return res.status(400).json({ error: "Оберіть, куди відправити товар", need_choice: true });
+    }
+  } else {
+    destination = autoDestinationFor(o.status); // null for "cancelled"
   }
 
   db.transaction(() => {
-    if (o.status === "new") restoreOrderStock(o.id, o.status);
+    if (destination) applyOrderStockRemoval(o.id, o.status, destination, req.user.id);
     db.prepare("DELETE FROM payout_items WHERE order_id=?").run(o.id);
     db.prepare("UPDATE balance_transactions SET order_id=NULL WHERE order_id=?").run(o.id);
     db.prepare("DELETE FROM orders WHERE id=?").run(o.id);

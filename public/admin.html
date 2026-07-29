@@ -546,6 +546,15 @@
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveKit()"><i data-icon="rocket" data-size="15"></i> Створити комплект</button><button class="btn" onclick="closeM('kit-modal')">Скасувати</button></div>
 </div></div>
 
+<div class="modal-bg" id="del-ord-modal"><div class="modal"><h3><i data-icon="trash2" data-size="16"></i> Видалити замовлення #<span id="del-ord-id"></span></h3>
+<p style="font-size:12px;color:var(--td);margin:4px 0 12px">Товар уже не на базовій полиці. Куди його відправити?<br>Готовий товар без принта завжди повертається в базу.</p>
+<div style="display:flex;flex-direction:column;gap:8px">
+<button class="btn btn-a" style="justify-content:flex-start" onclick="doDelOrder('returns')"><i data-icon="undo2" data-size="15"></i> Додати поверненням (база+принт)</button>
+<button class="btn btn-a" style="justify-content:flex-start" onclick="doDelOrder('base')"><i data-icon="package" data-size="15"></i> Назад у базу</button>
+<button class="btn btn-d" style="justify-content:flex-start" onclick="doDelOrder('writeoff')"><i data-icon="upload" data-size="15"></i> Списати / нікуди</button>
+</div>
+<div style="margin-top:12px"><button class="btn" onclick="closeM('del-ord-modal')">Відміна</button></div>
+</div></div>
 <div class="modal-bg" id="wo-modal"><div class="modal"><h3><i data-icon="upload" data-size="16"></i> Списати товар</h3>
 <div class="fld"><label>Товар</label><input type="hidden" id="wo-bp"><button type="button" class="btn" id="wo-bp-btn" style="width:100%;justify-content:flex-start;text-align:left" onclick="openBpPicker(admReturnDefaultWh(),function(p){selectBpFor('wo',p)})">— Оберіть товар —</button></div>
 <div id="wo-sz"></div>
@@ -1458,8 +1467,8 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     html+='</select>';
     html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">'+Icon('pencil',13)+'</button>';
 
-    if(o.status!=='cancelled')html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button>';
-    if(o.status==='new'||o.status==='cancelled')html+='<button class="btn btn-d btn-sm" onclick="delAdmOrder('+o.id+')" title="Видалити замовлення">'+Icon('trash2',13)+'</button>';
+    if(o.status==='new'||o.status==='in_progress')html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button>';
+    html+='<button class="btn btn-d btn-sm" onclick="delAdmOrder('+o.id+',\''+o.status+'\')" title="Видалити замовлення">'+Icon('trash2',13)+'</button>';
     html+='</div></div></div>';
   }
   el.innerHTML=html;
@@ -1470,7 +1479,19 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
 }
 async function chAdmSt(id,st){try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення? Сток повернеться на склад."))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
-async function delAdmOrder(id){if(!confirm("Видалити замовлення повністю? Дію не можна відмінити."))return;try{await api("/api/orders/"+id,{method:"DELETE"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
+// new/packed/shipped/cancelled route stock automatically → straight delete;
+// any other status needs the admin to pick a destination via the menu.
+var delOrdId=null;
+function delAdmOrder(id,status){
+  if(["new","packed","shipped","cancelled"].includes(status)){
+    if(!confirm("Видалити замовлення повністю? Дію не можна відмінити."))return;
+    delOrderReq(id,null);
+  } else {
+    delOrdId=id;document.getElementById("del-ord-id").textContent=id;openM("del-ord-modal");
+  }
+}
+function doDelOrder(destination){var id=delOrdId;closeM("del-ord-modal");delOrderReq(id,destination)}
+async function delOrderReq(id,destination){try{await api("/api/orders/"+id,{method:"DELETE",body:destination?JSON.stringify({destination:destination}):undefined});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
 
 let editOrderId=null;
 async function openEditOrder(id){
