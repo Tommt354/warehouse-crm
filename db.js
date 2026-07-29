@@ -488,6 +488,12 @@ addCol("base_products","drop_price","REAL DEFAULT 0");
 addCol("models","category_drop_id","INTEGER DEFAULT NULL");
 addCol("order_items","kit_id","INTEGER DEFAULT NULL");
 addCol("variations","allow_negative_order","INTEGER DEFAULT 1");
+// Per-variation drop-catalog category override. A model has one
+// category_drop_id, but its printed variations can each belong to a different
+// dropshipper-facing category (e.g. 4 prints → 4 categories). NULL = fall back
+// to the model's category_drop_id. Base warehouse is unaffected (it groups by
+// colour, not print). See the COALESCE in GET /api/variations.
+addCol("variations","category_drop_id","INTEGER DEFAULT NULL");
 addCol("users","payment_type","TEXT DEFAULT 'card'");
 addCol("users","payment_card","TEXT DEFAULT ''");
 addCol("users","payment_iban","TEXT DEFAULT ''");

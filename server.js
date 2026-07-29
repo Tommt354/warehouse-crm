@@ -279,7 +279,7 @@ app.get("/api/models/:id", authMiddleware, (req, res) => {
 });
 
 app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, category_id, category_drop_id, is_ready_product, cost_price, drop_price, drop_channel, main_warehouse, weight, color_ids, size_ids, print_ids, patch_ids, workers, size_grid_photo } = req.body;
+  const { name, category_id, category_drop_id, is_ready_product, cost_price, drop_price, drop_channel, main_warehouse, weight, color_ids, size_ids, print_ids, patch_ids, print_cats, workers, size_grid_photo } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
   if (!color_ids?.length) return res.status(400).json({ error: "Оберіть кольори" });
   if (!size_ids?.length) return res.status(400).json({ error: "Оберіть розміри" });
@@ -303,7 +303,7 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
     const sizes=db.prepare(`SELECT * FROM sizes WHERE id IN(${size_ids.map(()=>"?").join(",")})`).all(...size_ids);
     const prints=print_ids?.length?db.prepare(`SELECT * FROM prints WHERE id IN(${print_ids.map(()=>"?").join(",")})`).all(...print_ids):[];
     const cbp=db.prepare("INSERT INTO base_products(model_id,color_id,name,cost_price,drop_price)VALUES(?,?,?,?,?)");
-    const cv=db.prepare("INSERT INTO variations(base_product_id,print_id,name)VALUES(?,?,?)");
+    const cv=db.prepare("INSERT INTO variations(base_product_id,print_id,name,category_drop_id)VALUES(?,?,?,?)");
     const csb=db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity)VALUES(?,?,0)");
     const csr=db.prepare("INSERT INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,0)");
     let bc=0,vc=0;
@@ -312,8 +312,8 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
       const bpn=`${name.trim()} ${col.name}`;
       const bp=cbp.run(mid,col.id,bpn,cp,dp);bc++;
       for(const sz of sizes)csb.run(bp.lastInsertRowid,sz.id);
-      if(is_ready_product){cv.run(bp.lastInsertRowid,null,bpn);vc++}
-      else{for(const pr of prints){const v=cv.run(bp.lastInsertRowid,pr.id,`${bpn} — ${pr.name}`);vc++;for(const sz of sizes)csr.run(v.lastInsertRowid,sz.id)}}
+      if(is_ready_product){cv.run(bp.lastInsertRowid,null,bpn,null);vc++}
+      else{for(const pr of prints){const pcat=(print_cats&&print_cats[pr.id])?parseInt(print_cats[pr.id])||null:null;const v=cv.run(bp.lastInsertRowid,pr.id,`${bpn} — ${pr.name}`,pcat);vc++;for(const sz of sizes)csr.run(v.lastInsertRowid,sz.id)}}
     }
     return{mid,bc,vc};
   })();
@@ -672,7 +672,7 @@ app.get("/api/variations", authMiddleware, (req, res) => {
   const channel = req.query.channel;
   let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,m.name as model_name,m.drop_price as model_drop_price,m.is_ready_product,m.category_drop_id,m.drop_channel,m.size_grid_photo,m.weight as model_weight,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
   const params = [];
-  if (cat) { q += " AND m.category_drop_id=?"; params.push(parseInt(cat)); }
+  if (cat) { q += " AND COALESCE(v.category_drop_id, m.category_drop_id)=?"; params.push(parseInt(cat)); }
   if (channel) { q += " AND m.drop_channel=?"; params.push(channel); }
   q += " ORDER BY m.name,c.sort_order,p.sort_order";
   const variations = db.prepare(q).all(...params);
@@ -709,7 +709,7 @@ app.get("/api/variations/:id", authMiddleware, (req, res) => {
 });
 
 app.put("/api/variations/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, photo, drop_price_override, active, print_id, allow_negative_order } = req.body;
+  const { name, photo, drop_price_override, active, print_id, allow_negative_order, category_drop_id } = req.body;
   const s=[],v=[];
   if(name!==undefined){s.push("name=?");v.push(name)}
   if(photo!==undefined){s.push("photo=?");v.push(photo)}
@@ -717,6 +717,7 @@ app.put("/api/variations/:id", authMiddleware, requireRole("admin"), (req, res) 
   if(active!==undefined){s.push("active=?");v.push(active?1:0)}
   if(print_id!==undefined){s.push("print_id=?");v.push(print_id||null)}
   if(allow_negative_order!==undefined){s.push("allow_negative_order=?");v.push(allow_negative_order?1:0)}
+  if(category_drop_id!==undefined){s.push("category_drop_id=?");v.push(category_drop_id?parseInt(category_drop_id):null)}
   if(s.length){v.push(req.params.id);db.prepare(`UPDATE variations SET ${s.join(",")} WHERE id=?`).run(...v)}
   res.json({ ok: true });
 });

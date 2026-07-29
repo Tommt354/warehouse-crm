@@ -462,7 +462,7 @@
 <div class="fld"><label>Кольори</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук кольорів..." onfocus="openPS(this,'mm-colors-dd')" oninput="filterPS(this,'mm-colors-dd')"><div class="popup-dd" id="mm-colors-dd"></div></div><div class="sel-tags" id="mm-colors-tags"></div></div>
 <div class="fld"><label>Розміри</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук розмірів..." onfocus="openPS(this,'mm-sizes-dd')" oninput="filterPS(this,'mm-sizes-dd')"><div class="popup-dd" id="mm-sizes-dd"></div></div><div class="sel-tags" id="mm-sizes-tags"></div></div>
 <div id="mm-pw">
-<div class="fld"><label>Принти</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук принтів..." onfocus="openPS(this,'mm-prints-dd')" oninput="filterPS(this,'mm-prints-dd')"><div class="popup-dd" id="mm-prints-dd"></div></div><div class="sel-tags" id="mm-prints-tags"></div></div>
+<div class="fld"><label>Принти</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук принтів..." onfocus="openPS(this,'mm-prints-dd')" oninput="filterPS(this,'mm-prints-dd')"><div class="popup-dd" id="mm-prints-dd"></div></div><div class="sel-tags" id="mm-prints-tags"></div><div id="mm-print-cats"></div></div>
 <div class="fld"><label>Нашивки</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук нашивок..." onfocus="openPS(this,'mm-patches-dd')" oninput="filterPS(this,'mm-patches-dd')"><div class="popup-dd" id="mm-patches-dd"></div></div><div class="sel-tags" id="mm-patches-tags"></div></div>
 </div>
 <div id="mm-err" class="msg msg-err" style="display:none"></div>
@@ -525,6 +525,7 @@
 <div class="fld"><label>Назва</label><input id="ev-name"></div>
 <div class="fld"><label>Дроп-ціна ₴ (0 = ціна моделі)</label><input id="ev-price" type="number"></div>
 <div class="fld"><label>Принт</label><select id="ev-print-sel"></select></div>
+<div class="fld"><label>Категорія (склад дроп)</label><input type="hidden" id="ev-cat"><button type="button" class="btn" id="ev-cat-btn" style="width:100%;justify-content:space-between;text-align:left" onclick="openVarCat()">— За моделлю —</button></div>
 <div class="fld"><label>Колір / Базовий товар</label><div id="ev-base" style="font-size:11px;color:var(--th)"></div></div>
 <div class="fld"><label>Залишки (база + повернення)</label><div id="ev-stock"></div></div>
 <div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ev-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ev-fi').click()"><i data-icon="camera" data-size="13"></i></button><input type="file" id="ev-fi" accept="image/*" style="display:none" onchange="uploadVarPhoto(event)"></div></div>
@@ -849,7 +850,7 @@ async function editModelFields(id){
   document.getElementById("mm-channel").value=m.drop_channel||"ads";
   document.getElementById("mm-warehouse").value=m.main_warehouse||"base";
   // Pre-select attributes
-  mmSel={colors:new Set(m.colors.map(c=>c.id)),sizes:new Set(m.sizes.map(s=>s.id)),prints:new Set(m.prints.map(p=>p.id)),patches:new Set(m.patches.map(p=>p.id))};
+  mmSel={colors:new Set(m.colors.map(c=>c.id)),sizes:new Set(m.sizes.map(s=>s.id)),prints:new Set(m.prints.map(p=>p.id)),patches:new Set(m.patches.map(p=>p.id))};mmPrintCats={};
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();
   document.getElementById("mm-err").style.display="none";
@@ -902,11 +903,13 @@ function fillModelCat(selectedId){
 }
 function fillModelCatDrop(selectedId){setModelCatValue("mm-cat-drop",CC.cats_drop||[],selectedId)}
 
-var catpScope="base",catpParent=null,catpTarget="mm-cat";
+var catpScope="base",catpParent=null,catpOnPick=null;
+// Generic drill-down category picker: opens the modal for a scope and calls
+// onPick(categoryId) with the chosen id ("" = none) when the user picks.
+function openCatPickerFor(scope,onPick){catpScope=scope;catpOnPick=onPick;catpParent=null;openM('cat-picker-modal');loadCatPicker()}
 function openModelCat(which){
-  if(which==='base'){var on=document.getElementById("mm-ready").classList.contains("on");catpScope=on?'ready':'base';catpTarget='mm-cat'}
-  else{catpScope='drop';catpTarget='mm-cat-drop'}
-  catpParent=null;openM('cat-picker-modal');loadCatPicker();
+  if(which==='base'){var on=document.getElementById("mm-ready").classList.contains("on");var list=on?(CC.cats_ready||[]):(CC.cats_base||[]);openCatPickerFor(on?'ready':'base',function(id){setModelCatValue('mm-cat',list,id)})}
+  else{openCatPickerFor('drop',function(id){setModelCatValue('mm-cat-drop',CC.cats_drop||[],id)})}
 }
 async function loadCatPicker(){
   var cd=await api("/api/categories?parent_id="+(catpParent||"")+"&scope="+catpScope);
@@ -921,15 +924,31 @@ async function loadCatPicker(){
   }).join(""):'<div class="empty" style="grid-column:1/-1"><span class="ic">'+Icon('folder',30)+'</span>Немає підкатегорій — оберіть батьківську кнопкою «Обрати»</div>';
 }
 function pickCatPicker(id){
-  var list=catpScope==='drop'?(CC.cats_drop||[]):catpScope==='ready'?(CC.cats_ready||[]):(CC.cats_base||[]);
-  setModelCatValue(catpTarget,list,id||"");
+  if(catpOnPick)catpOnPick(id||"");
   closeM('cat-picker-modal');
 }
+
+// Per-print drop category (only when CREATING a model — a model has one drop
+// category by default, but each print's variations can land in their own).
+var mmPrintCats={};
+function renderPrintCats(){
+  var el=document.getElementById("mm-print-cats");if(!el)return;
+  if(editModelId){el.innerHTML="";return}
+  var ids=[...mmSel.prints];
+  if(!ids.length){el.innerHTML="";return}
+  el.innerHTML='<div style="font-size:10px;color:var(--td);margin:8px 0 4px">Категорія (склад дроп) для кожного принта — не обрано = загальна вище:</div>'+ids.map(function(pid){
+    var p=(CC.prints||[]).find(function(x){return x.id==pid});
+    var catId=mmPrintCats[pid];
+    var cat=catId?(CC.cats_drop||[]).find(function(c){return c.id==catId}):null;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--brd)"><span style="font-size:11px;color:var(--th);flex:1">'+(p?esc(p.name):("#"+pid))+'</span><button type="button" class="btn btn-sm '+(cat?'btn-a':'')+'" onclick="pickPrintCat('+pid+')">'+Icon('folder',12)+' '+(cat?esc(cat.name):'— загальна —')+'</button>'+(cat?'<button type="button" class="btn btn-sm" title="Скинути" onclick="mmPrintCats['+pid+']=null;renderPrintCats()">'+Icon('x',11)+'</button>':'')+'</div>';
+  }).join("");
+}
+function pickPrintCat(pid){openCatPickerFor('drop',function(id){mmPrintCats[pid]=id||null;renderPrintCats()})}
 
 // ── Create model ─────────────────────────────────────────────────
 async function openNewModel(){
   editModelId=null;
-  await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};
+  await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};mmPrintCats={};
   document.getElementById("mdl-t").textContent="Нова модель";
   document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";document.getElementById("mm-weight").value="0.3";
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
@@ -955,13 +974,14 @@ function renderSelTags(){
     const items=CC[key]||[];const tags=document.getElementById(`mm-${key}-tags`);
     tags.innerHTML=[...mmSel[key]].map(id=>{const i=items.find(x=>x.id===id);return i?`<span class="sel-tag" onclick="mmSel.${key}.delete(${id});renderSelTags()">${esc(i.name)} ${Icon('x',11)}</span>`:""}).join("");
   });
+  renderPrintCats();
 }
 
 async function saveModel(){
   if(editModelId) return saveModelEdit();
   const err=document.getElementById("mm-err");err.style.display="none";
   const isReady=document.getElementById("mm-ready").classList.contains("on");
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,main_warehouse:document.getElementById("mm-warehouse").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,weight:document.getElementById("mm-weight").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],size_grid_photo:mmSizeGridPhoto};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,main_warehouse:document.getElementById("mm-warehouse").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,weight:document.getElementById("mm-weight").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],print_cats:isReady?{}:mmPrintCats,size_grid_photo:mmSizeGridPhoto};
   try{
     const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});
     closeM("model-modal");editModelId=null;loadModels();
@@ -1150,9 +1170,17 @@ async function deleteEditBp(){if(!confirm("Видалити товар і всі
 async function dupBp(id){if(!confirm("Дублювати товар з усіма варіаціями?"))return;await api(`/api/base-products/${id}/duplicate`,{method:"POST"});loadSBase()}
 
 // ── Edit variation ───────────────────────────────────────────────
+function fillVarCat(id){
+  document.getElementById("ev-cat").value=id||"";
+  var c=id?(CC.cats_drop||[]).find(function(x){return x.id==id}):null;
+  document.getElementById("ev-cat-btn").innerHTML=(c?esc(c.name):"— За моделлю (загальна) —")+' '+Icon('folder',14);
+}
+function openVarCat(){openCatPickerFor('drop',function(id){fillVarCat(id)})}
 async function openEditVar(id){
+  if(!CC.cats_drop)await refreshCC();
   const{variation:v}=await api("/api/variations/"+id);editVarId=id;
   document.getElementById("ev-t").textContent=v.name;
+  fillVarCat(v.category_drop_id);
   document.getElementById("ev-name").value=v.name;
   document.getElementById("ev-price").value=v.drop_price_override||"";
   document.getElementById("ev-active").value=v.active?"1":"0";
@@ -1185,6 +1213,7 @@ async function saveEditVar(){
       name:document.getElementById("ev-name").value,
       drop_price_override:p?parseFloat(p):null,
       print_id:printId||null,
+      category_drop_id:document.getElementById("ev-cat").value||null,
       active:document.getElementById("ev-active").value==="1",
       allow_negative_order:document.getElementById("ev-allow-neg").checked
     })});
