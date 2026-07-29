@@ -453,7 +453,7 @@
 <div class="fld"><label>Назва</label><input id="mm-name" placeholder="Худі флісовий"></div>
 <div class="fld"><label id="mm-cat-label">Категорія (склад база)</label><input type="hidden" id="mm-cat"><button type="button" class="btn" id="mm-cat-btn" style="width:100%;justify-content:space-between;text-align:left" onclick="openModelCat('base')">— Оберіть категорію —</button></div>
 <div class="fld"><label>Категорія (склад дроп)</label><input type="hidden" id="mm-cat-drop"><button type="button" class="btn" id="mm-cat-drop-btn" style="width:100%;justify-content:space-between;text-align:left" onclick="openModelCat('drop')">— Оберіть категорію —</button></div>
-<div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="hot">HOT DROP</option><option value="ads">ADS DROP</option></select></div>
+<div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="ads">ADS DROP</option><option value="hot">HOT DROP</option></select></div>
 <div class="fld" id="mm-wh-wrap"><label>Основний склад (фізичне розташування — визначає, який пакувальник побачить замовлення)</label><select id="mm-warehouse"><option value="base">Склад База</option><option value="molod">Склад Молодіжна</option></select></div>
 <div class="sw"><div class="swb" id="mm-ready" onclick="toggleReadyProduct(this)"></div><label onclick="document.getElementById('mm-ready').click()">Готовий товар</label></div>
 <div class="fld-row"><div class="fld"><label>Собівартість ₴</label><input id="mm-cost" type="number" value="0"></div><div class="fld"><label>Дроп-ціна ₴</label><input id="mm-drop" type="number" value="0"></div></div>
@@ -846,7 +846,7 @@ async function editModelFields(id){
   document.getElementById("mm-pw").style.display=m.is_ready_product?"none":"block";
   fillModelCat(m.category_id);
   fillModelCatDrop(m.category_drop_id);
-  document.getElementById("mm-channel").value=m.drop_channel||"hot";
+  document.getElementById("mm-channel").value=m.drop_channel||"ads";
   document.getElementById("mm-warehouse").value=m.main_warehouse||"base";
   // Pre-select attributes
   mmSel={colors:new Set(m.colors.map(c=>c.id)),sizes:new Set(m.sizes.map(s=>s.id)),prints:new Set(m.prints.map(p=>p.id)),patches:new Set(m.patches.map(p=>p.id))};
@@ -937,7 +937,7 @@ async function openNewModel(){
   mmSizeGridPhoto="";document.getElementById("mm-sizegrid-preview").innerHTML="—";
   fillModelCat(null);
   fillModelCatDrop(null);
-  document.getElementById("mm-channel").value="hot";document.getElementById("mm-warehouse").value="base";
+  document.getElementById("mm-channel").value="ads";document.getElementById("mm-warehouse").value="base";
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();
   openM("model-modal");

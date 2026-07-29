@@ -286,7 +286,7 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
   if (!is_ready_product && !print_ids?.length) return res.status(400).json({ error: "Оберіть принти" });
 
   const result = db.transaction(() => {
-    const r = db.prepare("INSERT INTO models(name,category_id,category_drop_id,is_ready_product,cost_price,drop_price,drop_channel,size_grid_photo,main_warehouse,weight)VALUES(?,?,?,?,?,?,?,?,?,?)").run(name.trim(),category_id||null,category_drop_id||null,is_ready_product?1:0,parseFloat(cost_price)||0,parseFloat(drop_price)||0,drop_channel||"hot",size_grid_photo||"",main_warehouse||"base",parseFloat(weight)||0.3);
+    const r = db.prepare("INSERT INTO models(name,category_id,category_drop_id,is_ready_product,cost_price,drop_price,drop_channel,size_grid_photo,main_warehouse,weight)VALUES(?,?,?,?,?,?,?,?,?,?)").run(name.trim(),category_id||null,category_drop_id||null,is_ready_product?1:0,parseFloat(cost_price)||0,parseFloat(drop_price)||0,drop_channel||"ads",size_grid_photo||"",main_warehouse||"base",parseFloat(weight)||0.3);
     const mid = r.lastInsertRowid;
     const lc=db.prepare("INSERT INTO model_colors(model_id,color_id)VALUES(?,?)");
     const ls=db.prepare("INSERT INTO model_sizes(model_id,size_id)VALUES(?,?)");

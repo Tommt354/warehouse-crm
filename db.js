@@ -498,7 +498,7 @@ addCol("users","phone","TEXT DEFAULT ''");
 addCol("users","telegram","TEXT DEFAULT ''");
 addCol("orders","np_ref","TEXT DEFAULT ''");
 addCol("orders","ttn_return","TEXT DEFAULT ''");
-addCol("models","drop_channel","TEXT DEFAULT 'hot'");
+addCol("models","drop_channel","TEXT DEFAULT 'ads'");
 addCol("models","no_workshop","INTEGER DEFAULT 0");
 addCol("order_items","drop_channel","TEXT DEFAULT ''");
 addCol("kits","drop_channel","TEXT DEFAULT 'ads'");
