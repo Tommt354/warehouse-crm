@@ -542,14 +542,23 @@
   <div class="fld"><label>Дроп-ціна ₴</label><input id="kit-drop" type="number" value="0"></div>
   <div class="fld"><label>Вага (кг)</label><input id="kit-weight" type="number" step="0.1" value="0.5"></div>
 </div>
-<div class="fld"><label>Категорія (дроп)</label><select id="kit-cat"><option value="">—</option></select></div>
+<div class="fld"><label>Категорія (дроп)</label><input type="hidden" id="kit-cat"><button type="button" class="btn" id="kit-cat-btn" style="width:100%;justify-content:space-between;text-align:left" onclick="openKitCat()">— Оберіть категорію —</button></div>
 <div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="kit-photo-preview" style="width:80px;height:80px;background:var(--bg);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('kit-photo-input').click()"><i data-icon="camera" data-size="13"></i> Обрати</button><input type="file" id="kit-photo-input" accept="image/*" style="display:none" onchange="uploadKitPhoto(event)"></div></div>
 <div class="fld"><label>Товари в комплекті</label>
-  <div class="popup-sel"><input class="popup-sel-input" id="kit-var-search" placeholder="Пошук товару..." oninput="filterKitVars(this.value)"><div class="popup-dd" id="kit-var-dd" style="max-height:200px"></div></div>
+  <button type="button" class="btn btn-a" style="width:100%;justify-content:center" onclick="openKitPicker()"><i data-icon="package" data-size="14"></i> Обрати товари з категорій</button>
   <div id="kit-items" style="margin-top:6px"></div>
 </div>
 <div id="kit-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveKit()"><i data-icon="rocket" data-size="15"></i> Створити комплект</button><button class="btn" onclick="closeM('kit-modal')">Скасувати</button></div>
+</div></div>
+
+<div class="modal-bg" id="kit-picker-modal" style="z-index:400"><div class="modal" style="max-width:650px">
+<h3><i data-icon="package" data-size="16"></i> Оберіть товари в комплект</h3>
+<input id="kitp-search" placeholder="Пошук товару за назвою..." oninput="kitpQuery=this.value;renderKitPicker()" style="width:100%;padding:8px 12px;font-size:13px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
+<div id="kitp-bread"></div>
+<div id="kitp-cats" class="cards" style="margin-bottom:8px"></div>
+<div id="kitp-vars" class="pcards" style="max-height:45vh;overflow:auto"></div>
+<div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span id="kitp-count" style="font-size:12px;color:var(--td)"></span><button class="btn btn-p" style="margin-left:auto" onclick="closeM('kit-picker-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
 </div></div>
 
 <div class="modal-bg" id="del-ord-modal"><div class="modal"><h3><i data-icon="trash2" data-size="16"></i> Видалити замовлення #<span id="del-ord-id"></span></h3>
@@ -1383,6 +1392,8 @@ async function saveSwapSize(){
 
 // ── Kits ─────────────────────────────────────────────────────────
 let kitVarList=[],kitSelected=[],kitPhoto="",editKitId=null;
+function setKitCat(id){setModelCatValue("kit-cat",CC.cats_drop||[],id)}
+function openKitCat(){openCatPickerFor('drop',function(id){setKitCat(id)})}
 async function openKitModal(){
   editKitId=null;
   kitSelected=[];kitPhoto="";
@@ -1391,15 +1402,11 @@ async function openKitModal(){
   document.getElementById("kit-photo-preview").innerHTML="—";
   document.querySelector('#kit-modal h3').innerHTML=Icon('gift',16)+' Сформувати комплект';
   document.querySelector('#kit-modal .btn-p').innerHTML=Icon('rocket',15)+' Створити комплект';
-  // Load categories
   await refreshCC();
-  const cs=document.getElementById("kit-cat");cs.innerHTML='<option value="">—</option>';
-  (CC.cats_drop||[]).forEach(c=>cs.innerHTML+='<option value="'+c.id+'">'+esc(c.name)+'</option>');
-  // Load all variations for selection
+  setKitCat(sdCatP||"");            // default to the drop category currently being browsed
   const d=await api("/api/variations");kitVarList=d.variations;
-  renderKitVarDD("");renderKitItems();
+  renderKitItems();
   openM("kit-modal");
-  document.getElementById("kit-var-search").addEventListener("focus",function(){document.getElementById("kit-var-dd").classList.add("open")});
 }
 async function openEditKit(id){
   editKitId=id;
@@ -1411,22 +1418,40 @@ async function openEditKit(id){
   document.querySelector('#kit-modal h3').innerHTML=Icon('gift',16)+' Редагувати комплект';
   document.querySelector('#kit-modal .btn-p').innerHTML=Icon('save',15)+' Зберегти';
   await refreshCC();
-  const cs=document.getElementById("kit-cat");cs.innerHTML='<option value="">—</option>';
-  (CC.cats_drop||[]).forEach(c=>cs.innerHTML+='<option value="'+c.id+'"'+(c.id==k.category_drop_id?" selected":"")+'>'+esc(c.name)+'</option>');
+  setKitCat(k.category_drop_id||"");
   const d=await api("/api/variations");kitVarList=d.variations;
-  renderKitVarDD("");renderKitItems();
+  renderKitItems();
   openM("kit-modal");
-  document.getElementById("kit-var-search").addEventListener("focus",function(){document.getElementById("kit-var-dd").classList.add("open")});
 }
-function filterKitVars(q){document.getElementById("kit-var-dd").classList.add("open");renderKitVarDD(q)}
-function renderKitVarDD(q){
-  const filtered=q?kitVarList.filter(v=>v.name.toLowerCase().includes(q.toLowerCase())):kitVarList;
-  document.getElementById("kit-var-dd").innerHTML=filtered.slice(0,20).map(v=>{
-    const sel=kitSelected.includes(v.id);
-    return '<div class="popup-dd-item'+(sel?' sel':'')+'" onclick="toggleKitVar('+v.id+')">'+esc(v.name)+'</div>';
-  }).join("")||'<div style="padding:8px;color:var(--td);font-size:11px">Нічого не знайдено</div>';
+function toggleKitVar(id){if(kitSelected.includes(id))kitSelected=kitSelected.filter(function(x){return x!==id});else kitSelected.push(id);var pm=document.getElementById('kit-picker-modal');if(pm&&pm.classList.contains('on'))renderKitPicker();renderKitItems()}
+
+// Kit product picker — drill-down by drop category + card select (multi).
+var kitpParent=null,kitpQuery="",kitpVars=[];
+async function openKitPicker(){kitpParent=null;kitpQuery="";var si=document.getElementById("kitp-search");if(si)si.value="";openM('kit-picker-modal');await loadKitPicker()}
+async function loadKitPicker(){kitpVars=kitpParent?((await api("/api/variations?category_id="+kitpParent)).variations):[];renderKitPicker()}
+function kitpDrill(id){kitpParent=id;kitpQuery="";var si=document.getElementById("kitp-search");if(si)si.value="";loadKitPicker()}
+function kitpChildren(){return (CC.cats_drop||[]).filter(function(c){return kitpParent?c.parent_id===kitpParent:!c.parent_id})}
+function kitpCrumb(){var bc=[],cur=kitpParent?(CC.cats_drop||[]).find(function(c){return c.id===kitpParent}):null,g=0;while(cur&&g++<20){bc.unshift(cur);cur=cur.parent_id?(CC.cats_drop||[]).find(function(c){return c.id===cur.parent_id}):null}return bc}
+function kitpVarCard(v){var sel=kitSelected.includes(v.id);var photo=v.photo||v.print_photo||"";return '<div class="pcard" style="cursor:pointer'+(sel?';border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)':'')+'" onclick="toggleKitVar('+v.id+')"><div class="pcard-img" style="position:relative">'+(photo?'<img src="'+photo+'">':Icon('camera',22))+(sel?'<span style="position:absolute;top:4px;right:4px;background:var(--acc);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center">'+Icon('check',12)+'</span>':'')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+'</div></div></div>'}
+function updateKitpCount(){var el=document.getElementById("kitp-count");if(el)el.textContent="Обрано: "+kitSelected.length}
+function renderKitPicker(){
+  var q=(kitpQuery||"").trim().toLowerCase();
+  if(q){
+    document.getElementById("kitp-bread").innerHTML='<div style="font-size:11px;color:var(--td);margin-bottom:6px">Пошук — «'+esc(kitpQuery.trim())+'»</div>';
+    document.getElementById("kitp-cats").innerHTML="";
+    var matches=(kitVarList||[]).filter(function(v){return v.name.toLowerCase().includes(q)});
+    document.getElementById("kitp-vars").innerHTML=matches.length?matches.map(kitpVarCard).join(""):'<div class="empty" style="grid-column:1/-1;font-size:11px">Нічого не знайдено</div>';
+    updateKitpCount();return;
+  }
+  var arr=kitpCrumb();
+  var bc=(kitpParent?'<button class="btn btn-sm" style="margin-right:6px" onclick="kitpDrill('+(arr.length>1?arr[arr.length-2].id:'null')+')">'+Icon('arrowLeft',13)+' Назад</button>':'');
+  bc+='<div class="bread"><a onclick="kitpDrill(null)">'+Icon('folder',13)+' Всі категорії</a>';
+  arr.forEach(function(b){bc+='<span>›</span><a onclick="kitpDrill('+b.id+')">'+esc(b.name)+'</a>'});
+  bc+='</div>';document.getElementById("kitp-bread").innerHTML=bc;
+  document.getElementById("kitp-cats").innerHTML=kitpChildren().map(function(c){return '<div class="crd"><div class="crd-img" style="cursor:pointer" onclick="kitpDrill('+c.id+')">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
+  document.getElementById("kitp-vars").innerHTML=kitpParent?((kitpVars||[]).length?kitpVars.map(kitpVarCard).join(""):'<div class="empty" style="grid-column:1/-1;font-size:11px">Немає товарів у цій категорії</div>'):'<div style="grid-column:1/-1;font-size:11px;color:var(--td);padding:8px">Оберіть категорію або скористайтесь пошуком</div>';
+  updateKitpCount();
 }
-function toggleKitVar(id){if(kitSelected.includes(id))kitSelected=kitSelected.filter(x=>x!==id);else kitSelected.push(id);renderKitVarDD(document.getElementById("kit-var-search").value);renderKitItems()}
 function renderKitItems(){document.getElementById("kit-items").innerHTML=kitSelected.map(id=>{const v=kitVarList.find(x=>x.id===id);return v?'<div class="sel-tag" onclick="toggleKitVar('+id+')">'+esc(v.name)+' '+Icon('x',11)+'</div>':''}).join("")||'<div style="font-size:10px;color:var(--td)">Оберіть товари зі списку</div>'}
 async function uploadKitPhoto(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});kitPhoto=d.url;document.getElementById("kit-photo-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
 async function saveKit(){
