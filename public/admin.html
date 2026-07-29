@@ -561,7 +561,8 @@
 
 <div class="modal-bg" id="kit-picker-modal" style="z-index:400"><div class="modal" style="max-width:650px">
 <h3><i data-icon="package" data-size="16"></i> Оберіть товари в комплект</h3>
-<input id="kitp-search" placeholder="Пошук товару за назвою..." oninput="kitpQuery=this.value;renderKitPicker()" style="width:100%;padding:8px 12px;font-size:13px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
+<input id="kitp-search" placeholder="Пошук товару за назвою (найшвидше)..." oninput="kitpQuery=this.value;renderKitPicker()" style="width:100%;padding:8px 12px;font-size:13px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
+<div id="kitp-selected" style="margin-bottom:8px"></div>
 <div id="kitp-bread"></div>
 <div id="kitp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="kitp-vars" class="pcards" style="max-height:45vh;overflow:auto"></div>
@@ -1466,9 +1467,12 @@ async function loadKitPicker(){kitpVars=kitpParent?((await api("/api/variations?
 function kitpDrill(id){kitpParent=id;kitpQuery="";var si=document.getElementById("kitp-search");if(si)si.value="";loadKitPicker()}
 function kitpChildren(){return (CC.cats_drop||[]).filter(function(c){return kitpParent?c.parent_id===kitpParent:!c.parent_id})}
 function kitpCrumb(){var bc=[],cur=kitpParent?(CC.cats_drop||[]).find(function(c){return c.id===kitpParent}):null,g=0;while(cur&&g++<20){bc.unshift(cur);cur=cur.parent_id?(CC.cats_drop||[]).find(function(c){return c.id===cur.parent_id}):null}return bc}
-function kitpVarCard(v){var sel=kitSelected.includes(v.id);var photo=v.photo||v.print_photo||"";return '<div class="pcard" style="cursor:pointer'+(sel?';border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)':'')+'" onclick="toggleKitVar('+v.id+')"><div class="pcard-img" style="position:relative">'+(photo?'<img src="'+photo+'">':Icon('camera',22))+(sel?'<span style="position:absolute;top:4px;right:4px;background:var(--acc);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center">'+Icon('check',12)+'</span>':'')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+'</div></div></div>'}
+function kitpVarCard(v){var sel=kitSelected.includes(v.id);var photo=v.photo||v.print_photo||"";return '<div class="pcard" style="'+(sel?'border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)':'')+'"><div class="pcard-img" style="position:relative;cursor:pointer" onclick="toggleKitVar('+v.id+')">'+(photo?'<img src="'+photo+'">':Icon('camera',22))+(sel?'<span style="position:absolute;top:4px;right:4px;background:var(--acc);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center">'+Icon('check',12)+'</span>':'')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+'</div><button class="btn btn-sm '+(sel?'btn-a':'btn-p')+'" style="width:100%;margin-top:4px;justify-content:center" onclick="toggleKitVar('+v.id+')">'+(sel?Icon('check',12)+' Додано':'+ Додати')+'</button></div></div>'}
 function updateKitpCount(){var el=document.getElementById("kitp-count");if(el)el.textContent="Обрано: "+kitSelected.length}
 function renderKitPicker(){
+  // persistent list of what's already added — visible while browsing/searching
+  var selEl=document.getElementById("kitp-selected");
+  if(selEl)selEl.innerHTML=kitSelected.length?('<div style="font-size:10px;color:var(--td);margin-bottom:3px">Додано в комплект ('+kitSelected.length+'):</div>'+kitSelected.map(function(id){var v=kitVarList.find(function(x){return x.id===id});return '<span class="sel-tag" onclick="toggleKitVar('+id+')">'+esc(v?v.name:('#'+id))+' '+Icon('x',11)+'</span>'}).join("")):"";
   var q=(kitpQuery||"").trim().toLowerCase();
   if(q){
     document.getElementById("kitp-bread").innerHTML='<div style="font-size:11px;color:var(--td);margin-bottom:6px">Пошук — «'+esc(kitpQuery.trim())+'»</div>';
