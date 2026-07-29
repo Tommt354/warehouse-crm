@@ -468,6 +468,10 @@
 <div class="fld"><label>Принти</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук принтів..." onfocus="openPS(this,'mm-prints-dd')" oninput="filterPS(this,'mm-prints-dd')"><div class="popup-dd" id="mm-prints-dd"></div></div><div class="sel-tags" id="mm-prints-tags"></div><div id="mm-print-cats"></div></div>
 <div class="fld"><label>Нашивки</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук нашивок..." onfocus="openPS(this,'mm-patches-dd')" oninput="filterPS(this,'mm-patches-dd')"><div class="popup-dd" id="mm-patches-dd"></div></div><div class="sel-tags" id="mm-patches-tags"></div></div>
 </div>
+<div class="fld" id="mm-bulk" style="display:none;border-top:1px solid var(--brd);padding-top:10px"><label>Масові дії (для всіх товарів моделі)</label>
+  <div style="font-size:10px;color:var(--td);margin-bottom:4px">Замовлення при відсутності на складі:</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn btn-sm btn-a" onclick="bulkModelAllowNeg(1)"><i data-icon="check" data-size="12"></i> Дозволити всім</button><button type="button" class="btn btn-sm btn-d" onclick="bulkModelAllowNeg(0)"><i data-icon="x" data-size="12"></i> Заборонити всім</button></div>
+</div>
 <div id="mm-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveModel()"><i data-icon="rocket" data-size="15"></i> Створити</button><button class="btn" onclick="closeM('model-modal')">Скасувати</button></div>
 </div></div>
@@ -867,6 +871,7 @@ async function editModelFields(id){
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();
   document.getElementById("mm-err").style.display="none";
+  document.getElementById("mm-bulk").style.display="block";
   openM("model-modal");
 }
 
@@ -1027,6 +1032,7 @@ async function openNewModel(){
   document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";document.getElementById("mm-weight").value="0.3";
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
   document.getElementById("mm-err").style.display="none";
+  document.getElementById("mm-bulk").style.display="none";
   mmSizeGridPhoto="";document.getElementById("mm-sizegrid-preview").innerHTML="—";
   fillModelCat(null);
   fillModelCatDrop(null);
@@ -1194,6 +1200,11 @@ async function bulkAllowNeg(allow){
   if(!editCatId)return;
   if(!confirm(allow?"Дозволити замовлення при відсутності на складі для ВСІХ товарів цієї категорії (і підкатегорій)?":"Заборонити замовлення при відсутності на складі для ВСІХ товарів цієї категорії?"))return;
   try{var r=await api("/api/categories/"+editCatId+"/allow-negative",{method:"POST",body:JSON.stringify({allow:!!allow,scope:catScope})});alert("Оновлено товарів: "+r.updated)}catch(e){alert(e.message)}
+}
+async function bulkModelAllowNeg(allow){
+  if(!editModelId)return;
+  if(!confirm(allow?"Дозволити замовлення при відсутності на складі для ВСІХ товарів цієї моделі?":"Заборонити замовлення при відсутності на складі для ВСІХ товарів цієї моделі?"))return;
+  try{var r=await api("/api/models/"+editModelId+"/allow-negative",{method:"POST",body:JSON.stringify({allow:!!allow})});alert("Оновлено товарів: "+r.updated)}catch(e){alert(e.message)}
 }
 function reloadForScope(scope){(scope==="base"?loadSBase:scope==="ready"?loadSReady:loadSDrop)()}
 async function saveCat(){const parent=catScope==="base"?sbCatP:catScope==="ready"?sreadyCatP:sdCatP;const data={name:document.getElementById("cm-name").value,parent_id:parent||null,photo:catPhoto,hidden_from_drop:document.getElementById("cm-hidden").value==="1",scope:catScope};try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");reloadForScope(catScope)}catch(e){alert(e.message)}}
@@ -1399,12 +1410,12 @@ async function saveSwapSize(){
 }
 
 // ── Kits ─────────────────────────────────────────────────────────
-let kitVarList=[],kitSelected=[],kitPhoto="",editKitId=null;
+let kitVarList=[],kitSelected=[],kitPhoto="",editKitId=null,kitNameAuto="";
 function setKitCat(id){setModelCatValue("kit-cat",CC.cats_drop||[],id)}
 function openKitCat(){openCatPickerFor('drop',function(id){setKitCat(id)})}
 async function openKitModal(){
   editKitId=null;
-  kitSelected=[];kitPhoto="";
+  kitSelected=[];kitPhoto="";kitNameAuto="";
   document.getElementById("kit-name").value="";document.getElementById("kit-cost").value="0";document.getElementById("kit-drop").value="0";document.getElementById("kit-weight").value="0.5";
   document.getElementById("kit-err").style.display="none";
   document.getElementById("kit-photo-preview").innerHTML="—";
@@ -1419,7 +1430,7 @@ async function openKitModal(){
 async function openEditKit(id){
   editKitId=id;
   const{kit:k}=await api("/api/kits/"+id);
-  kitSelected=k.items.map(function(i){return i.vid});kitPhoto=k.photo||"";
+  kitSelected=k.items.map(function(i){return i.vid});kitPhoto=k.photo||"";kitNameAuto="";
   document.getElementById("kit-name").value=k.name;document.getElementById("kit-cost").value=k.cost_price||0;document.getElementById("kit-drop").value=k.drop_price||0;document.getElementById("kit-weight").value=k.weight||0.5;
   document.getElementById("kit-err").style.display="none";
   document.getElementById("kit-photo-preview").innerHTML=k.photo?'<img src="'+k.photo+'" style="width:100%;height:100%;object-fit:cover">':"—";
@@ -1431,7 +1442,22 @@ async function openEditKit(id){
   renderKitItems();
   openM("kit-modal");
 }
-function toggleKitVar(id){if(kitSelected.includes(id))kitSelected=kitSelected.filter(function(x){return x!==id});else kitSelected.push(id);var pm=document.getElementById('kit-picker-modal');if(pm&&pm.classList.contains('on'))renderKitPicker();renderKitItems()}
+function toggleKitVar(id){if(kitSelected.includes(id))kitSelected=kitSelected.filter(function(x){return x!==id});else kitSelected.push(id);var pm=document.getElementById('kit-picker-modal');if(pm&&pm.classList.contains('on'))renderKitPicker();renderKitItems();recomputeKitAuto()}
+// Auto собівартість (сума складників) + авто-назба комплекту при зміні вибору.
+function recomputeKitAuto(){
+  var vars=kitSelected.map(function(id){return kitVarList.find(function(x){return x.id===id})}).filter(Boolean);
+  // собівартість = сума собівартостей складників (собівартість базового товару або моделі)
+  var cost=vars.reduce(function(s,v){return s+(parseFloat(v.base_cost)||parseFloat(v.model_cost)||0)},0);
+  document.getElementById("kit-cost").value=Math.round(cost*100)/100;
+  // назва = ТОВАР+КОЛІР для кожного складника, у кінці — назва принта
+  if(vars.length){
+    var parts=vars.map(function(v){return v.base_name||v.model_name||v.name});
+    var pr=(vars.find(function(v){return v.print_name})||{}).print_name||"";
+    var auto=parts.join(" + ")+(pr?" "+pr:"");
+    var cur=document.getElementById("kit-name").value;
+    if(!cur||cur===kitNameAuto){document.getElementById("kit-name").value=auto;kitNameAuto=auto}
+  }
+}
 
 // Kit product picker — drill-down by drop category + card select (multi).
 var kitpParent=null,kitpQuery="",kitpVars=[];

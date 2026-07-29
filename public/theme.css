@@ -1021,6 +1021,12 @@ input[type="number"]::-webkit-outer-spin-button {
   gap: 12px;
 }
 
+.pcards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+
 .crd {
   background: var(--bg-card);
   backdrop-filter: blur(12px);
