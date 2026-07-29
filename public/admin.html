@@ -490,6 +490,7 @@
 <div class="modal-bg" id="cat-picker-modal" style="z-index:400"><div class="modal" style="max-width:650px">
 <h3><i data-icon="folder" data-size="16"></i> Оберіть категорію</h3>
 <button class="btn btn-sm" style="margin-bottom:8px" onclick="pickCatPicker('')"><i data-icon="x" data-size="12"></i> Без категорії</button>
+<input id="catp-search" placeholder="Пошук категорії за назвою..." oninput="catpQuery=this.value;renderCatPicker()" style="width:100%;padding:8px 12px;font-size:13px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
 <div id="catp-bread"></div>
 <div id="catp-cards" class="cards" style="margin-bottom:8px;max-height:55vh;overflow:auto"></div>
 <div><button class="btn" onclick="closeM('cat-picker-modal')">Закрити</button></div>
@@ -903,25 +904,40 @@ function fillModelCat(selectedId){
 }
 function fillModelCatDrop(selectedId){setModelCatValue("mm-cat-drop",CC.cats_drop||[],selectedId)}
 
-var catpScope="base",catpParent=null,catpOnPick=null;
+var catpScope="base",catpParent=null,catpOnPick=null,catpFlat=[],catpCd=null,catpQuery="";
 // Generic drill-down category picker: opens the modal for a scope and calls
 // onPick(categoryId) with the chosen id ("" = none) when the user picks.
-function openCatPickerFor(scope,onPick){catpScope=scope;catpOnPick=onPick;catpParent=null;openM('cat-picker-modal');loadCatPicker()}
+function openCatPickerFor(scope,onPick){catpScope=scope;catpOnPick=onPick;catpParent=null;catpQuery="";var si=document.getElementById("catp-search");if(si)si.value="";openM('cat-picker-modal');loadCatPicker()}
 function openModelCat(which){
   if(which==='base'){var on=document.getElementById("mm-ready").classList.contains("on");var list=on?(CC.cats_ready||[]):(CC.cats_base||[]);openCatPickerFor(on?'ready':'base',function(id){setModelCatValue('mm-cat',list,id)})}
   else{openCatPickerFor('drop',function(id){setModelCatValue('mm-cat-drop',CC.cats_drop||[],id)})}
 }
 async function loadCatPicker(){
-  var cd=await api("/api/categories?parent_id="+(catpParent||"")+"&scope="+catpScope);
-  var bc=catBackBtn(cd.breadcrumb,"catpParent="+catParentId(cd.breadcrumb)+";loadCatPicker()");
-  bc+='<div class="bread"><a onclick="catpParent=null;loadCatPicker()">'+Icon('folder',13)+' Всі категорії</a>';
-  cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="catpParent='+b.id+';loadCatPicker()">'+esc(b.name)+'</a>'});
+  catpCd=await api("/api/categories?parent_id="+(catpParent||"")+"&scope="+catpScope);
+  catpFlat=catpCd.flat||[];
+  renderCatPicker();
+}
+function catpDrill(id){catpParent=id;catpQuery="";var si=document.getElementById("catp-search");if(si)si.value="";loadCatPicker()}
+function catPath(c){var parts=[],cur=c,g=0;while(cur&&g++<20){parts.unshift(cur.name);cur=cur.parent_id?catpFlat.find(function(x){return x.id===cur.parent_id}):null}return parts.join(' › ')}
+function catpCardHtml(c,showPath){
+  var hasKids=catpFlat.some(function(x){return x.parent_id===c.id});
+  var sub=showPath?'<div class="crd-sub" style="font-size:9px">'+esc(catPath(c))+'</div>':'';
+  return '<div class="crd"><div class="crd-img" style="cursor:pointer" onclick="'+(hasKids?'catpDrill('+c.id+')':'pickCatPicker('+c.id+')')+'">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div>'+sub+'<div class="crd-acts">'+(hasKids?'<button class="btn btn-sm btn-a" onclick="catpDrill('+c.id+')">'+Icon('folder',12)+' Відкрити</button>':'')+'<button class="btn btn-sm btn-p" onclick="pickCatPicker('+c.id+')">'+Icon('check',12)+' Обрати</button></div></div></div>';
+}
+function renderCatPicker(){
+  var q=(catpQuery||"").trim().toLowerCase();
+  if(q){
+    document.getElementById("catp-bread").innerHTML='<div style="font-size:11px;color:var(--td);margin-bottom:6px">Результати пошуку — «'+esc(catpQuery.trim())+'»</div>';
+    var matches=catpFlat.filter(function(c){return c.name.toLowerCase().includes(q)});
+    document.getElementById("catp-cards").innerHTML=matches.length?matches.map(function(c){return catpCardHtml(c,true)}).join(""):'<div class="empty" style="grid-column:1/-1"><span class="ic">'+Icon('folder',30)+'</span>Нічого не знайдено</div>';
+    return;
+  }
+  var cd=catpCd||{categories:[],breadcrumb:[]};
+  var bc=catBackBtn(cd.breadcrumb,"catpDrill("+catParentId(cd.breadcrumb)+")");
+  bc+='<div class="bread"><a onclick="catpDrill(null)">'+Icon('folder',13)+' Всі категорії</a>';
+  cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="catpDrill('+b.id+')">'+esc(b.name)+'</a>'});
   bc+='</div>';document.getElementById("catp-bread").innerHTML=bc;
-  var flat=cd.flat||[];
-  document.getElementById("catp-cards").innerHTML=cd.categories.length?cd.categories.map(function(c){
-    var hasKids=flat.some(function(x){return x.parent_id===c.id});
-    return '<div class="crd"><div class="crd-img" style="cursor:pointer" onclick="'+(hasKids?'catpParent='+c.id+';loadCatPicker()':'pickCatPicker('+c.id+')')+'">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div><div class="crd-acts">'+(hasKids?'<button class="btn btn-sm btn-a" onclick="catpParent='+c.id+';loadCatPicker()">'+Icon('folder',12)+' Відкрити</button>':'')+'<button class="btn btn-sm btn-p" onclick="pickCatPicker('+c.id+')">'+Icon('check',12)+' Обрати</button></div></div></div>';
-  }).join(""):'<div class="empty" style="grid-column:1/-1"><span class="ic">'+Icon('folder',30)+'</span>Немає підкатегорій — оберіть батьківську кнопкою «Обрати»</div>';
+  document.getElementById("catp-cards").innerHTML=cd.categories.length?cd.categories.map(function(c){return catpCardHtml(c,false)}).join(""):'<div class="empty" style="grid-column:1/-1"><span class="ic">'+Icon('folder',30)+'</span>Немає підкатегорій — оберіть батьківську кнопкою «Обрати»</div>';
 }
 function pickCatPicker(id){
   if(catpOnPick)catpOnPick(id||"");
