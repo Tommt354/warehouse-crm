@@ -130,7 +130,7 @@
 <div id="sready-bread"></div>
 <div class="acts" style="margin-bottom:4px"><button class="btn on svm-btn" data-mode="alloc" onclick="setStockViewMode('alloc')">Списана</button><button class="btn svm-btn" data-mode="fact" onclick="setStockViewMode('fact')">Фактична</button></div>
 <div class="acts">
-  <button class="btn btn-p" onclick="addCatIn('base')">+ Категорія</button>
+  <button class="btn btn-p" onclick="addCatIn('ready')">+ Категорія</button>
   <button class="btn btn-a" onclick="openInc()"><i data-icon="download" data-size="15"></i> Прихід</button>
   <button class="btn btn-d" onclick="openWriteOff()"><i data-icon="upload" data-size="15"></i> Списати</button>
   <button class="btn btn-w" onclick="openSwapSize()"><i data-icon="refreshCw" data-size="15"></i> Заміна розміру</button>
@@ -444,7 +444,7 @@
 
 <div class="modal-bg" id="model-modal"><div class="modal" style="max-width:560px"><h3 id="mdl-t">Нова модель</h3>
 <div class="fld"><label>Назва</label><input id="mm-name" placeholder="Худі флісовий"></div>
-<div class="fld"><label>Категорія (склад база)</label><select id="mm-cat"><option value="">—</option></select></div>
+<div class="fld"><label id="mm-cat-label">Категорія (склад база)</label><select id="mm-cat"><option value="">—</option></select></div>
 <div class="fld"><label>Категорія (склад дроп)</label><select id="mm-cat-drop"><option value="">—</option></select></div>
 <div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="hot">HOT DROP</option><option value="ads">ADS DROP</option></select></div>
 <div class="fld" id="mm-wh-wrap"><label>Основний склад (фізичне розташування — визначає, який пакувальник побачить замовлення)</label><select id="mm-warehouse"><option value="base">Склад База</option><option value="molod">Склад Молодіжна</option></select></div>
@@ -706,7 +706,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
 // Close dropdowns on outside click
 document.addEventListener("click",e=>{if(!e.target.closest(".popup-sel"))document.querySelectorAll(".popup-dd").forEach(d=>d.classList.remove("open"))});
 
-async function refreshCC(){const[a,b,c,d,e,f]=await Promise.all([api("/api/colors"),api("/api/sizes"),api("/api/prints"),api("/api/patches"),api("/api/categories?scope=base"),api("/api/categories?scope=drop")]);CC.colors=a.items;CC.sizes=b.items;CC.prints=c.items;CC.patches=d.items;CC.cats_base=e.flat;CC.cats_drop=f.flat;CC.cats=[...e.flat,...f.flat]}
+async function refreshCC(){const[a,b,c,d,e,f,g]=await Promise.all([api("/api/colors"),api("/api/sizes"),api("/api/prints"),api("/api/patches"),api("/api/categories?scope=base"),api("/api/categories?scope=drop"),api("/api/categories?scope=ready")]);CC.colors=a.items;CC.sizes=b.items;CC.prints=c.items;CC.patches=d.items;CC.cats_base=e.flat;CC.cats_drop=f.flat;CC.cats_ready=g.flat;CC.cats=[...e.flat,...f.flat,...g.flat]}
 
 // ── Dashboard ────────────────────────────────────────────────────
 async function loadDash(){
@@ -840,7 +840,7 @@ async function editModelFields(id){
   document.getElementById("mm-sizegrid-preview").innerHTML=mmSizeGridPhoto?'<img src="'+mmSizeGridPhoto+'" style="width:100%;height:100%;object-fit:cover">':"—";
   document.getElementById("mm-ready").classList.toggle("on",!!m.is_ready_product);
   document.getElementById("mm-pw").style.display=m.is_ready_product?"none":"block";
-  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';(CC.cats_base||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}"${c.id==m.category_id?" selected":""}>${esc(c.name)}</option>`);
+  fillModelCat(m.category_id);
   const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}"${c.id==m.category_drop_id?" selected":""}>${esc(c.name)}</option>`);
   document.getElementById("mm-channel").value=m.drop_channel||"hot";
   document.getElementById("mm-warehouse").value=m.main_warehouse||"base";
@@ -882,6 +882,17 @@ function toggleReadyProduct(el){
   const on=el.classList.contains("on");
   document.getElementById("mm-pw").style.display=on?"none":"block";
   if(on)document.getElementById("mm-warehouse").value="molod";
+  // Ready products get their category from the separate "Готовий товар" tree.
+  fillModelCat(document.getElementById("mm-cat").value);
+}
+// Populate the model category select from the base OR ready tree depending on
+// whether "Готовий товар" is toggled — the two warehouses have separate trees.
+function fillModelCat(selectedId){
+  const on=document.getElementById("mm-ready").classList.contains("on");
+  const list=on?(CC.cats_ready||[]):(CC.cats_base||[]);
+  document.getElementById("mm-cat-label").textContent=on?"Категорія (готовий товар)":"Категорія (склад база)";
+  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';
+  list.forEach(c=>cs.innerHTML+='<option value="'+c.id+'"'+(c.id==selectedId?" selected":"")+'>'+esc(c.name)+'</option>');
 }
 
 // ── Create model ─────────────────────────────────────────────────
@@ -893,7 +904,7 @@ async function openNewModel(){
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
   document.getElementById("mm-err").style.display="none";
   mmSizeGridPhoto="";document.getElementById("mm-sizegrid-preview").innerHTML="—";
-  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';(CC.cats_base||[]).forEach(c=>cs.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
+  fillModelCat(null);
   const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
   document.getElementById("mm-channel").value="hot";document.getElementById("mm-warehouse").value="base";
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
@@ -951,7 +962,7 @@ async function loadSBase(){
   document.getElementById("sbase-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sbCatP=${c.id};loadSBase()">
     <div class="crd-img">${c.photo?`<img src="${c.photo}">`:Icon('folder',28)}</div>
     <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
-    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">${Icon('trash2',13)}</button></div></div></div>`).join("");
+    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}','base')">${Icon('trash2',13)}</button></div></div></div>`).join("");
   // Products — ready products live on their own "Готовий товар" page, so this catalog only ever shows non-ready stock
   var url=sbCatP?"/api/base-products?category_id="+sbCatP+"&is_ready=0":"/api/base-products?is_ready=0";
   const d=await api(url);sbProducts=d.products;sbSizes=d.sizes;
@@ -978,7 +989,7 @@ function searchSBase(q){if(!q){renderSBase(sbProducts);return}renderSBase(sbProd
 // instead of being mixed into Склад база.
 let sreadyProducts=[],sreadySizes=[],sreadyCatP=null,sreadyPage=0;
 async function loadSReady(){
-  const cd=await api(`/api/categories?parent_id=${sreadyCatP||""}&scope=base`);
+  const cd=await api(`/api/categories?parent_id=${sreadyCatP||""}&scope=ready`);
   let bc=catBackBtn(cd.breadcrumb,`sreadyCatP=${catParentId(cd.breadcrumb)};loadSReady()`);
   bc+='<div class="bread"><a onclick="sreadyCatP=null;loadSReady()">'+Icon('check',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(b=>{bc+=`<span>›</span><a onclick="sreadyCatP=${b.id};loadSReady()">${esc(b.name)}</a>`});
@@ -986,7 +997,7 @@ async function loadSReady(){
   document.getElementById("sready-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sreadyCatP=${c.id};loadSReady()">
     <div class="crd-img">${c.photo?`<img src="${c.photo}">`:Icon('folder',28)}</div>
     <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
-    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'base')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">${Icon('trash2',13)}</button></div></div></div>`).join("");
+    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'ready')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}','ready')">${Icon('trash2',13)}</button></div></div></div>`).join("");
   var url=(sreadyCatP?"/api/base-products?category_id="+sreadyCatP+"&":"/api/base-products?")+"is_ready=1";
   const d=await api(url);sreadyProducts=d.products;sreadySizes=d.sizes;
   renderSReady(sreadyProducts);
@@ -1019,7 +1030,7 @@ async function loadSDrop(){
   document.getElementById("sdrop-cats").innerHTML=cd.categories.map(c=>`<div class="crd" onclick="sdCatP=${c.id};loadSDrop()">
     <div class="crd-img">${c.photo?`<img src="${c.photo}">`:Icon('folder',28)}</div>
     <div class="crd-body"><div class="crd-name">${esc(c.name)}</div>
-    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'drop')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}')">${Icon('trash2',13)}</button></div></div></div>`).join("");
+    <div class="crd-acts"><button class="btn btn-sm btn-a" onclick="event.stopPropagation();editCatFn(${c.id},'drop')">${Icon('pencil',13)}</button><button class="btn btn-sm btn-d" onclick="event.stopPropagation();delCatFn(${c.id},'${esc(c.name)}','drop')">${Icon('trash2',13)}</button></div></div></div>`).join("");
   // Load variations with channel filter
   let url="/api/variations";const vp=[];
   if(sdCatP)vp.push("category_id="+sdCatP);
@@ -1056,8 +1067,9 @@ function searchSDrop(q){if(!q){renderSDrop(sdVars);return}renderSDrop(sdVars.fil
 let catScope="base";
 function addCatIn(scope){catScope=scope;editCatId=null;catPhoto="";document.getElementById("cm-t").textContent="Нова категорія";document.getElementById("cm-name").value="";document.getElementById("cm-hidden").value="0";document.getElementById("cm-photo-preview").innerHTML="—";document.getElementById("cm-del").style.display="none";openM("cat-modal")}
 async function editCatFn(id,scope){catScope=scope||"base";const all=(await api("/api/categories?parent_id=")).flat;const c=all.find(x=>x.id===id);if(!c)return;editCatId=id;catPhoto=c.photo||"";document.getElementById("cm-t").textContent=c.name;document.getElementById("cm-name").value=c.name;document.getElementById("cm-hidden").value=c.hidden_from_drop?"1":"0";document.getElementById("cm-photo-preview").innerHTML=c.photo?`<img src="${c.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";document.getElementById("cm-del").style.display="block";openM("cat-modal")}
-async function saveCat(){const data={name:document.getElementById("cm-name").value,parent_id:(catScope==="base"?sbCatP:sdCatP)||null,photo:catPhoto,hidden_from_drop:document.getElementById("cm-hidden").value==="1",scope:catScope};try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");if(catScope==="base")loadSBase();else loadSDrop()}catch(e){alert(e.message)}}
-async function delCatFn(id,name){if(!confirm(`Видалити "${name}"?`))return;await api(`/api/categories/${id}`,{method:"DELETE"});if(catScope==="base")loadSBase();else loadSDrop()}
+function reloadForScope(scope){(scope==="base"?loadSBase:scope==="ready"?loadSReady:loadSDrop)()}
+async function saveCat(){const parent=catScope==="base"?sbCatP:catScope==="ready"?sreadyCatP:sdCatP;const data={name:document.getElementById("cm-name").value,parent_id:parent||null,photo:catPhoto,hidden_from_drop:document.getElementById("cm-hidden").value==="1",scope:catScope};try{if(editCatId)await api(`/api/categories/${editCatId}`,{method:"PUT",body:JSON.stringify(data)});else await api("/api/categories",{method:"POST",body:JSON.stringify(data)});closeM("cat-modal");reloadForScope(catScope)}catch(e){alert(e.message)}}
+async function delCatFn(id,name,scope){if(!confirm(`Видалити "${name}"?`))return;await api(`/api/categories/${id}`,{method:"DELETE"});reloadForScope(scope||catScope)}
 function delCat(){if(editCatId)delCatFn(editCatId,"")}
 
 // ── Edit base product ────────────────────────────────────────────
@@ -1188,7 +1200,7 @@ function openBpPicker(defaultWh,onSelect){
 async function loadBpPicker(){
   document.getElementById("bpp-base").classList.toggle("on",bppWarehouse==="base");
   document.getElementById("bpp-molod").classList.toggle("on",bppWarehouse==="molod");
-  var cd=await api("/api/categories?parent_id="+(bppCatP||"")+"&scope=base");
+  var cd=await api("/api/categories?parent_id="+(bppCatP||"")+"&scope="+(bppWarehouse==="molod"?"ready":"base"));
   var bc=catBackBtn(cd.breadcrumb,"bppCatP="+catParentId(cd.breadcrumb)+";loadBpPicker()");
   bc+='<div class="bread"><a onclick="bppCatP=null;loadBpPicker()">'+Icon('package',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="bppCatP='+b.id+';loadBpPicker()">'+esc(b.name)+'</a>'});
