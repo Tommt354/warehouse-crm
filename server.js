@@ -256,6 +256,13 @@ app.post("/api/categories/:id/allow-negative", authMiddleware, requireRole("admi
   res.json({ ok: true, updated: r.changes });
 });
 
+// Bulk-set allow_negative_order for every variation of a single model.
+app.post("/api/models/:id/allow-negative", authMiddleware, requireRole("admin"), (req, res) => {
+  const allow = req.body.allow ? 1 : 0;
+  const r = db.prepare("UPDATE variations SET allow_negative_order=? WHERE base_product_id IN (SELECT id FROM base_products WHERE model_id=?)").run(allow, req.params.id);
+  res.json({ ok: true, updated: r.changes });
+});
+
 // ── PHOTOS ───────────────────────────────────────────────────────
 app.post("/api/photos/upload", authMiddleware, (req, res) => {
   const { data } = req.body;
@@ -696,7 +703,7 @@ app.put("/api/model-workers/:model_id", authMiddleware, requireRole("admin"), (r
 app.get("/api/variations", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
   const channel = req.query.channel;
-  let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,m.name as model_name,m.drop_price as model_drop_price,m.is_ready_product,m.category_drop_id,m.drop_channel,m.size_grid_photo,m.weight as model_weight,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
+  let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,bp.cost_price as base_cost,m.name as model_name,m.drop_price as model_drop_price,m.cost_price as model_cost,m.is_ready_product,m.category_drop_id as model_category_drop_id,COALESCE(v.category_drop_id,m.category_drop_id) as eff_category_drop_id,m.drop_channel,m.size_grid_photo,m.weight as model_weight,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
   const params = [];
   if (cat) { q += " AND COALESCE(v.category_drop_id, m.category_drop_id)=?"; params.push(parseInt(cat)); }
   if (channel) { q += " AND m.drop_channel=?"; params.push(channel); }
