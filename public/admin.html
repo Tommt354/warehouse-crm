@@ -451,8 +451,8 @@
 
 <div class="modal-bg" id="model-modal"><div class="modal" style="max-width:560px"><h3 id="mdl-t">Нова модель</h3>
 <div class="fld"><label>Назва</label><input id="mm-name" placeholder="Худі флісовий"></div>
-<div class="fld"><label id="mm-cat-label">Категорія (склад база)</label><select id="mm-cat"><option value="">—</option></select></div>
-<div class="fld"><label>Категорія (склад дроп)</label><select id="mm-cat-drop"><option value="">—</option></select></div>
+<div class="fld"><label id="mm-cat-label">Категорія (склад база)</label><input type="hidden" id="mm-cat"><button type="button" class="btn" id="mm-cat-btn" style="width:100%;justify-content:space-between;text-align:left" onclick="openModelCat('base')">— Оберіть категорію —</button></div>
+<div class="fld"><label>Категорія (склад дроп)</label><input type="hidden" id="mm-cat-drop"><button type="button" class="btn" id="mm-cat-drop-btn" style="width:100%;justify-content:space-between;text-align:left" onclick="openModelCat('drop')">— Оберіть категорію —</button></div>
 <div class="fld"><label>Канал продажу</label><select id="mm-channel"><option value="hot">HOT DROP</option><option value="ads">ADS DROP</option></select></div>
 <div class="fld" id="mm-wh-wrap"><label>Основний склад (фізичне розташування — визначає, який пакувальник побачить замовлення)</label><select id="mm-warehouse"><option value="base">Склад База</option><option value="molod">Склад Молодіжна</option></select></div>
 <div class="sw"><div class="swb" id="mm-ready" onclick="toggleReadyProduct(this)"></div><label onclick="document.getElementById('mm-ready').click()">Готовий товар</label></div>
@@ -485,6 +485,14 @@
 <div id="bpp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="bpp-list" class="pcards"></div>
 <div style="margin-top:10px"><button class="btn" onclick="closeM('bp-picker-modal')">Закрити</button></div>
+</div></div>
+
+<div class="modal-bg" id="cat-picker-modal" style="z-index:400"><div class="modal" style="max-width:650px">
+<h3><i data-icon="folder" data-size="16"></i> Оберіть категорію</h3>
+<button class="btn btn-sm" style="margin-bottom:8px" onclick="pickCatPicker('')"><i data-icon="x" data-size="12"></i> Без категорії</button>
+<div id="catp-bread"></div>
+<div id="catp-cards" class="cards" style="margin-bottom:8px;max-height:55vh;overflow:auto"></div>
+<div><button class="btn" onclick="closeM('cat-picker-modal')">Закрити</button></div>
 </div></div>
 
 <div class="modal-bg" id="inc-modal"><div class="modal"><h3><i data-icon="download" data-size="16"></i> Прихід</h3>
@@ -837,7 +845,7 @@ async function editModelFields(id){
   document.getElementById("mm-ready").classList.toggle("on",!!m.is_ready_product);
   document.getElementById("mm-pw").style.display=m.is_ready_product?"none":"block";
   fillModelCat(m.category_id);
-  const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}"${c.id==m.category_drop_id?" selected":""}>${esc(c.name)}</option>`);
+  fillModelCatDrop(m.category_drop_id);
   document.getElementById("mm-channel").value=m.drop_channel||"hot";
   document.getElementById("mm-warehouse").value=m.main_warehouse||"base";
   // Pre-select attributes
@@ -877,14 +885,45 @@ function toggleReadyProduct(el){
   // Ready products get their category from the separate "Готовий товар" tree.
   fillModelCat(document.getElementById("mm-cat").value);
 }
-// Populate the model category select from the base OR ready tree depending on
-// whether "Готовий товар" is toggled — the two warehouses have separate trees.
+// Category is picked via a drill-down card picker (like the warehouse / order
+// flows), not a flat dropdown. The hidden input holds the id; the button shows
+// the chosen name. Base field uses the base OR ready tree depending on the
+// "Готовий товар" toggle (separate trees); the drop field uses the drop tree.
+function setModelCatValue(inputId,list,id){
+  document.getElementById(inputId).value=id||"";
+  const c=id?list.find(x=>x.id==id):null;
+  document.getElementById(inputId+"-btn").innerHTML=(c?esc(c.name):"— Оберіть категорію —")+' '+Icon('folder',14);
+}
 function fillModelCat(selectedId){
   const on=document.getElementById("mm-ready").classList.contains("on");
   const list=on?(CC.cats_ready||[]):(CC.cats_base||[]);
   document.getElementById("mm-cat-label").textContent=on?"Категорія (готовий товар)":"Категорія (склад база)";
-  const cs=document.getElementById("mm-cat");cs.innerHTML='<option value="">—</option>';
-  list.forEach(c=>cs.innerHTML+='<option value="'+c.id+'"'+(c.id==selectedId?" selected":"")+'>'+esc(c.name)+'</option>');
+  setModelCatValue("mm-cat",list,selectedId);
+}
+function fillModelCatDrop(selectedId){setModelCatValue("mm-cat-drop",CC.cats_drop||[],selectedId)}
+
+var catpScope="base",catpParent=null,catpTarget="mm-cat";
+function openModelCat(which){
+  if(which==='base'){var on=document.getElementById("mm-ready").classList.contains("on");catpScope=on?'ready':'base';catpTarget='mm-cat'}
+  else{catpScope='drop';catpTarget='mm-cat-drop'}
+  catpParent=null;openM('cat-picker-modal');loadCatPicker();
+}
+async function loadCatPicker(){
+  var cd=await api("/api/categories?parent_id="+(catpParent||"")+"&scope="+catpScope);
+  var bc=catBackBtn(cd.breadcrumb,"catpParent="+catParentId(cd.breadcrumb)+";loadCatPicker()");
+  bc+='<div class="bread"><a onclick="catpParent=null;loadCatPicker()">'+Icon('folder',13)+' Всі категорії</a>';
+  cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="catpParent='+b.id+';loadCatPicker()">'+esc(b.name)+'</a>'});
+  bc+='</div>';document.getElementById("catp-bread").innerHTML=bc;
+  var flat=cd.flat||[];
+  document.getElementById("catp-cards").innerHTML=cd.categories.length?cd.categories.map(function(c){
+    var hasKids=flat.some(function(x){return x.parent_id===c.id});
+    return '<div class="crd"><div class="crd-img" style="cursor:pointer" onclick="'+(hasKids?'catpParent='+c.id+';loadCatPicker()':'pickCatPicker('+c.id+')')+'">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div><div class="crd-acts">'+(hasKids?'<button class="btn btn-sm btn-a" onclick="catpParent='+c.id+';loadCatPicker()">'+Icon('folder',12)+' Відкрити</button>':'')+'<button class="btn btn-sm btn-p" onclick="pickCatPicker('+c.id+')">'+Icon('check',12)+' Обрати</button></div></div></div>';
+  }).join(""):'<div class="empty" style="grid-column:1/-1"><span class="ic">'+Icon('folder',30)+'</span>Немає підкатегорій — оберіть батьківську кнопкою «Обрати»</div>';
+}
+function pickCatPicker(id){
+  var list=catpScope==='drop'?(CC.cats_drop||[]):catpScope==='ready'?(CC.cats_ready||[]):(CC.cats_base||[]);
+  setModelCatValue(catpTarget,list,id||"");
+  closeM('cat-picker-modal');
 }
 
 // ── Create model ─────────────────────────────────────────────────
@@ -897,7 +936,7 @@ async function openNewModel(){
   document.getElementById("mm-err").style.display="none";
   mmSizeGridPhoto="";document.getElementById("mm-sizegrid-preview").innerHTML="—";
   fillModelCat(null);
-  const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
+  fillModelCatDrop(null);
   document.getElementById("mm-channel").value="hot";document.getElementById("mm-warehouse").value="base";
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();
