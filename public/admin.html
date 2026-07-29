@@ -1980,7 +1980,7 @@ function renderReturns(orders){
       '</div><div style="text-align:right">'+
       (o.return_received?'<div style="font-size:9px;color:var(--acc)">'+Icon('check',11)+' Проведено '+(o.return_received_at?.slice(0,16)||"")+'</div>':'<div style="font-size:11px;font-weight:700;color:'+dayColor+'">⏱ '+days+' '+(days===1?"день":"днів")+'</div>')+
       '<div style="font-size:10px;color:var(--td);margin-top:2px">'+(o.updated_at?.slice(0,16)||"")+'</div></div></div>'+
-      '<div style="padding:4px 14px 10px">'+o.items.map(function(it){var ph=it.var_photo||it.print_photo||it.bp_photo;
+      '<div style="padding:4px 14px 10px">'+o.items.map(function(it){var ph=it.var_photo||it.print_photo||(it.print_id?'':it.bp_photo);
         return '<div style="display:flex;gap:8px;padding:4px 0;align-items:center;border-top:1px solid var(--brd);">'+(ph?'<img src="'+ph+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+
         '<div style="flex:1;font-size:11px;color:var(--th)">'+esc(it.var_name)+' <b style="color:var(--acc)">'+esc(it.size_name)+'</b></div>'+
         (it.returned_to_stock?'<div style="font-size:10px;color:'+(it.return_condition==="damaged"?"var(--red)":"var(--acc)")+'">'+Icon('check',11)+' '+(it.return_condition==="damaged"?"Брак списано":"На складі")+'</div>':'<div style="display:flex;gap:4px"><button class="btn btn-sm btn-p" onclick="admRetItem('+it.id+',this,\'good\')" style="font-size:9px">'+Icon('check',10)+' Придатний</button><button class="btn btn-sm btn-d" onclick="admRetItem('+it.id+',this,\'damaged\')" style="font-size:9px">'+Icon('x',10)+' Брак</button></div>')+

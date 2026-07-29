@@ -2434,7 +2434,7 @@ app.get("/api/returns", authMiddleware, (req, res) => {
   const orders = db.prepare(`SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id 
     WHERE o.status IN ('refused','return_transit') ORDER BY o.updated_at DESC`).all();
   orders.forEach(o => {
-    o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,s.name as size_name,oi.returned_to_stock
+    o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,bp.photo as bp_photo,p.photo as print_photo,s.name as size_name,oi.returned_to_stock
       FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id
       WHERE oi.order_id=?`).all(o.id);
   });
