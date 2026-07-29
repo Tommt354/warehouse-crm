@@ -1063,6 +1063,8 @@ input[type="number"]::-webkit-outer-spin-button {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .crd-sub {
@@ -1139,6 +1141,8 @@ input[type="number"]::-webkit-outer-spin-button {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 4px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .pcard-sub {
