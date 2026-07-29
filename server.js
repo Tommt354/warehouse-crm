@@ -279,7 +279,7 @@ app.get("/api/models/:id", authMiddleware, (req, res) => {
 });
 
 app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, category_id, category_drop_id, is_ready_product, cost_price, drop_price, drop_channel, main_warehouse, weight, color_ids, size_ids, print_ids, patch_ids, print_cats, workers, size_grid_photo } = req.body;
+  const { name, category_id, category_drop_id, is_ready_product, cost_price, drop_price, drop_channel, main_warehouse, weight, color_ids, size_ids, print_ids, patch_ids, print_cats, var_photos, bp_photos, workers, size_grid_photo } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
   if (!color_ids?.length) return res.status(400).json({ error: "Оберіть кольори" });
   if (!size_ids?.length) return res.status(400).json({ error: "Оберіть розміри" });
@@ -302,18 +302,19 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
     const colors=db.prepare(`SELECT * FROM colors WHERE id IN(${color_ids.map(()=>"?").join(",")})`).all(...color_ids);
     const sizes=db.prepare(`SELECT * FROM sizes WHERE id IN(${size_ids.map(()=>"?").join(",")})`).all(...size_ids);
     const prints=print_ids?.length?db.prepare(`SELECT * FROM prints WHERE id IN(${print_ids.map(()=>"?").join(",")})`).all(...print_ids):[];
-    const cbp=db.prepare("INSERT INTO base_products(model_id,color_id,name,cost_price,drop_price)VALUES(?,?,?,?,?)");
-    const cv=db.prepare("INSERT INTO variations(base_product_id,print_id,name,category_drop_id)VALUES(?,?,?,?)");
+    const cbp=db.prepare("INSERT INTO base_products(model_id,color_id,name,cost_price,drop_price,photo)VALUES(?,?,?,?,?,?)");
+    const cv=db.prepare("INSERT INTO variations(base_product_id,print_id,name,category_drop_id,photo)VALUES(?,?,?,?,?)");
     const csb=db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity)VALUES(?,?,0)");
     const csr=db.prepare("INSERT INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,0)");
     let bc=0,vc=0;
     const cp=parseFloat(cost_price)||0,dp=parseFloat(drop_price)||0;
     for(const col of colors){
       const bpn=`${name.trim()} ${col.name}`;
-      const bp=cbp.run(mid,col.id,bpn,cp,dp);bc++;
+      const bpPhoto=(bp_photos&&bp_photos[col.id])?String(bp_photos[col.id]):"";
+      const bp=cbp.run(mid,col.id,bpn,cp,dp,bpPhoto);bc++;
       for(const sz of sizes)csb.run(bp.lastInsertRowid,sz.id);
-      if(is_ready_product){cv.run(bp.lastInsertRowid,null,bpn,null);vc++}
-      else{for(const pr of prints){const pcat=(print_cats&&print_cats[pr.id])?parseInt(print_cats[pr.id])||null:null;const v=cv.run(bp.lastInsertRowid,pr.id,`${bpn} — ${pr.name}`,pcat);vc++;for(const sz of sizes)csr.run(v.lastInsertRowid,sz.id)}}
+      if(is_ready_product){cv.run(bp.lastInsertRowid,null,bpn,null,"");vc++}
+      else{for(const pr of prints){const pcat=(print_cats&&print_cats[pr.id])?parseInt(print_cats[pr.id])||null:null;const vphoto=(var_photos&&var_photos[pr.id]&&var_photos[pr.id][col.id])?String(var_photos[pr.id][col.id]):"";const v=cv.run(bp.lastInsertRowid,pr.id,`${bpn} — ${pr.name}`,pcat,vphoto);vc++;for(const sz of sizes)csr.run(v.lastInsertRowid,sz.id)}}
     }
     return{mid,bc,vc};
   })();
