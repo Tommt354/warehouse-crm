@@ -2391,6 +2391,29 @@ app.get("/api/scan/stats", authMiddleware, (req, res) => {
   res.json({ today, yesterday, week, returnsToday, returnsTotal, byDay, recent });
 });
 
+// ── FOREIGN PARCELS (закордонні посилки — no NP TTN, logged by phone) ──────
+app.post("/api/foreign-parcels", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const phone = (req.body.phone || "").trim();
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 5) return res.status(400).json({ error: "Вкажіть коректний номер телефону" });
+  const r = db.prepare("INSERT INTO foreign_parcels(phone,phone_digits,packed_by)VALUES(?,?,?)").run(phone, digits, req.user.id);
+  const parcel = db.prepare("SELECT fp.*,u.name as packed_by_name FROM foreign_parcels fp LEFT JOIN users u ON fp.packed_by=u.id WHERE fp.id=?").get(r.lastInsertRowid);
+  res.json({ ok: true, parcel });
+});
+app.get("/api/foreign-parcels", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const phone = (req.query.phone || "").trim();
+  const digits = phone.replace(/\D/g, "");
+  let parcels;
+  if (phone) {
+    parcels = db.prepare(`SELECT fp.*,u.name as packed_by_name FROM foreign_parcels fp LEFT JOIN users u ON fp.packed_by=u.id
+      WHERE (?!='' AND fp.phone_digits LIKE ?) OR fp.phone LIKE ? ORDER BY fp.packed_at DESC LIMIT 50`)
+      .all(digits, "%" + digits + "%", "%" + phone + "%");
+  } else {
+    parcels = db.prepare("SELECT fp.*,u.name as packed_by_name FROM foreign_parcels fp LEFT JOIN users u ON fp.packed_by=u.id ORDER BY fp.packed_at DESC LIMIT 50").all();
+  }
+  res.json({ parcels });
+});
+
 // Confirms a return as physically received — this, not the moment NP flags
 // a refusal or the moment someone scans the return TTN to look the order
 // up, is what stops the "не отримано" clock and is what gets logged with

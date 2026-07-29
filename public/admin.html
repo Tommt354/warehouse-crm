@@ -179,7 +179,7 @@
 <div class="acts" style="margin-bottom:4px"><button class="btn on" id="ar-all" onclick="admReady='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі</button><button class="btn" id="ar-0" onclick="admReady='0';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="printer" data-size="15"></i> Не готові</button><button class="btn" id="ar-1" onclick="admReady='1';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="check" data-size="15"></i> Готові товари</button></div>
 <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="admOrdPage=0;loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button></div>
 <div style="display:flex;gap:3px;justify-content:flex-end;margin-bottom:6px"><button class="stab" id="adm-p-7" onclick="setAdmDatePeriod(7)">7д</button><button class="stab" id="adm-p-15" onclick="setAdmDatePeriod(15)">15д</button><button class="stab on" id="adm-p-30" onclick="setAdmDatePeriod(30)">30д</button></div>
-<div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="admOrdPage=0;loadAdmOrders(admOrdFilter)"></div>
+<div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН або телефону..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="admOrdPage=0;loadAdmOrders(admOrdFilter)"></div>
 <div class="acts" style="flex-wrap:wrap;gap:4px">
   <button class="btn" onclick="admOrdPage=0;loadAdmOrders('')" id="ao-all">Всі</button>
   <button class="btn" onclick="admOrdPage=0;loadAdmOrders('new')" id="ao-new">Нові</button>
@@ -194,6 +194,7 @@
   <div style="font-size:11px;color:var(--td);display:flex;align-items:center;gap:6px">На сторінці: <select id="adm-ord-pagesize" onchange="admOrdPage=0;loadAdmOrders(admOrdFilter)" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><option value="20">20</option><option value="40">40</option><option value="50" selected>50</option></select></div>
   <button id="adm-track-btn" class="btn btn-sm" onclick="admTrackNP()" style="border-color:rgba(66,165,245,.3);color:var(--blue);font-size:11px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button>
 </div>
+<div id="adm-foreign"></div>
 <div id="adm-orders"></div>
 <div class="pagi" id="adm-ord-pagi"></div>
 </div>
@@ -1412,6 +1413,7 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
   var df=document.getElementById("adm-df")?.value||"",dt=document.getElementById("adm-dt")?.value||"";
   if(df)url+="&date_from="+df;if(dt)url+="&date_to="+dt;
   var ttn=document.getElementById("adm-ttn")?.value||"";if(ttn)url+="&ttn_search="+ttn;
+  loadAdmForeign(ttn.trim());
   const r=await api(url);const orders=r.orders;
   const el=document.getElementById("adm-orders");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('clipboardList',40)+'</span>Немає замовлень</div>';document.getElementById("adm-ord-pagi").innerHTML="";return}
@@ -1464,6 +1466,14 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
   if(admPages>1){var ph="";for(var p=0;p<admPages;p++)ph+='<button class="'+(p===admOrdPage?"on":"")+'" onclick="admOrdPage='+p+';loadAdmOrders(admOrdFilter)">'+(p+1)+'</button>';document.getElementById("adm-ord-pagi").innerHTML=ph}else document.getElementById("adm-ord-pagi").innerHTML="";
   clearTimeout(admTtnPollT);
   if(orders.some(o=>o.ttn_pending))admTtnPollT=setTimeout(()=>loadAdmOrders(admOrdFilter,true),2000);
+}
+async function loadAdmForeign(q){
+  var el=document.getElementById("adm-foreign");if(!el)return;
+  if(!q){el.innerHTML="";return}
+  try{
+    var fps=(await api("/api/foreign-parcels?phone="+encodeURIComponent(q))).parcels;
+    el.innerHTML=fps.length?fps.map(function(p){return '<div style="background:var(--card);border:1px solid rgba(124,134,255,.35);border-radius:12px;padding:12px 14px;margin-bottom:8px"><div style="font-size:12px;font-weight:700;color:var(--acc)">'+Icon('package',13)+' Закордонна посилка</div><div style="font-size:15px;font-family:JetBrains Mono,monospace;color:var(--th);margin-top:3px">'+esc(p.phone)+'</div><div style="font-size:10px;color:var(--td);margin-top:3px">'+Icon('check',11)+' Запаковано: '+(p.packed_at||"").slice(0,16)+(p.packed_by_name?' · '+esc(p.packed_by_name):'')+'</div></div>'}).join(""):"";
+  }catch(e){el.innerHTML=""}
 }
 async function chAdmSt(id,st){try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})});loadAdmOrders(admOrdFilter)}catch(e){}}
 async function cancelAdmOrder(id){if(!confirm("Скасувати замовлення? Сток повернеться на склад."))return;try{await api("/api/orders/"+id+"/cancel",{method:"POST"});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}

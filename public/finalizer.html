@@ -46,13 +46,14 @@
   <div class="sc"><div class="sv" style="color:var(--th)" id="st-week">0</div><div class="sl">за тиждень</div></div>
 </div>
 <input class="scan-input" id="scan-ttn" placeholder="Скануйте ТТН посилки..." autofocus>
+<button class="btn" style="width:100%;justify-content:center;margin-bottom:12px" onclick="openForeignParcel()"><i data-icon="package" data-size="15"></i> + Закордонна посилка</button>
 <div id="scan-result"></div>
 <div style="margin-top:14px;font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Останні скановані:</div>
 <div id="recent-scans"></div>
 </div>
 
 <div class="page" id="pg-stats">
-<input id="fs-search" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:13px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:10px" onkeydown="if(event.key==='Enter')searchFinTtn()">
+<input id="fs-search" placeholder="Пошук по ТТН або телефону..." style="width:100%;padding:8px 12px;font-size:13px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:10px" onkeydown="if(event.key==='Enter')searchFinTtn()">
 <div id="fs-result"></div>
 <div id="stats-content"></div>
 </div>
@@ -76,6 +77,19 @@
 </div>
 
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
+
+<div id="fp-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:20px;max-width:360px;width:100%">
+    <h3 style="font-size:16px;color:var(--th);margin:0 0 4px"><i data-icon="package" data-size="16"></i> Закордонна посилка</h3>
+    <div style="font-size:12px;color:var(--td);margin-bottom:12px">Введіть номер телефону клієнта. Дата й час упаковки зафіксуються автоматично.</div>
+    <input id="fp-phone" type="tel" placeholder="+380..." style="width:100%;padding:12px;font-size:16px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:10px;color:#fff;outline:0;margin-bottom:12px" onkeydown="if(event.key==='Enter')saveForeignParcel()">
+    <div id="fp-msg"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-p" style="flex:1;justify-content:center" onclick="saveForeignParcel()"><i data-icon="check" data-size="15"></i> Зафіксувати</button>
+      <button class="btn" onclick="closeForeignParcel()">Скасувати</button>
+    </div>
+  </div>
+</div>
 
 <script>
 var ME;
@@ -172,12 +186,35 @@ async function finalizeOrder(id){
   loadStats();loadRecent()}catch(e){}
 }
 
-async function searchFinTtn(){
-  var ttn=document.getElementById("fs-search").value.trim();var el=document.getElementById("fs-result");
-  if(!ttn){el.innerHTML="";return}
+function openForeignParcel(){document.getElementById("fp-phone").value="";document.getElementById("fp-msg").innerHTML="";document.getElementById("fp-modal").style.display="flex";setTimeout(function(){document.getElementById("fp-phone").focus()},50)}
+function closeForeignParcel(){document.getElementById("fp-modal").style.display="none";document.getElementById("scan-ttn").focus()}
+async function saveForeignParcel(){
+  var phone=document.getElementById("fp-phone").value.trim();var msg=document.getElementById("fp-msg");
+  if(!phone){msg.innerHTML='<div class="msg msg-err">Вкажіть номер телефону</div>';return}
   try{
-    var o=(await api("/api/orders/by-ttn/"+encodeURIComponent(ttn))).order;
-    el.innerHTML='<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px;margin-bottom:14px">'+
+    var r=await api("/api/foreign-parcels",{method:"POST",body:JSON.stringify({phone:phone})});
+    closeForeignParcel();
+    document.getElementById("scan-result").innerHTML='<div class="msg msg-ok" style="font-size:14px;padding:14px;text-align:center">'+Icon('check',14)+' Закордонну посилку зафіксовано<br><span style="font-family:JetBrains Mono,monospace">'+esc(r.parcel.phone)+'</span> · '+(r.parcel.packed_at||"").slice(0,16)+'</div>';
+  }catch(e){msg.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
+}
+
+async function searchFinTtn(){
+  var q=document.getElementById("fs-search").value.trim();var el=document.getElementById("fs-result");
+  if(!q){el.innerHTML="";return}
+  var html="";
+  // Foreign parcels (за номером телефону)
+  try{
+    var fps=(await api("/api/foreign-parcels?phone="+encodeURIComponent(q))).parcels;
+    html+=fps.map(function(p){return '<div style="background:var(--card);border:1px solid rgba(124,134,255,.35);border-radius:12px;padding:14px;margin-bottom:10px">'+
+      '<div style="font-size:13px;font-weight:700;color:var(--acc)">'+Icon('package',13)+' Закордонна посилка</div>'+
+      '<div style="font-size:15px;font-family:JetBrains Mono,monospace;color:var(--th);margin-top:4px">'+esc(p.phone)+'</div>'+
+      '<div style="font-size:11px;color:var(--td);margin-top:4px">'+Icon('check',11)+' Запаковано: '+(p.packed_at||"").slice(0,16)+(p.packed_by_name?' · '+esc(p.packed_by_name):'')+'</div>'+
+      '</div>'}).join("");
+  }catch(e){}
+  // Order by TTN
+  try{
+    var o=(await api("/api/orders/by-ttn/"+encodeURIComponent(q))).order;
+    html+='<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px;margin-bottom:14px">'+
       '<div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span></div>'+
       '<div style="font-size:12px;color:var(--th);margin-top:4px">'+esc(o.client_name)+'</div>'+
       (o.ttn?'<div style="font-size:12px;font-family:JetBrains Mono,monospace;color:'+ttnColor(o)+';margin-top:6px">ТТН: '+esc(o.ttn)+'</div>':'')+
@@ -185,7 +222,8 @@ async function searchFinTtn(){
       (o.shipped_at?'<div style="font-size:11px;color:var(--acc)">'+Icon('truck',11)+' Відправлено: '+o.shipped_at.slice(0,16)+'</div>':'')+
       (o.np_status_text?'<div style="font-size:11px;color:var(--td);margin-top:4px">'+Icon('package',11)+' '+esc(o.np_status_text)+'</div>':'')+
       '</div>';
-  }catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
+  }catch(e){}
+  el.innerHTML=html||'<div class="msg msg-err">'+Icon('x',13)+' Нічого не знайдено</div>';
 }
 async function loadFullStats(){
   try{var r=await api("/api/scan/stats");

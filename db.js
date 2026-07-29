@@ -456,6 +456,21 @@ db.exec(`
     FOREIGN KEY (worker_id) REFERENCES workers(id)
   );
 
+  -- Закордонні посилки: parcels shipped abroad have no Nova Poshta TTN, so a
+  -- packer can't scan them. She just logs the client's phone at pack time;
+  -- phone_digits is the digits-only form so search matches regardless of how
+  -- the number was formatted (+380, spaces, etc.).
+  CREATE TABLE IF NOT EXISTS foreign_parcels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT NOT NULL,
+    phone_digits TEXT NOT NULL DEFAULT '',
+    packed_by INTEGER,
+    packed_at TEXT DEFAULT (datetime('now','localtime')),
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (packed_by) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_fparcels_digits ON foreign_parcels(phone_digits);
   CREATE INDEX IF NOT EXISTS idx_orders_drop ON orders(dropshipper_id);
   CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
   CREATE INDEX IF NOT EXISTS idx_bp_model ON base_products(model_id);
