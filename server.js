@@ -987,17 +987,29 @@ app.get("/api/kits", authMiddleware, (req, res) => {
         item.component_stock[sid] = base;
       });
     });
-    // Combined stock = min across components (for backward compat)
+    // Combined stock per size. Components can have different size systems (a
+    // cap has only "Універсальний"; clothing has S/M/L/XL). A one-size
+    // component must NOT create its own size column and must NOT zero out the
+    // clothing sizes — instead it acts as a GATE: if it's out of stock the
+    // whole kit is unavailable in every size. Orderable sizes come from the
+    // multi-size (clothing) components: availability = min across them, capped
+    // by the one-size gate.
     k.stock = {}; k.total_stock = 0;
     if (k.items.length) {
-      const allSids = new Set();
-      k.items.forEach(i => Object.keys(i.component_stock).forEach(s => allSids.add(parseInt(s))));
-      for (const sid of allSids) {
-        let minStock = Infinity;
-        k.items.forEach(i => { minStock = Math.min(minStock, i.component_stock[sid] || 0); });
-        if (minStock === Infinity) minStock = 0;
-        k.stock[sid] = minStock;
-        k.total_stock += minStock;
+      const oneSizeComps = k.items.filter(i => Object.keys(i.component_stock).length <= 1);
+      const sizedComps = k.items.filter(i => Object.keys(i.component_stock).length > 1);
+      let gate = Infinity;
+      oneSizeComps.forEach(i => { gate = Math.min(gate, Object.values(i.component_stock)[0] || 0); });
+      const columnComps = sizedComps.length ? sizedComps : k.items; // all one-size → fall back
+      const sids = new Set();
+      columnComps.forEach(i => Object.keys(i.component_stock).forEach(s => sids.add(parseInt(s))));
+      for (const sid of sids) {
+        let m = Infinity;
+        columnComps.forEach(i => { m = Math.min(m, i.component_stock[sid] || 0); });
+        if (sizedComps.length && gate !== Infinity) m = Math.min(m, gate);
+        if (m === Infinity) m = 0;
+        k.stock[sid] = m;
+        k.total_stock += m;
       }
     }
     k.is_kit = true;

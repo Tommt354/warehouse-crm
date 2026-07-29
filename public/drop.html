@@ -179,7 +179,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 </div></div>
 
 <!-- Kit size picker modal -->
-<div class="modal-bg" id="kit-pick-modal"><div class="modal" style="max-width:500px">
+<div class="modal-bg" id="kit-pick-modal" style="z-index:500"><div class="modal" style="max-width:500px">
 <h3 id="kit-pick-title"><i data-icon="gift" data-size="15"></i> Оберіть розміри</h3>
 <div id="kit-pick-body"></div>
 <div id="kit-pick-err" class="msg msg-err" style="display:none"></div>
@@ -405,7 +405,7 @@ function renderCpProds(){
   el.innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><button style="width:100%;padding:6px;font-size:11px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('gift',11)+' Обрати розміри</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')"><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>')+'</div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"'+(q>0?' onclick="pickKitUnified('+v.id+','+s.id+',\''+s.name+'\')"':'')+'><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div><button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('ruler',11)+' Різні розміри комплектуючих</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')"><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>')+'</div></div>';
   }).join("")||'<div class="empty"><span class="ic">'+Icon('package',30)+'</span>Немає товарів</div>';
 }
 
@@ -429,7 +429,7 @@ function openKitPick(kitId){
     allSz.forEach(function(s){
       var q=ci.component_stock?ci.component_stock[s.id]:0;
       if(q===undefined)return;
-      html+='<div class="stock-sz '+(q<=0?"zero":"avail")+'" style="cursor:pointer" onclick="selectKitSize('+idx+','+s.id+',\''+s.name+'\',this)"><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>';
+      html+='<div class="stock-sz '+(q<=0?"zero":"avail")+'" style="cursor:pointer" onclick="selectKitSize('+idx+','+s.id+',\''+s.name+'\',this)"><b>'+s.name+'</b><br>'+(q<=0?"нема":q+" шт")+'</div>';
     });
     html+='</div></div>';
   });
@@ -462,6 +462,18 @@ function confirmKitPick(){
     oItems[oItems.length-kit.items.length].weight=kit.weight||0.5;
   }
   renderOItems();calcPay();calcOrderWeight();clM("kit-pick-modal");clM("cp-modal");
+}
+// Quick path: one size for the whole kit — every sized component takes that
+// size, one-size components (cap) take their only size.
+function pickKitUnified(kitId,sizeId,sizeName){
+  var kit=allV.find(function(v){return v.id===kitId&&v.is_kit});if(!kit||!kit.items)return;
+  kit.items.forEach(function(ci){
+    var cs=ci.component_stock||{};var sid=sizeId,sname=sizeName;
+    if(cs[sizeId]===undefined){var only=Object.keys(cs)[0];if(only){sid=parseInt(only);sname=(allSz.find(function(s){return s.id==sid})||{}).name||sizeName}}
+    oItems.push({varId:ci.variation_id,sizeId:sid,name:ci.var_name+" ("+kit.name+")",price:0,sz:sname,photo:ci.var_photo||ci.bp_photo||"",qty:1,kitId:null,weight:0});
+  });
+  if(oItems.length>=kit.items.length){oItems[oItems.length-kit.items.length].price=kit.drop_price;oItems[oItems.length-kit.items.length].weight=kit.weight||0.5}
+  renderOItems();calcPay();calcOrderWeight();clM("cp-modal");
 }
 
 function renderOItems(){
