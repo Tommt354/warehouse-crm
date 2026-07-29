@@ -544,6 +544,15 @@ addCol("orders","parcel_height","REAL DEFAULT 0");
 addCol("orders","parcel_length","REAL DEFAULT 0");
 addCol("workers","use_daily_rate","INTEGER DEFAULT 1");
 addCol("worker_payroll","task_id","INTEGER DEFAULT NULL");
+// Payroll operation counts now live on the print/patch itself (not on the
+// product): each carries how many printer-operations and seamstress-operations
+// applying it represents. calcOrderPayroll sums these across all prints and
+// patches linked to an ordered item's model. Replaces the old per-model
+// product_worker_ops table (kept in schema, no longer read).
+addCol("prints","printer_ops","INTEGER DEFAULT 0");
+addCol("prints","seamstress_ops","INTEGER DEFAULT 0");
+addCol("patches","printer_ops","INTEGER DEFAULT 0");
+addCol("patches","seamstress_ops","INTEGER DEFAULT 0");
 // stock_base.quantity ("списана"/allocated) is decremented the instant a
 // dropshipper places an order, before anyone has physically touched the
 // shelf — so it can run negative when allow_negative_order permits, and a

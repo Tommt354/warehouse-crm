@@ -161,21 +161,25 @@ function dirRoutes(table, route) {
     res.json({ items });
   });
   app.post(`/api/${route}`, authMiddleware, requireRole("admin"), (req, res) => {
-    const { name, hex_code, photo, sort_order } = req.body;
+    const { name, hex_code, photo, sort_order, printer_ops, seamstress_ops } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: "Назва обов'язкова" });
     const cols=["name","sort_order"],vals=[name.trim(),parseInt(sort_order)||0];
     if(hex_code!==undefined){cols.push("hex_code");vals.push(hex_code)}
     if(photo!==undefined){cols.push("photo");vals.push(photo)}
+    if(printer_ops!==undefined){cols.push("printer_ops");vals.push(parseInt(printer_ops)||0)}
+    if(seamstress_ops!==undefined){cols.push("seamstress_ops");vals.push(parseInt(seamstress_ops)||0)}
     const r=db.prepare(`INSERT INTO ${table}(${cols.join(",")})VALUES(${cols.map(()=>"?").join(",")})`).run(...vals);
     res.json({ok:true,item:db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(r.lastInsertRowid)});
   });
   app.put(`/api/${route}/:id`, authMiddleware, requireRole("admin"), (req, res) => {
-    const{name,hex_code,photo,sort_order,active}=req.body;const s=[],v=[];
+    const{name,hex_code,photo,sort_order,active,printer_ops,seamstress_ops}=req.body;const s=[],v=[];
     if(name!==undefined){s.push("name=?");v.push(name.trim())}
     if(hex_code!==undefined){s.push("hex_code=?");v.push(hex_code)}
     if(photo!==undefined){s.push("photo=?");v.push(photo)}
     if(sort_order!==undefined){s.push("sort_order=?");v.push(parseInt(sort_order)||0)}
     if(active!==undefined){s.push("active=?");v.push(active?1:0)}
+    if(printer_ops!==undefined){s.push("printer_ops=?");v.push(parseInt(printer_ops)||0)}
+    if(seamstress_ops!==undefined){s.push("seamstress_ops=?");v.push(parseInt(seamstress_ops)||0)}
     if(s.length){v.push(req.params.id);db.prepare(`UPDATE ${table} SET ${s.join(",")} WHERE id=?`).run(...v)}
     res.json({ok:true});
   });
@@ -2312,15 +2316,20 @@ function calcOrderPayroll(orderId, shiftId) {
   for (const item of items) {
     const qty = item.quantity;
     const isReturn = item.from_returns > 0;
-    // Product-specific ops (для швей і принтувальників)
-    const ops = db.prepare("SELECT * FROM product_worker_ops WHERE model_id=?").all(item.model_id);
-    for (const op of ops) {
-      const workers = shiftWorkers.filter(w => w.role === op.worker_role);
-      workers.forEach(w => {
-        const amount = w.per_item_rate * op.operations_count * qty;
-        if (amount > 0) ins.run(w.worker_id, shiftId, orderId, amount, "ops", op.worker_role + " ×" + op.operations_count);
-      });
-    }
+    // Printer/seamstress ops now live on the prints & patches themselves — sum
+    // each op-type across every print and patch linked to this item's model.
+    const pr = db.prepare("SELECT COALESCE(SUM(p.printer_ops),0) po, COALESCE(SUM(p.seamstress_ops),0) so FROM model_prints mp JOIN prints p ON mp.print_id=p.id WHERE mp.model_id=?").get(item.model_id);
+    const pa = db.prepare("SELECT COALESCE(SUM(p.printer_ops),0) po, COALESCE(SUM(p.seamstress_ops),0) so FROM model_patches mp JOIN patches p ON mp.patch_id=p.id WHERE mp.model_id=?").get(item.model_id);
+    const totalPrinter = (pr.po || 0) + (pa.po || 0);
+    const totalSeamstress = (pr.so || 0) + (pa.so || 0);
+    if (totalPrinter > 0) shiftWorkers.filter(w => w.role === "printer").forEach(w => {
+      const amount = w.per_item_rate * totalPrinter * qty;
+      if (amount > 0) ins.run(w.worker_id, shiftId, orderId, amount, "ops", "Принтувальник ×" + totalPrinter);
+    });
+    if (totalSeamstress > 0) shiftWorkers.filter(w => w.role === "seamstress").forEach(w => {
+      const amount = w.per_item_rate * totalSeamstress * qty;
+      if (amount > 0) ins.run(w.worker_id, shiftId, orderId, amount, "ops", "Швея ×" + totalSeamstress);
+    });
     // Packer (per item)
     shiftWorkers.filter(w => w.role === "packer").forEach(w => {
       const rate = isReturn ? (w.per_return_item_rate || w.per_item_rate) : w.per_item_rate;

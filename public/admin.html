@@ -421,6 +421,12 @@
 <div class="modal-bg" id="dir-modal"><div class="modal"><h3 id="dm-t">Додати</h3>
 <div class="fld"><label>Назва</label><input id="dm-name"></div>
 <div class="fld" id="dm-hex-w" style="display:none"><label>Колір</label><input id="dm-hex" type="color" value="#808080"></div>
+<div id="dm-ops-w" style="display:none"><label style="font-size:11px;color:var(--td)">Операції для нарахування ЗП (за 1 шт товару)</label>
+  <div class="fld-row" style="margin-top:4px">
+    <div class="fld"><label>Операцій принтувальника</label><input id="dm-printer-ops" type="number" min="0" value="0"></div>
+    <div class="fld"><label>Операцій швеї</label><input id="dm-seamstress-ops" type="number" min="0" value="0"></div>
+  </div>
+</div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveDI()">Зберегти</button><button class="btn" onclick="closeM('dir-modal')">Скасувати</button></div>
 </div></div>
 
@@ -457,14 +463,6 @@
 <div id="mm-pw">
 <div class="fld"><label>Принти</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук принтів..." onfocus="openPS(this,'mm-prints-dd')" oninput="filterPS(this,'mm-prints-dd')"><div class="popup-dd" id="mm-prints-dd"></div></div><div class="sel-tags" id="mm-prints-tags"></div></div>
 <div class="fld"><label>Нашивки</label><div class="popup-sel"><input class="popup-sel-input" placeholder="Пошук нашивок..." onfocus="openPS(this,'mm-patches-dd')" oninput="filterPS(this,'mm-patches-dd')"><div class="popup-dd" id="mm-patches-dd"></div></div><div class="sel-tags" id="mm-patches-tags"></div></div>
-</div>
-<div class="fld"><label>Операції для ЗП</label>
-<div id="mm-ops"></div>
-<div style="display:flex;gap:4px;margin-top:4px">
-  <select id="mm-op-role" style="flex:1;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати роль</option><option value="seamstress">Швея (нашивки)</option><option value="printer">Принтувальник (принти)</option></select>
-  <input id="mm-op-count" type="number" value="1" min="1" style="width:60px;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff" placeholder="К-сть">
-  <button class="btn btn-sm" onclick="addModelOp()">+</button>
-</div>
 </div>
 <div id="mm-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveModel()"><i data-icon="rocket" data-size="15"></i> Створити</button><button class="btn" onclick="closeM('model-modal')">Скасувати</button></div>
@@ -505,8 +503,6 @@
 </div>
 <div class="fld"><label>Колір</label><select id="ebp-color"></select></div>
 <div class="fld"><label>Залишки (можна змінювати)</label><div id="ebp-stock"></div></div>
-<div class="fld"><label>Операції для ЗП (з моделі)</label><div id="ebp-ops"></div>
-<div style="display:flex;gap:4px;margin-top:4px"><select id="ebp-op-role" style="flex:1;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати</option><option value="seamstress">Швея</option><option value="printer">Принтувальник</option></select><input id="ebp-op-count" type="number" value="1" min="1" style="width:50px;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><button class="btn btn-sm" onclick="addBpOp()">+</button></div></div>
 <div style="margin-top:4px"><select id="ebp-wadd" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати працівника</option></select></div>
 <div class="fld"><label>Варіації</label><div id="ebp-vars" style="font-size:11px;color:var(--td);max-height:100px;overflow-y:auto"></div></div>
 <div class="fld"><label>Модель</label><div id="ebp-model" style="font-size:11px;color:var(--td)"></div></div>
@@ -522,7 +518,6 @@
 <div class="fld"><label>Принт</label><select id="ev-print-sel"></select></div>
 <div class="fld"><label>Колір / Базовий товар</label><div id="ev-base" style="font-size:11px;color:var(--th)"></div></div>
 <div class="fld"><label>Залишки (база + повернення)</label><div id="ev-stock"></div></div>
-<div class="fld"><label>Операції для ЗП</label><div id="ev-ops" style="font-size:11px"></div></div>
 <div class="fld"><label>Фото</label><div style="display:flex;gap:6px;align-items:center"><div id="ev-photo" style="width:80px;height:80px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('ev-fi').click()"><i data-icon="camera" data-size="13"></i></button><input type="file" id="ev-fi" accept="image/*" style="display:none" onchange="uploadVarPhoto(event)"></div></div>
 <div class="fld"><label>Статус</label><select id="ev-active"><option value="1">Активний</option><option value="0">Вимкнений</option></select></div>
 <div class="fld" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="ev-allow-neg" checked style="width:18px;height:18px;accent-color:var(--acc)"><label style="margin:0;font-size:12px;color:var(--t)">Дозволити замовлення при відсутності на складі</label></div>
@@ -661,10 +656,8 @@
 let ME,CC={colors:[],sizes:[],prints:[],patches:[],cats:[]};
 let curDir="colors",editDirId=null,editCatId=null,catPhoto="";
 let editUID=null,editUR=null,editBpId=null,editVarId=null;
-let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let modelOps=[];let mmSizeGridPhoto="";
+let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let mmSizeGridPhoto="";
 async function uploadModelSizeGrid(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});mmSizeGridPhoto=d.url;document.getElementById("mm-sizegrid-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
-function addModelOp(){var r=document.getElementById("mm-op-role").value;var c=parseInt(document.getElementById("mm-op-count").value)||1;if(!r)return;var rl={"seamstress":Icon('shirt',13)+" Швея","printer":Icon('printer',13)+" Принтувальник"};if(modelOps.find(function(o){return o.worker_role===r}))return;modelOps.push({worker_role:r,operations_count:c});renderModelOps();document.getElementById("mm-op-role").value=""}
-function renderModelOps(){document.getElementById("mm-ops").innerHTML=modelOps.map(function(o,i){var rl={"seamstress":Icon('shirt',13)+" Швея (нашивки)","printer":Icon('printer',13)+" Принтувальник (принти)"};return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+rl[o.worker_role]+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="modelOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="modelOps.splice('+i+',1);renderModelOps()">'+Icon('x',12)+'</button></div>'}).join("")}
 
 var ordStatusList=[];
 async function loadOrdStatusList(){try{ordStatusList=(await api("/api/order-statuses")).statuses.filter(s=>s.active)}catch(e){}}
@@ -769,11 +762,13 @@ async function loadDir(){
   const items=q?(curDir==="colors"?CC.colors:curDir==="sizes"?CC.sizes:curDir==="prints"?CC.prints:CC.patches).filter(i=>i.name.toLowerCase().includes(q.toLowerCase())):(curDir==="colors"?CC.colors:curDir==="sizes"?CC.sizes:curDir==="prints"?CC.prints:CC.patches);
   const el=document.getElementById("dir-list");
   if(!items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('packageOpen',40)+'</span>Порожньо</div>';return}
-  el.innerHTML=`<table class="tbl"><tr><th>Назва</th>${curDir==="colors"?"<th>Колір</th>":""}<th style="width:80px"></th></tr>${items.map(i=>`<tr><td style="color:var(--th)">${esc(i.name)}</td>${curDir==="colors"?`<td><span class="cdot" style="background:${i.hex_code||'#888'}"></span> ${i.hex_code||""}</td>`:""}<td><button class="btn btn-sm btn-a" onclick="editDirFn(${i.id})">${Icon('pencil',13)}</button> <button class="btn btn-sm btn-d" onclick="delDI(${i.id},'${esc(i.name)}')">${Icon('trash2',13)}</button></td></tr>`).join("")}</table>`;
+  const isOps=curDir==="prints"||curDir==="patches";
+  el.innerHTML=`<table class="tbl"><tr><th>Назва</th>${curDir==="colors"?"<th>Колір</th>":""}${isOps?'<th style="width:70px">Принт-оп</th><th style="width:70px">Швея-оп</th>':""}<th style="width:80px"></th></tr>${items.map(i=>`<tr><td style="color:var(--th)">${esc(i.name)}</td>${curDir==="colors"?`<td><span class="cdot" style="background:${i.hex_code||'#888'}"></span> ${i.hex_code||""}</td>`:""}${isOps?`<td style="text-align:center;font-family:'JetBrains Mono',monospace;color:var(--acc)">${i.printer_ops||0}</td><td style="text-align:center;font-family:'JetBrains Mono',monospace;color:var(--acc)">${i.seamstress_ops||0}</td>`:""}<td><button class="btn btn-sm btn-a" onclick="editDirFn(${i.id})">${Icon('pencil',13)}</button> <button class="btn btn-sm btn-d" onclick="delDI(${i.id},'${esc(i.name)}')">${Icon('trash2',13)}</button></td></tr>`).join("")}</table>`;
 }
-function addDirItem(){editDirId=null;document.getElementById("dm-t").textContent="Додати";document.getElementById("dm-name").value="";document.getElementById("dm-hex").value="#808080";document.getElementById("dm-hex-w").style.display=curDir==="colors"?"block":"none";openM("dir-modal")}
-function editDirFn(id){const items=curDir==="colors"?CC.colors:curDir==="sizes"?CC.sizes:curDir==="prints"?CC.prints:CC.patches;const i=items.find(x=>x.id===id);if(!i)return;editDirId=id;document.getElementById("dm-t").textContent=i.name;document.getElementById("dm-name").value=i.name;document.getElementById("dm-hex").value=i.hex_code||"#808080";document.getElementById("dm-hex-w").style.display=curDir==="colors"?"block":"none";openM("dir-modal")}
-async function saveDI(){const data={name:document.getElementById("dm-name").value};if(curDir==="colors")data.hex_code=document.getElementById("dm-hex").value;try{if(editDirId)await api(`/api/${curDir}/${editDirId}`,{method:"PUT",body:JSON.stringify(data)});else await api(`/api/${curDir}`,{method:"POST",body:JSON.stringify(data)});closeM("dir-modal");loadDir()}catch(e){alert(e.message)}}
+function dirIsOps(){return curDir==="prints"||curDir==="patches"}
+function addDirItem(){editDirId=null;document.getElementById("dm-t").textContent="Додати";document.getElementById("dm-name").value="";document.getElementById("dm-hex").value="#808080";document.getElementById("dm-hex-w").style.display=curDir==="colors"?"block":"none";document.getElementById("dm-ops-w").style.display=dirIsOps()?"block":"none";document.getElementById("dm-printer-ops").value="0";document.getElementById("dm-seamstress-ops").value="0";openM("dir-modal")}
+function editDirFn(id){const items=curDir==="colors"?CC.colors:curDir==="sizes"?CC.sizes:curDir==="prints"?CC.prints:CC.patches;const i=items.find(x=>x.id===id);if(!i)return;editDirId=id;document.getElementById("dm-t").textContent=i.name;document.getElementById("dm-name").value=i.name;document.getElementById("dm-hex").value=i.hex_code||"#808080";document.getElementById("dm-hex-w").style.display=curDir==="colors"?"block":"none";document.getElementById("dm-ops-w").style.display=dirIsOps()?"block":"none";document.getElementById("dm-printer-ops").value=i.printer_ops||0;document.getElementById("dm-seamstress-ops").value=i.seamstress_ops||0;openM("dir-modal")}
+async function saveDI(){const data={name:document.getElementById("dm-name").value};if(curDir==="colors")data.hex_code=document.getElementById("dm-hex").value;if(dirIsOps()){data.printer_ops=parseInt(document.getElementById("dm-printer-ops").value)||0;data.seamstress_ops=parseInt(document.getElementById("dm-seamstress-ops").value)||0}try{if(editDirId)await api(`/api/${curDir}/${editDirId}`,{method:"PUT",body:JSON.stringify(data)});else await api(`/api/${curDir}`,{method:"POST",body:JSON.stringify(data)});closeM("dir-modal");loadDir()}catch(e){alert(e.message)}}
 async function delDI(id,name){if(!confirm(`Видалити "${name}"?`))return;await api(`/api/${curDir}/${id}`,{method:"DELETE"});loadDir()}
 
 // ── Category photo upload ────────────────────────────────────────
@@ -848,9 +843,6 @@ async function editModelFields(id){
   mmSel={colors:new Set(m.colors.map(c=>c.id)),sizes:new Set(m.sizes.map(s=>s.id)),prints:new Set(m.prints.map(p=>p.id)),patches:new Set(m.patches.map(p=>p.id))};
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();
-  // Workers — load existing per-model operation rates
-  try{var opsR=await api("/api/product-worker-ops/"+id);modelOps=(opsR.ops||[]).map(function(o){return{worker_role:o.worker_role,operations_count:o.operations_count}})}catch(e){modelOps=[]}
-  renderModelOps();
   document.getElementById("mm-err").style.display="none";
   openM("model-modal");
 }
@@ -860,7 +852,6 @@ async function saveModelEdit(){
   const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,main_warehouse:document.getElementById("mm-warehouse").value,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,weight:document.getElementById("mm-weight").value,sync_products:true,size_grid_photo:mmSizeGridPhoto};
   try{
     await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});
-    await api("/api/product-worker-ops/"+editModelId,{method:"POST",body:JSON.stringify({ops:modelOps})});
     closeM("model-modal");editModelId=null;loadModels();
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
@@ -898,7 +889,7 @@ function fillModelCat(selectedId){
 // ── Create model ─────────────────────────────────────────────────
 async function openNewModel(){
   editModelId=null;
-  await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};modelOps=[];renderModelOps();
+  await refreshCC();mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};
   document.getElementById("mdl-t").textContent="Нова модель";
   document.getElementById("mm-name").value="";document.getElementById("mm-cost").value="0";document.getElementById("mm-drop").value="0";document.getElementById("mm-weight").value="0.3";
   document.getElementById("mm-ready").classList.remove("on");document.getElementById("mm-pw").style.display="block";
@@ -908,7 +899,7 @@ async function openNewModel(){
   const csd=document.getElementById("mm-cat-drop");csd.innerHTML='<option value="">—</option>';(CC.cats_drop||[]).forEach(c=>csd.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);
   document.getElementById("mm-channel").value="hot";document.getElementById("mm-warehouse").value="base";
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
-  renderSelTags();renderModelOps();
+  renderSelTags();
   openM("model-modal");
 }
 
@@ -925,7 +916,6 @@ function renderSelTags(){
     tags.innerHTML=[...mmSel[key]].map(id=>{const i=items.find(x=>x.id===id);return i?`<span class="sel-tag" onclick="mmSel.${key}.delete(${id});renderSelTags()">${esc(i.name)} ${Icon('x',11)}</span>`:""}).join("");
   });
 }
-// renderWorkers replaced by renderModelOps
 
 async function saveModel(){
   if(editModelId) return saveModelEdit();
@@ -934,7 +924,6 @@ async function saveModel(){
   const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,main_warehouse:document.getElementById("mm-warehouse").value,is_ready_product:isReady,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,weight:document.getElementById("mm-weight").value,color_ids:[...mmSel.colors],size_ids:[...mmSel.sizes],print_ids:isReady?[]:[...mmSel.prints],patch_ids:[...mmSel.patches],size_grid_photo:mmSizeGridPhoto};
   try{
     const r=await api("/api/models",{method:"POST",body:JSON.stringify(data)});
-    if(modelOps.length&&r.model_id)try{await api("/api/product-worker-ops/"+r.model_id,{method:"POST",body:JSON.stringify({ops:modelOps})})}catch(e){}
     closeM("model-modal");editModelId=null;loadModels();
   }catch(e){err.textContent=e.message;err.style.display="block"}
 }
@@ -1090,22 +1079,13 @@ async function openEditBp(id){
   // Stock - editable inputs. Shows/edits the physical (actual) count; saving
   // resets both the actual and allocated counters to match (see /api/stock/set).
   document.getElementById("ebp-stock").innerHTML=p.stock.map(s=>`<div class="fld-row" style="margin-bottom:3px"><div style="padding:5px 0;font-size:11px;color:var(--th)">${s.size_name}${s.quantity!==s.quantity_actual?` <span style="color:var(--td)">(з урах. замовлень: ${s.quantity})</span>`:""}</div><div><input type="number" data-sid="${s.size_id}" value="${s.quantity_actual}" min="0" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff;width:70px;text-align:center"></div></div>`).join("");
-  // Workers
   bpEditModelId=p.model_id;
-  try{var opsR=await api("/api/product-worker-ops/"+p.model_id);bpOps=(opsR.ops||[]).map(function(o){return{worker_role:o.worker_role,operations_count:o.operations_count}})}catch(e){bpOps=[]}
-  renderBpOps();
-  const ws=document.getElementById("ebp-wadd");ws.innerHTML='<option value="">+ працівник</option>';
-  try{(await api("/api/users?role=warehouse")).users.forEach(u=>ws.innerHTML+=`<option value="${u.id}">${esc(u.name)}</option>`)}catch(e){}
-  // ops handled via bpOps
   // Variations
   document.getElementById("ebp-vars").innerHTML=p.variations.map(v=>`${esc(v.name)}${v.print_name?" <span class='tag tag-y'>"+esc(v.print_name)+"</span>":""}`).join("<br>")||"—";
   // Photo
   document.getElementById("ebp-photo").innerHTML=p.photo?`<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover">`:"—";
   openM("edit-bp-modal");
 }
-let bpOps=[];
-function renderBpOps(){var rl={"seamstress":Icon('shirt',13)+" Швея (нашивки)","printer":Icon('printer',13)+" Принтувальник (принти)"};document.getElementById("ebp-ops").innerHTML=bpOps.map(function(o,i){return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-size:11px;color:var(--th)">'+(rl[o.worker_role]||o.worker_role)+'</span><input type="number" value="'+o.operations_count+'" min="1" style="width:50px;padding:4px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:4px;color:#fff" onchange="bpOps['+i+'].operations_count=parseInt(this.value)||1"><span style="font-size:9px;color:var(--td)">шт</span><button style="background:none;border:none;color:var(--red);cursor:pointer" onclick="bpOps.splice('+i+',1);renderBpOps()">'+Icon('x',12)+'</button></div>'}).join("")||'<div style="font-size:10px;color:var(--td)">Не задано</div>'}
-function addBpOp(){var r=document.getElementById("ebp-op-role").value;var c=parseInt(document.getElementById("ebp-op-count").value)||1;if(!r||bpOps.find(function(o){return o.worker_role===r}))return;bpOps.push({worker_role:r,operations_count:c});renderBpOps();document.getElementById("ebp-op-role").value=""}
 async function uploadBpPhoto(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const{url}=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});await api(`/api/base-products/${editBpId}`,{method:"PUT",body:JSON.stringify({photo:url})});document.getElementById("ebp-photo").innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover">`}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
 async function saveEditBp(){
   try{
@@ -1123,8 +1103,6 @@ async function saveEditBp(){
     for(const el of stocks){
       await api("/api/stock/set",{method:"POST",body:JSON.stringify({base_product_id:editBpId,size_id:parseInt(el.dataset.sid),quantity:parseInt(el.value)||0})});
     }
-    // Save workers (updates model workers)
-    if(bpEditModelId)await api("/api/product-worker-ops/"+bpEditModelId,{method:"POST",body:JSON.stringify({ops:bpOps})});
     closeM("edit-bp-modal");loadSBase();
   }catch(e){alert(e.message)}
 }
@@ -1154,8 +1132,6 @@ async function openEditVar(id){
       <span style="color:var(--acc);font-weight:600">= ${s.total}</span>
     </div>
   </div>`).join("");
-  // Workers
-  try{var opsR=await api("/api/product-worker-ops/"+v.model_id);var rl={"seamstress":Icon('shirt',13)+" Швея","printer":Icon('printer',13)+" Принтувальник"};document.getElementById("ev-ops").innerHTML=(opsR.ops||[]).map(function(o){return '<div style="padding:2px 0">'+(rl[o.worker_role]||o.worker_role)+': <b style="color:var(--acc)">'+o.operations_count+' шт</b></div>'}).join("")||'<span style="color:var(--td)">—</span>'}catch(e){document.getElementById("ev-ops").innerHTML='<span style="color:var(--td)">—</span>'}
   // Photo
   document.getElementById("ev-photo").innerHTML=v.photo?`<img src="${v.photo}" style="width:100%;height:100%;object-fit:cover">`:(v.print_photo?`<img src="${v.print_photo}" style="width:100%;height:100%;object-fit:cover">`:"—");
   openM("edit-var-modal");
