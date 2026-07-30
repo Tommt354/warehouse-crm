@@ -593,6 +593,15 @@ if(addCol("stock_base","quantity_actual","INTEGER DEFAULT 0")){
 // the recount_sessions table comment for what freezing means.
 addCol("stock_base","recount_session_id","INTEGER DEFAULT NULL");
 
+// Backfill: a ready product (no print) has a single photo on its base_product,
+// which must show everywhere — base warehouse AND the dropshipper catalog.
+// Older ready variations were created with an empty photo, so copy the base
+// photo onto them. Idempotent (only fills empties); runs every startup.
+db.exec(`UPDATE variations SET photo=(SELECT bp.photo FROM base_products bp WHERE bp.id=variations.base_product_id)
+  WHERE (photo IS NULL OR photo='') AND print_id IS NULL
+  AND base_product_id IN (SELECT bp.id FROM base_products bp JOIN models m ON bp.model_id=m.id WHERE m.is_ready_product=1)
+  AND COALESCE((SELECT bp.photo FROM base_products bp WHERE bp.id=variations.base_product_id),'')<>''`);
+
 // Defaults
 if(!db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get()){
   const pw = process.env.ADMIN_PASSWORD || genPassword();

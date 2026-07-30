@@ -345,7 +345,7 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
       const bpPhoto=(bp_photos&&bp_photos[col.id])?String(bp_photos[col.id]):"";
       const bp=cbp.run(mid,col.id,bpn,cp,dp,bpPhoto);bc++;
       for(const sz of sizes)csb.run(bp.lastInsertRowid,sz.id);
-      if(is_ready_product){cv.run(bp.lastInsertRowid,null,bpn,null,"");vc++}
+      if(is_ready_product){cv.run(bp.lastInsertRowid,null,bpn,null,bpPhoto);vc++}
       else{for(const pr of prints){const pcat=(print_cats&&print_cats[pr.id])?parseInt(print_cats[pr.id])||null:null;const vphoto=(var_photos&&var_photos[pr.id]&&var_photos[pr.id][col.id])?String(var_photos[pr.id][col.id]):"";const v=cv.run(bp.lastInsertRowid,pr.id,`${bpn} — ${pr.name}`,pcat,vphoto);vc++;for(const sz of sizes)csr.run(v.lastInsertRowid,sz.id)}}
     }
     return{mid,bc,vc};
@@ -408,7 +408,12 @@ app.put("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
     // without recreating anything).
     if (bp_photos && typeof bp_photos === "object") {
       db.prepare("SELECT id,color_id FROM base_products WHERE model_id=?").all(mid).forEach(bp => {
-        if (bp.color_id != null && bp_photos[bp.color_id] !== undefined) db.prepare("UPDATE base_products SET photo=? WHERE id=?").run(String(bp_photos[bp.color_id] || ""), bp.id);
+        if (bp.color_id != null && bp_photos[bp.color_id] !== undefined) {
+          const ph = String(bp_photos[bp.color_id] || "");
+          db.prepare("UPDATE base_products SET photo=? WHERE id=?").run(ph, bp.id);
+          // ready product → mirror the one photo onto its (print-less) variation
+          if (model.is_ready_product) db.prepare("UPDATE variations SET photo=? WHERE base_product_id=?").run(ph, bp.id);
+        }
       });
     }
     if (var_photos && typeof var_photos === "object") {
@@ -585,6 +590,13 @@ app.put("/api/base-products/:id", authMiddleware, requireRole("admin"), (req, re
   if(cost_price!==undefined){s.push("cost_price=?");v.push(parseFloat(cost_price)||0)}
   if(drop_price!==undefined){s.push("drop_price=?");v.push(parseFloat(drop_price)||0)}
   if(s.length){v.push(req.params.id);db.prepare(`UPDATE base_products SET ${s.join(",")} WHERE id=?`).run(...v)}
+  // For a ready product (no print) the single base-product photo IS the
+  // product photo everywhere — mirror it onto its variation so it shows to
+  // the dropshipper directly, not only via a fallback.
+  if(photo!==undefined){
+    const m = db.prepare("SELECT m.is_ready_product FROM base_products bp JOIN models m ON bp.model_id=m.id WHERE bp.id=?").get(req.params.id);
+    if(m && m.is_ready_product) db.prepare("UPDATE variations SET photo=? WHERE base_product_id=?").run(photo||"", req.params.id);
+  }
   // This is a bulk convenience switch for the whole color/product — it just
   // sets every one of its variations' own allow_negative_order flag, rather
   // than being a separate stored setting (that flag is still the one
