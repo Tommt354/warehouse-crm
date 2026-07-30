@@ -194,13 +194,13 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 
 <!-- Catalog picker for order -->
 <div class="modal-bg" id="cp-modal"><div class="modal" style="max-width:650px">
-<h3><i data-icon="package" data-size="15"></i> Оберіть товар</h3>
+<h3 style="display:flex;align-items:center"><i data-icon="package" data-size="15"></i> Оберіть товар <button onclick="clM('cp-modal')" style="margin-left:auto;background:none;border:none;color:var(--td);cursor:pointer;font-size:22px;line-height:1;padding:0 4px">✕</button></h3>
 <div style="display:flex;gap:4px;margin-bottom:8px"><button class="stab" id="cpt-hot" onclick="dropCh='hot';cpCatP=null;loadCatPicker()"><i data-icon="flame" data-size="12"></i> HOT</button><button class="stab on" id="cpt-ads" onclick="dropCh='ads';cpCatP=null;loadCatPicker()"><i data-icon="megaphone" data-size="12"></i> ADS</button></div>
 <input id="cp-search" placeholder="Пошук товару..." oninput="filterCatPicker(this.value)" style="width:100%;padding:8px 12px;font-size:13px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
 <div id="cp-bread"></div>
 <div id="cp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="cp-prods" class="cards"></div>
-<div style="margin-top:10px;display:flex;align-items:center;gap:8px"><span id="cp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn btn-p" style="margin-left:auto" onclick="clM('cp-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
+<div style="margin-top:10px;display:flex;align-items:center;gap:8px"><span id="cp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn" style="margin-left:auto" onclick="clM('cp-modal')">Скасувати</button><button class="btn btn-p" onclick="clM('cp-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
 </div></div>
 
 <script>
@@ -410,9 +410,14 @@ function renderCpProds(){
 }
 
 async function trackNP(){var b=document.getElementById("np-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></div>Оновлення...';try{await api("/api/nova-poshta/track-all",{method:"POST"});b.innerHTML=Icon('check',12)+' Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='';b.disabled=false;loadOrders()},1500)}catch(e){b.innerHTML=Icon('x',12)+' Помилка';b.style.color='var(--red)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='';b.disabled=false},2000)}}
+// Brief confirmation toast so a tap on a size clearly registers.
+function cpToast(msg){var d=document.createElement("div");d.style.cssText="position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 6px 22px rgba(0,0,0,.45);display:flex;align-items:center;gap:6px;max-width:90vw";d.innerHTML=Icon('check',14)+" "+esc(msg);document.body.appendChild(d);setTimeout(function(){d.style.transition="opacity .3s";d.style.opacity="0";setTimeout(function(){d.remove()},300)},1100)}
 function pickItem(vid,sid,name,price,sz,photo,isKit,weight){
   oItems.push({varId:vid,sizeId:sid,name:name,price:price,sz:sz,photo:photo,qty:1,kitId:isKit?vid:null,weight:weight||0.3});
   renderOItems();calcPay();calcOrderWeight();updateCpCount();
+  // Flash the tapped size button + toast so the add is obviously registered.
+  try{var el=window.event&&window.event.currentTarget;if(el){var ob=el.style.background,oc=el.style.color;el.style.transition="all .15s";el.style.background="var(--acc)";el.style.color="#0a0e17";setTimeout(function(){el.style.background=ob;el.style.color=oc},280)}}catch(e){}
+  cpToast("Додано: "+name+(sz?" · "+sz:""));
 }
 function updateCpCount(){var el=document.getElementById("cp-count");if(el)el.textContent=oItems.length?("Додано в замовлення: "+oItems.length):""}
 
@@ -463,6 +468,7 @@ function confirmKitPick(){
     oItems[oItems.length-kit.items.length].weight=kit.weight||0.5;
   }
   renderOItems();calcPay();calcOrderWeight();clM("kit-pick-modal");updateCpCount();
+  cpToast("Додано комплект: "+kit.name+" · різні розміри");
 }
 // Quick path: one size for the whole kit — every sized component takes that
 // size, one-size components (cap) take their only size.
@@ -475,6 +481,7 @@ function pickKitUnified(kitId,sizeId,sizeName){
   });
   if(oItems.length>=kit.items.length){oItems[oItems.length-kit.items.length].price=kit.drop_price;oItems[oItems.length-kit.items.length].weight=kit.weight||0.5}
   renderOItems();calcPay();calcOrderWeight();clM("cp-modal");
+  cpToast("Додано комплект: "+kit.name+(sizeName?" · "+sizeName:""));
 }
 
 function renderOItems(){

@@ -617,7 +617,8 @@
 <div class="fld"><label>Товари</label><div id="eo-items" style="font-size:11px;color:var(--td)"></div></div>
 <div class="fld"><label>ПІБ клієнта</label><input id="eo-name"></div>
 <div class="fld"><label>Телефон</label><input id="eo-phone"></div>
-<div class="fld-row"><div class="fld"><label>Місто</label><input id="eo-city"></div><div class="fld"><label>Відділення</label><input id="eo-wh"></div></div>
+<div class="fld"><label>Місто</label><input id="eo-city" placeholder="Введіть місто..." oninput="searchEoCity(this.value)"><div id="eo-city-dd" style="max-height:150px;overflow-y:auto"></div></div>
+<div class="fld"><label>Відділення</label><input id="eo-wh" placeholder="Введіть № відділення..." oninput="searchEoWh(this.value)" onfocus="if(!this.value&&eoCityRef)searchEoWh('')"><div id="eo-wh-dd" style="max-height:150px;overflow-y:auto"></div></div>
 <div class="fld-row"><div class="fld" id="eo-cod-wrap"><label>Наложка ₴</label><input id="eo-cod" type="number"></div><div class="fld" id="eo-dval-wrap" style="display:none"><label>Оціночна вартість ₴</label><input id="eo-dval" type="number"></div></div>
 <div class="fld"><label>Вага посилки (кг)</label><input id="eo-weight" type="number" step="0.1"></div>
 <div class="fld"><label>Примітка</label><input id="eo-note"></div>
@@ -660,13 +661,13 @@
 
 <!-- Admin catalog picker modal -->
 <div class="modal-bg" id="ano-cat-modal"><div class="modal" style="max-width:650px">
-<h3><i data-icon="package" data-size="16"></i> Оберіть товари</h3>
+<h3 style="display:flex;align-items:center"><i data-icon="package" data-size="16"></i> Оберіть товари <button onclick="closeM('ano-cat-modal')" style="margin-left:auto;background:none;border:none;color:var(--td);cursor:pointer;font-size:22px;line-height:1;padding:0 4px">✕</button></h3>
 <div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn" id="anoc-hot" onclick="anoChannel='hot';anoCatP=null;loadAnoCatalog()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="btn on" id="anoc-ads" onclick="anoChannel='ads';anoCatP=null;loadAnoCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS</button></div>
 <div style="margin-bottom:8px"><input id="ano-cat-search" placeholder="Пошук товару за назвою..." oninput="filterAnoCatalog(this.value)" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"></div>
 <div id="anocp-bread"></div>
 <div id="anocp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="ano-cat-list" style="max-height:42vh;overflow-y:auto"></div>
-<div style="margin-top:10px;display:flex;align-items:center;gap:8px"><span id="anocp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn btn-p" style="margin-left:auto" onclick="closeM('ano-cat-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
+<div style="margin-top:10px;display:flex;align-items:center;gap:8px"><span id="anocp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn" style="margin-left:auto" onclick="closeM('ano-cat-modal')">Скасувати</button><button class="btn btn-p" onclick="closeM('ano-cat-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
 </div></div>
 
 <!-- Admin kit size picker modal -->
@@ -1796,6 +1797,7 @@ async function openEditOrder(id){
   try{var r=await api("/api/orders/"+id);var o=r.order;
   document.getElementById("eo-name").value=o.client_name;document.getElementById("eo-phone").value=o.client_phone;
   document.getElementById("eo-city").value=o.client_city;document.getElementById("eo-wh").value=o.client_warehouse;
+  document.getElementById("eo-city-dd").innerHTML="";document.getElementById("eo-wh-dd").innerHTML="";resolveEoCityRef(o.client_city);
   document.getElementById("eo-cod").value=o.cod_amount;document.getElementById("eo-dval").value=o.declared_value||0;
   document.getElementById("eo-cod-wrap").style.display=o.is_prepaid?"none":"";
   document.getElementById("eo-dval-wrap").style.display=o.is_prepaid?"":"none";
@@ -1941,6 +1943,30 @@ async function searchAnoWh(q){
   document.getElementById("ano-wh-dd").innerHTML=anoWhResults.map((w,i)=>'<div class="popup-dd-item" onclick="pickAnoWh('+i+')">'+esc(w.Description)+(w.CategoryOfWarehouse==="Postomat"?' <span style="color:var(--acc);font-size:9px">(поштомат)</span>':'')+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
 }
 function pickAnoWh(i){const w=anoWhResults[i];if(!w)return;document.getElementById("ano-wh").value=w.Description;document.getElementById("ano-wh-dd").innerHTML="";anoIsPostomat=w.CategoryOfWarehouse==="Postomat";document.getElementById("ano-postomat-wrap").style.display=anoIsPostomat?"":"none"}
+// NP search for order editing (mirrors the create-order autocomplete)
+var eoNpT=null,eoCityRef="",eoSettleRef="",eoCityResults=[],eoWhResults=[];
+async function searchEoCity(q){
+  clearTimeout(eoNpT);if(!q||q.length<2){document.getElementById("eo-city-dd").innerHTML="";return}
+  eoNpT=setTimeout(async()=>{try{var r=await api("/api/nova-poshta/search-city",{method:"POST",body:JSON.stringify({query:q})});
+  eoCityResults=r.cities;
+  document.getElementById("eo-city-dd").innerHTML=r.cities.map((c,i)=>'<div class="popup-dd-item" onclick="pickEoCity('+i+')">'+esc(c.Present||c.MainDescription)+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
+}
+function pickEoCity(i){const c=eoCityResults[i];if(!c)return;eoCityRef=c.DeliveryCity||c.Ref;eoSettleRef=c.Ref;document.getElementById("eo-city").value=c.Present||c.MainDescription;document.getElementById("eo-city-dd").innerHTML="";document.getElementById("eo-wh").value="";document.getElementById("eo-wh-dd").innerHTML=""}
+async function searchEoWh(q){
+  clearTimeout(eoNpT);if(!eoCityRef){document.getElementById("eo-wh-dd").innerHTML='<div style="padding:6px;color:var(--td);font-size:11px">Спочатку оберіть місто</div>';return}
+  eoNpT=setTimeout(async()=>{try{var r=await api("/api/nova-poshta/search-warehouse",{method:"POST",body:JSON.stringify({city_ref:eoCityRef,settle_ref:eoSettleRef,query:q||""})});
+  eoWhResults=r.warehouses.slice(0,10);
+  document.getElementById("eo-wh-dd").innerHTML=eoWhResults.map((w,i)=>'<div class="popup-dd-item" onclick="pickEoWh('+i+')">'+esc(w.Description)+(w.CategoryOfWarehouse==="Postomat"?' <span style="color:var(--acc);font-size:9px">(поштомат)</span>':'')+'</div>').join("")||'<div style="padding:6px;color:var(--td);font-size:11px">Не знайдено</div>'}catch(e){}},300)
+}
+function pickEoWh(i){const w=eoWhResults[i];if(!w)return;document.getElementById("eo-wh").value=w.Description;document.getElementById("eo-wh-dd").innerHTML=""}
+// Best-effort: resolve the stored city text to a NP ref so warehouse search
+// works immediately without the user re-picking the city.
+async function resolveEoCityRef(cityName){
+  eoCityRef="";eoSettleRef="";
+  if(!cityName)return;
+  try{var r=await api("/api/nova-poshta/search-city",{method:"POST",body:JSON.stringify({query:cityName})});
+  if(r.cities&&r.cities.length){var c=r.cities[0];eoCityRef=c.DeliveryCity||c.Ref;eoSettleRef=c.Ref}}catch(e){}
+}
 // Catalog picker for admin order
 var anoCatP=null;
 async function openAnoCatPicker(){
@@ -1980,17 +2006,22 @@ function filterAnoCatalog(q){
   }).join(""):'<div style="padding:20px;text-align:center;color:var(--td)">Не знайдено</div>';
 }
 function updateAnoCount(){var el=document.getElementById("anocp-count");if(!el)return;var n=anoItems.reduce(function(s,i){return s+i.quantity},0);el.textContent=n?("Додано: "+n+" шт"):""}
+// Brief confirmation toast so a tap on a size clearly registers.
+function anoToast(msg){var d=document.createElement("div");d.style.cssText="position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 6px 22px rgba(0,0,0,.45);display:flex;align-items:center;gap:6px;max-width:90vw";d.innerHTML=Icon('check',14)+" "+esc(msg);document.body.appendChild(d);setTimeout(function(){d.style.transition="opacity .3s";d.style.opacity="0";setTimeout(function(){d.remove()},300)},1100)}
 function addAnoItem(varId,sizeId,sizeName,name,price,photo,weight){
   var existing=anoItems.find(function(it){return it.variation_id===varId&&it.size_id===sizeId});
   if(existing)existing.quantity++;
   else anoItems.push({variation_id:varId,size_id:sizeId,size_name:sizeName,name:name,drop_price:price,photo:photo,quantity:1,kit_id:null,weight:weight||0.3});
   renderAnoItems();updateAnoCount();
+  try{var el=window.event&&window.event.currentTarget;if(el){var ob=el.style.background,oc=el.style.color;el.style.transition="all .15s";el.style.background="var(--acc)";el.style.color="#0a0e17";setTimeout(function(){el.style.background=ob;el.style.color=oc},280)}}catch(e){}
+  anoToast("Додано: "+name+(sizeName?" · "+sizeName:""));
 }
 // A kit is added as ONE line carrying kit_id (server applies the kit price and
 // expands components). component_sizes lets each component take its own size.
 function addAnoKit(kit,sizeId,sizeName,componentSizes){
   anoItems.push({variation_id:null,kit_id:kit.id,size_id:sizeId,size_name:sizeName,component_sizes:componentSizes,name:kit.name,drop_price:kit.drop_price||0,photo:kit.photo||"",quantity:1,weight:kit.weight||0.5});
   renderAnoItems();updateAnoCount();
+  anoToast("Додано комплект: "+kit.name+(sizeName?" · "+sizeName:""));
 }
 // Quick path: one size for the whole kit — sized components take that size,
 // one-size components (cap) take their only size.
