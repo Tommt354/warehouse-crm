@@ -870,6 +870,11 @@ async function editModelFields(id){
   document.getElementById("mm-warehouse").value=m.main_warehouse||"base";
   // Pre-select attributes
   mmSel={colors:new Set(m.colors.map(c=>c.id)),sizes:new Set(m.sizes.map(s=>s.id)),prints:new Set(m.prints.map(p=>p.id)),patches:new Set(m.patches.map(p=>p.id))};mmPrintCats={};mmVarPhotos={};mmColorPhotos={};
+  // Pre-load existing photos so editing the model can change them
+  (m.base_products||[]).forEach(function(bp){
+    if(bp.color_id!=null&&bp.photo)mmColorPhotos[bp.color_id]=bp.photo;
+    (bp.variations||[]).forEach(function(v){if(v.print_id!=null&&v.photo){if(!mmVarPhotos[v.print_id])mmVarPhotos[v.print_id]={};mmVarPhotos[v.print_id][bp.color_id]=v.photo}});
+  });
   fillPSD("mm-colors-dd",CC.colors,"colors");fillPSD("mm-sizes-dd",CC.sizes,"sizes");fillPSD("mm-prints-dd",CC.prints,"prints");fillPSD("mm-patches-dd",CC.patches,"patches");
   renderSelTags();
   document.getElementById("mm-err").style.display="none";
@@ -879,7 +884,7 @@ async function editModelFields(id){
 
 async function saveModelEdit(){
   const err=document.getElementById("mm-err");err.style.display="none";
-  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,main_warehouse:document.getElementById("mm-warehouse").value,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,weight:document.getElementById("mm-weight").value,sync_products:true,size_grid_photo:mmSizeGridPhoto};
+  const data={name:document.getElementById("mm-name").value,category_id:document.getElementById("mm-cat").value||null,category_drop_id:document.getElementById("mm-cat-drop").value||null,drop_channel:document.getElementById("mm-channel").value,main_warehouse:document.getElementById("mm-warehouse").value,cost_price:document.getElementById("mm-cost").value,drop_price:document.getElementById("mm-drop").value,weight:document.getElementById("mm-weight").value,sync_products:true,size_grid_photo:mmSizeGridPhoto,bp_photos:mmColorPhotos,var_photos:mmVarPhotos};
   try{
     await api(`/api/models/${editModelId}`,{method:"PUT",body:JSON.stringify(data)});
     closeM("model-modal");editModelId=null;loadModels();
@@ -968,15 +973,16 @@ function pickCatPicker(id){
 var mmPrintCats={},mmVarPhotos={},mmColorPhotos={};
 function renderPrintCats(){
   var el=document.getElementById("mm-print-cats");if(!el)return;
-  if(editModelId){el.innerHTML="";return}
   var pids=[...mmSel.prints];
   if(!pids.length){el.innerHTML="";return}
   var cids=[...mmSel.colors];
-  el.innerHTML='<div style="font-size:10px;color:var(--td);margin:8px 0 4px">Для кожного принта: категорія (не обрано = загальна вище) і фото під кожен обраний колір:</div>'+pids.map(function(pid){
+  el.innerHTML='<div style="font-size:10px;color:var(--td);margin:8px 0 4px">'+(editModelId?'Фото варіації під кожен колір (зміни збережуться в товари):':'Для кожного принта: категорія (не обрано = загальна вище) і фото під кожен обраний колір:')+'</div>'+pids.map(function(pid){
     var p=(CC.prints||[]).find(function(x){return x.id==pid});
     var catId=mmPrintCats[pid];
     var cat=catId?(CC.cats_drop||[]).find(function(c){return c.id==catId}):null;
-    var head='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;color:var(--th);flex:1">'+(p?esc(p.name):("#"+pid))+'</span><button type="button" class="btn btn-sm '+(cat?'btn-a':'')+'" onclick="pickPrintCat('+pid+')">'+Icon('folder',12)+' '+(cat?esc(cat.name):'— загальна —')+'</button>'+(cat?'<button type="button" class="btn btn-sm" title="Скинути" onclick="mmPrintCats['+pid+']=null;renderPrintCats()">'+Icon('x',11)+'</button>':'')+'</div>';
+    var head=editModelId
+      ?'<div style="font-size:12px;font-weight:600;color:var(--th)">'+(p?esc(p.name):("#"+pid))+'</div>'
+      :'<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;color:var(--th);flex:1">'+(p?esc(p.name):("#"+pid))+'</span><button type="button" class="btn btn-sm '+(cat?'btn-a':'')+'" onclick="pickPrintCat('+pid+')">'+Icon('folder',12)+' '+(cat?esc(cat.name):'— загальна —')+'</button>'+(cat?'<button type="button" class="btn btn-sm" title="Скинути" onclick="mmPrintCats['+pid+']=null;renderPrintCats()">'+Icon('x',11)+'</button>':'')+'</div>';
     var photos=cids.length?'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">'+cids.map(function(cid){
       var col=(CC.colors||[]).find(function(x){return x.id==cid});
       var url=(mmVarPhotos[pid]||{})[cid];
@@ -1003,7 +1009,6 @@ async function uploadVarPhotoFor(pid,cid,e){
 // near the Colours field, not under prints.
 function renderColorPhotos(){
   var el=document.getElementById("mm-color-photos");if(!el)return;
-  if(editModelId){el.innerHTML="";return}
   var cids=[...mmSel.colors];
   if(!cids.length){el.innerHTML="";return}
   el.innerHTML='<div style="font-size:10px;color:var(--td);margin:8px 0 4px">Основне фото для складу база — по одному на колір:</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+cids.map(function(cid){
@@ -1468,7 +1473,7 @@ async function loadKitPicker(){kitpVars=kitpParent?((await api("/api/variations?
 function kitpDrill(id){kitpParent=id;kitpQuery="";var si=document.getElementById("kitp-search");if(si)si.value="";loadKitPicker()}
 function kitpChildren(){return (CC.cats_drop||[]).filter(function(c){return kitpParent?c.parent_id===kitpParent:!c.parent_id})}
 function kitpCrumb(){var bc=[],cur=kitpParent?(CC.cats_drop||[]).find(function(c){return c.id===kitpParent}):null,g=0;while(cur&&g++<20){bc.unshift(cur);cur=cur.parent_id?(CC.cats_drop||[]).find(function(c){return c.id===cur.parent_id}):null}return bc}
-function kitpVarCard(v){var sel=kitSelected.includes(v.id);var photo=v.photo||v.print_photo||"";return '<div class="pcard" style="'+(sel?'border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)':'')+'"><div class="pcard-img" style="position:relative;cursor:pointer" onclick="toggleKitVar('+v.id+')">'+(photo?'<img src="'+photo+'">':Icon('camera',22))+(sel?'<span style="position:absolute;top:4px;right:4px;background:var(--acc);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center">'+Icon('check',12)+'</span>':'')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+'</div><button class="btn btn-sm '+(sel?'btn-a':'btn-p')+'" style="width:100%;margin-top:4px;justify-content:center" onclick="toggleKitVar('+v.id+')">'+(sel?Icon('check',12)+' Додано':'+ Додати')+'</button></div></div>'}
+function kitpVarCard(v){var sel=kitSelected.includes(v.id);var photo=v.photo||v.print_photo||v.bp_photo||"";return '<div class="pcard" style="'+(sel?'border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)':'')+'"><div class="pcard-img" style="position:relative;cursor:pointer" onclick="toggleKitVar('+v.id+')">'+(photo?'<img src="'+photo+'">':Icon('camera',22))+(sel?'<span style="position:absolute;top:4px;right:4px;background:var(--acc);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center">'+Icon('check',12)+'</span>':'')+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+'</div><button class="btn btn-sm '+(sel?'btn-a':'btn-p')+'" style="width:100%;margin-top:4px;justify-content:center" onclick="toggleKitVar('+v.id+')">'+(sel?Icon('check',12)+' Додано':'+ Додати')+'</button></div></div>'}
 function updateKitpCount(){var el=document.getElementById("kitp-count");if(el)el.textContent="Обрано: "+kitSelected.length}
 function renderKitPicker(){
   // persistent list of what's already added — visible while browsing/searching

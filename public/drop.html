@@ -404,7 +404,7 @@ function renderCpProds(){
   var el=document.getElementById("cp-prods");
   el.innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
-    var photo=v.photo||v.print_photo||"";
+    var photo=v.photo||v.print_photo||v.bp_photo||"";
     return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"'+(q>0?' onclick="pickKitUnified('+v.id+','+s.id+',\''+s.name+'\')"':'')+'><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div><button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('ruler',11)+' Різні розміри комплектуючих</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')"><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>')+'</div></div>';
   }).join("")||'<div class="empty"><span class="ic">'+Icon('package',30)+'</span>Немає товарів</div>';
 }
@@ -597,7 +597,7 @@ async function loadCatalog(){
   var filtered=catP?allV.filter(function(v){return v.eff_category_drop_id==catP}):allV;
   document.getElementById("cat-prods").innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
-    var photo=v.photo||v.print_photo||"";
+    var photo=v.photo||v.print_photo||v.bp_photo||"";
     return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>'+(v.size_grid_photo?'<button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();showSizeGrid(\''+v.size_grid_photo+'\')">'+Icon('ruler',11)+' Розмірна сітка</button>':'')+'</div></div>';
   }).join("");
 }

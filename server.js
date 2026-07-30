@@ -356,7 +356,7 @@ app.post("/api/models", authMiddleware, requireRole("admin"), (req, res) => {
 // Update model + sync names/prices to all products
 app.put("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
   const mid = parseInt(req.params.id);
-  const { name, category_id, category_drop_id, drop_channel, main_warehouse, cost_price, drop_price, active, sync_products, size_grid_photo, weight } = req.body;
+  const { name, category_id, category_drop_id, drop_channel, main_warehouse, cost_price, drop_price, active, sync_products, size_grid_photo, weight, bp_photos, var_photos } = req.body;
   const model = db.prepare("SELECT * FROM models WHERE id=?").get(mid);
   if (!model) return res.status(404).json({ error: "Не знайдено" });
 
@@ -401,6 +401,20 @@ app.put("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
         if(cp!==null) db.prepare("UPDATE base_products SET cost_price=? WHERE id=?").run(cp, bp.id);
         if(dp!==null) db.prepare("UPDATE base_products SET drop_price=? WHERE id=?").run(dp, bp.id);
       }
+    }
+
+    // Photo updates on existing products — base_products.photo per colour and
+    // variations.photo per print×colour (lets model edit add forgotten photos
+    // without recreating anything).
+    if (bp_photos && typeof bp_photos === "object") {
+      db.prepare("SELECT id,color_id FROM base_products WHERE model_id=?").all(mid).forEach(bp => {
+        if (bp.color_id != null && bp_photos[bp.color_id] !== undefined) db.prepare("UPDATE base_products SET photo=? WHERE id=?").run(String(bp_photos[bp.color_id] || ""), bp.id);
+      });
+    }
+    if (var_photos && typeof var_photos === "object") {
+      db.prepare("SELECT v.id,v.print_id,bp.color_id FROM variations v JOIN base_products bp ON v.base_product_id=bp.id WHERE bp.model_id=?").all(mid).forEach(r => {
+        if (r.print_id != null && var_photos[r.print_id] && var_photos[r.print_id][r.color_id] !== undefined) db.prepare("UPDATE variations SET photo=? WHERE id=?").run(String(var_photos[r.print_id][r.color_id] || ""), r.id);
+      });
     }
   })();
   res.json({ok:true});
@@ -710,7 +724,7 @@ app.put("/api/model-workers/:model_id", authMiddleware, requireRole("admin"), (r
 app.get("/api/variations", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
   const channel = req.query.channel;
-  let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,bp.cost_price as base_cost,m.name as model_name,m.drop_price as model_drop_price,m.cost_price as model_cost,m.is_ready_product,m.category_drop_id as model_category_drop_id,COALESCE(v.category_drop_id,m.category_drop_id) as eff_category_drop_id,m.drop_channel,m.size_grid_photo,m.weight as model_weight,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
+  let q = `SELECT v.*,bp.model_id,bp.color_id,bp.name as base_name,bp.cost_price as base_cost,bp.photo as bp_photo,m.name as model_name,m.drop_price as model_drop_price,m.cost_price as model_cost,m.is_ready_product,m.category_drop_id as model_category_drop_id,COALESCE(v.category_drop_id,m.category_drop_id) as eff_category_drop_id,m.drop_channel,m.size_grid_photo,m.weight as model_weight,c.name as color_name,p.name as print_name,p.photo as print_photo FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id LEFT JOIN prints p ON v.print_id=p.id WHERE v.active=1 AND bp.active=1 AND m.active=1`;
   const params = [];
   if (cat) { q += " AND COALESCE(v.category_drop_id, m.category_drop_id)=?"; params.push(parseInt(cat)); }
   if (channel) { q += " AND m.drop_channel=?"; params.push(channel); }
