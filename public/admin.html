@@ -514,8 +514,8 @@
 
 <div class="modal-bg" id="bulk-stock-modal"><div class="modal" style="max-width:720px">
 <h3 id="bs-title"></h3>
-<div id="bs-ws-wrap" class="fld"><label>Цех</label><select id="bs-ws" style="width:100%;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"></select>
-  <label id="bs-nows-lbl" style="margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="bs-no-ws" onchange="document.getElementById('bs-ws').disabled=this.checked;document.getElementById('bs-ws').style.opacity=this.checked?'.3':'1'" style="width:16px;height:16px;accent-color:var(--acc)"><span style="font-size:11px;color:var(--td)">Не з цеху (товар не шиється)</span></label></div>
+<div id="bs-ws-wrap" class="fld"><label>Цех</label><select id="bs-ws" style="width:100%;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"></select></div>
+<div id="bs-nows-wrap" class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="bs-no-ws" style="width:16px;height:16px;accent-color:var(--acc)"><span style="font-size:11px;color:var(--td)">Не з цеху (товар не шиється — не списувати з крою)</span></label></div>
 <div class="fld"><label>Примітка (спільна)</label><input id="bs-note"></div>
 <button type="button" class="btn btn-a" style="width:100%;justify-content:center;margin-bottom:8px" onclick="bsOpenPicker()"><i data-icon="package" data-size="14"></i> + Додати товари</button>
 <div id="bs-rows" style="max-height:45vh;overflow:auto"></div>
@@ -1378,12 +1378,13 @@ async function openBulkStock(op){
   document.getElementById("bs-note").value="";
   document.getElementById("bs-save").innerHTML=Icon('save',15)+' '+(op==='wo'?'Списати':op==='cut'?'Додати крій':'Оприбуткувати');
   document.getElementById("bs-save").className="btn "+(op==='wo'?'btn-d':'btn-p');
-  var wsWrap=document.getElementById("bs-ws-wrap");
-  if(op==='inc'||op==='cut'){
+  var wsWrap=document.getElementById("bs-ws-wrap"),nowsWrap=document.getElementById("bs-nows-wrap");
+  document.getElementById("bs-no-ws").checked=false;
+  if(op==='cut'){
     var ws=await api("/api/workshops");document.getElementById("bs-ws").innerHTML=ws.workshops.map(function(w){return '<option value="'+w.id+'">'+esc(w.name)+'</option>'}).join("");
-    document.getElementById("bs-no-ws").checked=false;document.getElementById("bs-ws").disabled=false;document.getElementById("bs-ws").style.opacity="1";
-    wsWrap.style.display="";document.getElementById("bs-nows-lbl").style.display=(op==='cut')?'none':'';
-  } else wsWrap.style.display="none";
+    wsWrap.style.display="";nowsWrap.style.display="none";
+  } else if(op==='inc'){ wsWrap.style.display="none";nowsWrap.style.display=""; }
+  else { wsWrap.style.display="none";nowsWrap.style.display="none"; }
   document.getElementById("bs-err").style.display="none";
   renderBsRows();
   openM("bulk-stock-modal");
@@ -1413,13 +1414,13 @@ async function saveBulkStock(){
   if(!bsSelected.length){err.textContent="Оберіть товари";err.style.display="block";return}
   var note=document.getElementById("bs-note").value;
   var noWs=bsOp==='inc'?document.getElementById("bs-no-ws").checked:false;
-  var wsId=((bsOp==='inc'||bsOp==='cut')&&!noWs)?parseInt(document.getElementById("bs-ws").value):null;
+  var wsId=(bsOp==='cut')?parseInt(document.getElementById("bs-ws").value):null;
   if(bsOp==='cut'&&!wsId){err.textContent="Оберіть цех";err.style.display="block";return}
   var jobs=[];
   bsSelected.forEach(function(p){
     var items=Object.keys(bsQty[p.id]||{}).map(function(sid){return {size_id:parseInt(sid),quantity:bsQty[p.id][sid]||0}}).filter(function(it){return it.quantity>0});
     if(!items.length)return;
-    if(bsOp==='inc')jobs.push(api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:p.id,items:items,note:note,workshop_id:wsId,no_workshop:noWs})}));
+    if(bsOp==='inc')jobs.push(api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:p.id,items:items,note:note,no_workshop:noWs})}));
     else if(bsOp==='wo')jobs.push(api("/api/stock/write-off-bulk",{method:"POST",body:JSON.stringify({base_product_id:p.id,items:items,note:note})}));
     else jobs.push(api("/api/stock-cuts/incoming",{method:"POST",body:JSON.stringify({base_product_id:p.id,workshop_id:wsId,items:items,note:note})}));
   });

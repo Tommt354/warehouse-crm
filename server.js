@@ -913,11 +913,14 @@ app.post("/api/stock-cuts/set", authMiddleware, requireRole("admin"), (req, res)
 
 // ── STOCK INCOMING (with workshop deduction from cuts) ───────────
 app.post("/api/stock/incoming-bulk", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
-  const { base_product_id, items, note, workshop_id, no_workshop } = req.body;
+  const { base_product_id, items, note, no_workshop } = req.body;
   if (!base_product_id || !items?.length) return res.status(400).json({ error: "Немає даних" });
-  // Check if product requires workshop
+  // The workshop no longer needs to be picked on incoming: the cut for this
+  // product already lives on specific workshop(s), so we auto-deduct from
+  // wherever it is. "не з цеху" (or a model flagged no_workshop) skips the cut
+  // deduction entirely — the goods weren't sewn by us.
   const bp = db.prepare("SELECT m.no_workshop FROM base_products bp JOIN models m ON bp.model_id=m.id WHERE bp.id=?").get(base_product_id);
-  if (!no_workshop && !bp?.no_workshop && !workshop_id) return res.status(400).json({ error: "Оберіть цех або позначте 'не з цеху'" });
+  const skipCut = !!no_workshop || !!bp?.no_workshop;
   db.transaction(() => {
     for (const item of items) {
       const qty = parseInt(item.quantity);
@@ -925,10 +928,19 @@ app.post("/api/stock/incoming-bulk", authMiddleware, requireRole("admin","wareho
         db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id,item.size_id,qty,note||"",req.user.id);
         db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(qty,qty,base_product_id,item.size_id);
         db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('incoming',?,?,?,?,?)").run(base_product_id,item.size_id,qty,note||"",req.user.id);
-        // Deduct from cuts if workshop specified
-        if (workshop_id) {
-          db.prepare("UPDATE stock_cuts SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=? AND workshop_id=?").run(qty, base_product_id, item.size_id, workshop_id);
-          db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('cut_out',?,?,?,?,?)").run(base_product_id, item.size_id, qty, "Крій → база", req.user.id);
+        if (!skipCut) {
+          // Auto-deduct the received qty from this product's cut, spilling
+          // across workshops (largest first) until covered. Any shortfall is
+          // fine — base still gets the full qty, the cut just floors at 0.
+          let remaining = qty;
+          const cuts = db.prepare("SELECT id,workshop_id,quantity FROM stock_cuts WHERE base_product_id=? AND size_id=? AND quantity>0 ORDER BY quantity DESC").all(base_product_id, item.size_id);
+          for (const c of cuts) {
+            if (remaining <= 0) break;
+            const take = Math.min(remaining, c.quantity);
+            db.prepare("UPDATE stock_cuts SET quantity=quantity-? WHERE id=?").run(take, c.id);
+            db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('cut_out',?,?,?,?,?)").run(base_product_id, item.size_id, take, "Крій → база", req.user.id);
+            remaining -= take;
+          }
         }
       }
     }
