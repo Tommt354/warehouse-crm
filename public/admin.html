@@ -2812,13 +2812,13 @@ async function addOrderStatus(){
 async function deleteOrderStatus(id){if(!confirm("Видалити статус?"))return;try{await api("/api/order-statuses/"+id,{method:"DELETE"});loadOrderStatuses()}catch(e){alert(e.message)}}
 async function saveSets(){const ks=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];const d={};ks.forEach(k=>{const el=document.getElementById("s-"+k);if(el)d[k]=el.value});try{await api("/api/settings",{method:"PUT",body:JSON.stringify(d)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">'+Icon('check',13)+'</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2e3)}catch(e){}}
 
-RangePicker.init("adm-df", "adm-dt", {presets:[7,15,30]});
-RangePicker.init("ds-from", "ds-to", {presets:[7,15,30]});
-RangePicker.init("dpop-df", "dpop-dt", {presets:[7,15,30]});
+RangePicker.init("adm-df", "adm-dt", {presets:[7,15,30], onApply:function(){admOrdPage=0;loadAdmOrders(admOrdFilter)}});
+RangePicker.init("ds-from", "ds-to", {presets:[7,15,30], onApply:function(){loadDropStats()}});
+RangePicker.init("dpop-df", "dpop-dt", {presets:[7,15,30], quick:false});
 setDashPopPeriod(30);
-RangePicker.init("dl-df", "dl-dt", {presets:[7,15,30]});
+RangePicker.init("dl-df", "dl-dt", {presets:[7,15,30], quick:false});
 setDropsPeriod(30);
-RangePicker.init("ac-df", "ac-dt", {presets:[7,15,30]});
+RangePicker.init("ac-df", "ac-dt", {presets:[7,15,30], quick:false});
 setAccPeriod(30);
 init();
 </script>

@@ -263,7 +263,7 @@ async function loadSalary(){
     document.getElementById("sal-payouts").innerHTML=r.payouts.length?r.payouts.map(function(p){return '<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--card);border:1px solid var(--brd);border-radius:8px;margin-bottom:6px"><div style="font-size:11px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-weight:700;color:var(--acc)">'+p.amount.toFixed(0)+'₴</div></div>'}).join(""):'<div style="font-size:11px;color:var(--td)">Ще не було виплат</div>';
   }catch(e){document.getElementById("sal-stats").innerHTML='<div class="msg msg-err">'+esc(e.message)+'</div>'}
 }
-RangePicker.init("sal-df", "sal-dt", {presets:[7,15,30]});
+RangePicker.init("sal-df", "sal-dt", {presets:[7,15,30], onApply:function(){loadSalary()}});
 
 init();
 </script>

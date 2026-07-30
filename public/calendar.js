@@ -43,9 +43,27 @@
         '<div class="rp-head"><b class="rp-month"></b><div class="rp-nav"><button type="button" class="rp-prev">‹</button><button type="button" class="rp-next">›</button></div></div>' +
         '<div class="rp-weekdays">' + WEEKDAYS.map(function (w) { return "<span>" + w + "</span>"; }).join("") + '</div>' +
         '<div class="rp-days"></div>' +
-        '<div class="rp-foot"><div class="rp-presets">' + presets.map(function (p) { return '<span data-days="' + p + '">' + p + ' дн.</span>'; }).join("") + '</div><button type="button" class="rp-apply">Застосувати</button></div>' +
+        '<div class="rp-foot"><button type="button" class="rp-apply">Застосувати</button></div>' +
       '</div>';
     toEl.insertAdjacentElement("afterend", wrap);
+
+    // Quick presets live OUTSIDE the calendar (always visible), and highlight
+    // the one currently in use. opts.quick === false skips them (for screens
+    // that already render their own preset row).
+    var quickBar = null;
+    if (presets.length && opts.quick !== false) {
+      quickBar = document.createElement("div");
+      quickBar.className = "rp-quick";
+      quickBar.innerHTML = presets.map(function (p) { return '<button type="button" class="rp-quick-btn" data-days="' + p + '">' + p + 'д</button>'; }).join("");
+      wrap.insertAdjacentElement("beforebegin", quickBar);
+    }
+    function apply() { if (typeof opts.onApply === "function") opts.onApply(fromEl.value, toEl.value); }
+    function refreshQuick() {
+      if (!quickBar) return;
+      var s = parseISO(fromEl.value), e = parseISO(toEl.value), active = null;
+      if (s && e && sameDay(startOfDay(e), startOfDay(new Date()))) active = Math.round((startOfDay(e) - startOfDay(s)) / 86400000) + 1;
+      quickBar.querySelectorAll(".rp-quick-btn").forEach(function (b) { b.classList.toggle("on", parseInt(b.dataset.days, 10) === active); });
+    }
 
     var trigger = wrap.querySelector(".rp-trigger");
     var panel = wrap.querySelector(".rp-panel");
@@ -63,6 +81,7 @@
       if (s && e) { label.textContent = fmtShort(s) + " — " + fmtFull(e); label.classList.remove("placeholder"); }
       else if (s) { label.textContent = fmtFull(s) + " — …"; label.classList.remove("placeholder"); }
       else { label.textContent = placeholder; label.classList.add("placeholder"); }
+      refreshQuick();
     }
 
     // Intercept external .value assignment (e.g. a "✕ clear" button doing
@@ -151,7 +170,7 @@
       renderDays();
     });
 
-    wrap.querySelectorAll(".rp-presets span").forEach(function (p) {
+    if (quickBar) quickBar.querySelectorAll(".rp-quick-btn").forEach(function (p) {
       p.addEventListener("click", function (e) {
         e.stopPropagation();
         var days = parseInt(p.dataset.days, 10);
@@ -159,7 +178,8 @@
         var start = new Date(end.getTime() - (days - 1) * 86400000);
         fromEl.value = fmtISO(start);
         toEl.value = fmtISO(end);
-        close();
+        refreshQuick();
+        apply();
       });
     });
 
@@ -168,6 +188,7 @@
       if (rangeStart) fromEl.value = fmtISO(rangeStart);
       if (rangeEnd) toEl.value = fmtISO(rangeEnd);
       close();
+      apply();
     });
 
     refreshLabel();

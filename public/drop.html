@@ -728,8 +728,8 @@ async function saveProfile(){
   document.getElementById("set-msg").innerHTML='<div style="color:var(--acc);font-size:12px">'+Icon('check',12)+' Збережено</div>';ME=(await api("/api/auth/me")).user;setTimeout(function(){document.getElementById("set-msg").innerHTML=""},2000)}catch(e){}
 }
 
-RangePicker.init("stat-from", "stat-to", {presets:[7,15,30]});
-RangePicker.init("dr-df", "dr-dt", {presets:[7,15,30]});
+RangePicker.init("stat-from", "stat-to", {presets:[7,15,30], quick:false});
+RangePicker.init("dr-df", "dr-dt", {presets:[7,15,30], onApply:function(){ordPage=0;loadOrders()}});
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
