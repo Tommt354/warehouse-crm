@@ -193,14 +193,17 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 </div></div>
 
 <!-- Catalog picker for order -->
-<div class="modal-bg" id="cp-modal"><div class="modal" style="max-width:650px">
+<div class="modal-bg" id="cp-modal"><div class="modal" style="max-width:650px;display:flex;flex-direction:column;overflow:hidden">
 <h3 style="display:flex;align-items:center"><i data-icon="package" data-size="15"></i> Оберіть товар <button onclick="clM('cp-modal')" style="margin-left:auto;background:none;border:none;color:var(--td);cursor:pointer;font-size:22px;line-height:1;padding:0 4px">✕</button></h3>
 <div style="display:flex;gap:4px;margin-bottom:8px"><button class="stab" id="cpt-hot" onclick="dropCh='hot';cpCatP=null;loadCatPicker()"><i data-icon="flame" data-size="12"></i> HOT</button><button class="stab on" id="cpt-ads" onclick="dropCh='ads';cpCatP=null;loadCatPicker()"><i data-icon="megaphone" data-size="12"></i> ADS</button></div>
 <input id="cp-search" placeholder="Пошук товару..." oninput="filterCatPicker(this.value)" style="width:100%;padding:8px 12px;font-size:13px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
+<div id="cp-summary" style="display:none;background:var(--accbg);border:1px solid rgba(124,134,255,.25);border-radius:10px;padding:8px 10px;margin-bottom:8px"><div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:5px">🛒 У замовленні: <span id="cp-sum-count">0</span> · <span id="cp-sum-total">0</span>₴</div><div id="cp-sum-list" style="max-height:104px;overflow-y:auto;display:flex;flex-direction:column;gap:3px"></div></div>
+<div style="flex:1;overflow-y:auto;min-height:0;margin:0 -4px;padding:0 4px">
 <div id="cp-bread"></div>
 <div id="cp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="cp-prods" class="cards"></div>
-<div style="margin-top:10px;display:flex;align-items:center;gap:8px"><span id="cp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn" style="margin-left:auto" onclick="clM('cp-modal')">Скасувати</button><button class="btn btn-p" onclick="clM('cp-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
+</div>
+<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--brd);display:flex;align-items:center;gap:8px"><span id="cp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn" style="margin-left:auto" onclick="clM('cp-modal')">Скасувати</button><button class="btn btn-p" onclick="clM('cp-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
 </div></div>
 
 <script>
@@ -419,7 +422,19 @@ function pickItem(vid,sid,name,price,sz,photo,isKit,weight){
   try{var el=window.event&&window.event.currentTarget;if(el){var ob=el.style.background,oc=el.style.color;el.style.transition="all .15s";el.style.background="var(--acc)";el.style.color="#0a0e17";setTimeout(function(){el.style.background=ob;el.style.color=oc},280)}}catch(e){}
   cpToast("Додано: "+name+(sz?" · "+sz:""));
 }
-function updateCpCount(){var el=document.getElementById("cp-count");if(el)el.textContent=oItems.length?("Додано в замовлення: "+oItems.length):""}
+function updateCpCount(){var el=document.getElementById("cp-count");if(el)el.textContent=oItems.length?("Додано в замовлення: "+oItems.length):"";renderCpSummary()}
+// Live summary at the top of the picker: how much and what is already added.
+function renderCpSummary(){
+  var wrap=document.getElementById("cp-summary");if(!wrap)return;
+  if(!oItems.length){wrap.style.display="none";return}
+  wrap.style.display="";
+  var cnt=oItems.reduce(function(s,i){return s+i.qty},0);
+  var total=oItems.reduce(function(s,i){return s+(i.price||0)*i.qty},0);
+  document.getElementById("cp-sum-count").textContent=cnt+" шт";
+  document.getElementById("cp-sum-total").textContent=total.toFixed(0);
+  document.getElementById("cp-sum-list").innerHTML=oItems.map(function(it,i){return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--th)"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name)+(it.sz?' ('+esc(it.sz)+')':'')+' ×'+it.qty+'</span><span style="color:var(--acc);white-space:nowrap">'+((it.price||0)*it.qty).toFixed(0)+'₴</span><button onclick="delOItemPick('+i+')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">✕</button></div>'}).join("");
+}
+function delOItemPick(i){oItems.splice(i,1);renderOItems();calcPay();calcOrderWeight();updateCpCount()}
 
 var kitPickData=null;
 function openKitPick(kitId){

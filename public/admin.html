@@ -660,14 +660,17 @@
 </div></div>
 
 <!-- Admin catalog picker modal -->
-<div class="modal-bg" id="ano-cat-modal"><div class="modal" style="max-width:650px">
+<div class="modal-bg" id="ano-cat-modal"><div class="modal" style="max-width:650px;display:flex;flex-direction:column;overflow:hidden">
 <h3 style="display:flex;align-items:center"><i data-icon="package" data-size="16"></i> Оберіть товари <button onclick="closeM('ano-cat-modal')" style="margin-left:auto;background:none;border:none;color:var(--td);cursor:pointer;font-size:22px;line-height:1;padding:0 4px">✕</button></h3>
 <div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn" id="anoc-hot" onclick="anoChannel='hot';anoCatP=null;loadAnoCatalog()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="btn on" id="anoc-ads" onclick="anoChannel='ads';anoCatP=null;loadAnoCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS</button></div>
 <div style="margin-bottom:8px"><input id="ano-cat-search" placeholder="Пошук товару за назвою..." oninput="filterAnoCatalog(this.value)" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"></div>
+<div id="ano-summary" style="display:none;background:var(--accbg);border:1px solid rgba(124,134,255,.25);border-radius:10px;padding:8px 10px;margin-bottom:8px"><div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:5px">🛒 У замовленні: <span id="ano-sum-count">0</span> · <span id="ano-sum-total">0</span>₴</div><div id="ano-sum-list" style="max-height:104px;overflow-y:auto;display:flex;flex-direction:column;gap:3px"></div></div>
+<div style="flex:1;overflow-y:auto;min-height:0;margin:0 -4px;padding:0 4px">
 <div id="anocp-bread"></div>
 <div id="anocp-cats" class="cards" style="margin-bottom:8px"></div>
-<div id="ano-cat-list" style="max-height:42vh;overflow-y:auto"></div>
-<div style="margin-top:10px;display:flex;align-items:center;gap:8px"><span id="anocp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn" style="margin-left:auto" onclick="closeM('ano-cat-modal')">Скасувати</button><button class="btn btn-p" onclick="closeM('ano-cat-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
+<div id="ano-cat-list"></div>
+</div>
+<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--brd);display:flex;align-items:center;gap:8px"><span id="anocp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn" style="margin-left:auto" onclick="closeM('ano-cat-modal')">Скасувати</button><button class="btn btn-p" onclick="closeM('ano-cat-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
 </div></div>
 
 <!-- Admin kit size picker modal -->
@@ -2005,7 +2008,19 @@ function filterAnoCatalog(q){
     '</div></div>'
   }).join(""):'<div style="padding:20px;text-align:center;color:var(--td)">Не знайдено</div>';
 }
-function updateAnoCount(){var el=document.getElementById("anocp-count");if(!el)return;var n=anoItems.reduce(function(s,i){return s+i.quantity},0);el.textContent=n?("Додано: "+n+" шт"):""}
+function updateAnoCount(){var el=document.getElementById("anocp-count");if(el){var n=anoItems.reduce(function(s,i){return s+i.quantity},0);el.textContent=n?("Додано: "+n+" шт"):""}renderAnoSummary()}
+// Live summary at the top of the picker: how much and what is already added.
+function renderAnoSummary(){
+  var wrap=document.getElementById("ano-summary");if(!wrap)return;
+  if(!anoItems.length){wrap.style.display="none";return}
+  wrap.style.display="";
+  var cnt=anoItems.reduce(function(s,i){return s+i.quantity},0);
+  var total=anoItems.reduce(function(s,i){return s+(i.drop_price||0)*i.quantity},0);
+  document.getElementById("ano-sum-count").textContent=cnt+" шт";
+  document.getElementById("ano-sum-total").textContent=total.toFixed(0);
+  document.getElementById("ano-sum-list").innerHTML=anoItems.map(function(it,i){return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--th)"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name)+(it.size_name?' ('+esc(it.size_name)+')':'')+' ×'+it.quantity+'</span><span style="color:var(--acc);white-space:nowrap">'+((it.drop_price||0)*it.quantity).toFixed(0)+'₴</span><button onclick="delAnoItemPick('+i+')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">✕</button></div>'}).join("");
+}
+function delAnoItemPick(i){anoItems.splice(i,1);renderAnoItems();updateAnoCount()}
 // Brief confirmation toast so a tap on a size clearly registers.
 function anoToast(msg){var d=document.createElement("div");d.style.cssText="position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 6px 22px rgba(0,0,0,.45);display:flex;align-items:center;gap:6px;max-width:90vw";d.innerHTML=Icon('check',14)+" "+esc(msg);document.body.appendChild(d);setTimeout(function(){d.style.transition="opacity .3s";d.style.opacity="0";setTimeout(function(){d.remove()},300)},1100)}
 function addAnoItem(varId,sizeId,sizeName,name,price,photo,weight){
