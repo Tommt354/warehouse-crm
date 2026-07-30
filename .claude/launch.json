@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "warehouse-crm",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "DEV_QUICK_LOGIN=1 npm start"],
+      "port": 3000,
+      "cwd": "/Users/artemkravcov/Desktop/projeckt/warehouse-crm"
+    }
+  ]
+}

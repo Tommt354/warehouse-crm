@@ -670,10 +670,11 @@
 </div></div>
 
 <!-- Admin kit size picker modal -->
-<div class="modal-bg" id="ano-kit-modal"><div class="modal" style="max-width:500px">
-<h3 id="ano-kit-title"><i data-icon="gift" data-size="15"></i> Оберіть розміри</h3>
-<div id="ano-kit-body"></div>
-<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="confirmAnoKit()"><i data-icon="check" data-size="14"></i> Додати</button><button class="btn" onclick="closeM('ano-kit-modal')">Скасувати</button></div>
+<div class="modal-bg" id="anokit-modal" style="z-index:600"><div class="modal" style="max-width:500px">
+<h3 id="anokit-title"><i data-icon="gift" data-size="15"></i> Оберіть розміри</h3>
+<div id="anokit-body"></div>
+<div id="anokit-err" style="display:none;color:var(--red);font-size:12px;margin-top:8px"></div>
+<div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-p" onclick="confirmAnoKitPick()"><i data-icon="check" data-size="14"></i> Додати</button><button class="btn" onclick="closeM('anokit-modal')">Скасувати</button></div>
 </div></div>
 
 <div class="modal-bg" id="bal-modal"><div class="modal" style="max-width:450px">
@@ -1954,17 +1955,23 @@ async function loadAnoCatalog(){
   bc+='</div>';document.getElementById("anocp-bread").innerHTML=bc;
   document.getElementById("anocp-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="anoCatP='+c.id+';loadAnoCatalog()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
   document.getElementById("ano-cat-list").innerHTML='<div style="text-align:center;padding:20px;color:var(--td)">Завантаження...</div>';
-  try{var r=await api("/api/variations?channel="+anoChannel);anoCatalog=r.variations;filterAnoCatalog(document.getElementById("ano-cat-search").value||"")}catch(e){}
+  try{var r=await api("/api/variations?channel="+anoChannel);anoCatalog=r.variations;try{var kd=await api("/api/kits?channel="+anoChannel);(kd.kits||[]).forEach(function(k){k.is_kit=true;k.eff_category_drop_id=k.category_drop_id;anoCatalog.push(k)})}catch(e){}filterAnoCatalog(document.getElementById("ano-cat-search").value||"")}catch(e){}
   updateAnoCount();
 }
 function filterAnoCatalog(q){
   q=(q||"").toLowerCase();
   var list=q?anoCatalog.filter(function(v){return (v.name||"").toLowerCase().includes(q)||(v.base_name||"").toLowerCase().includes(q)||(v.model_name||"").toLowerCase().includes(q)}):(anoCatP?anoCatalog.filter(function(v){return v.eff_category_drop_id==anoCatP}):anoCatalog);
   document.getElementById("ano-cat-list").innerHTML=list.length?list.map(function(v){
-    var ph=v.photo||v.print_photo||v.bp_photo||"";var price=v.drop_price_override||v.drop_price||v.model_drop_price||0;
+    var ph=v.photo||v.print_photo||v.bp_photo||"";var price=v.is_kit?(v.drop_price||0):(v.drop_price_override||v.drop_price||v.model_drop_price||0);
     var stockArr=Object.entries(v.stock||{}).filter(function(e){return e[1]>0});
-    return '<div style="display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--brd);align-items:flex-start">'+(ph?'<img src="'+ph+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>')+
-    '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(v.name||v.base_name)+'</div><div style="font-size:11px;color:var(--td)">'+esc(v.model_name||"")+'</div><div style="font-size:13px;font-weight:700;color:var(--acc);margin-top:2px">'+price+'₴</div>'+
+    var head='<div style="display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--brd);align-items:flex-start">'+(ph?'<img src="'+ph+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>')+
+    '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(v.name||v.base_name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div style="font-size:11px;color:var(--td)">'+esc(v.model_name||"")+'</div><div style="font-size:13px;font-weight:700;color:var(--acc);margin-top:2px">'+price+'₴</div>';
+    if(v.is_kit){
+      var comps=(v.items||[]).map(function(ci){return '<div style="font-size:10px;color:var(--td)">'+esc(ci.var_name)+'</div>'}).join("");
+      var sizeRow=stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(function(e){var sid=e[0],qty=e[1];var sz=CC.sizes.find(function(s){return s.id==sid});return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px" onclick="pickAnoKitUnified('+v.id+','+sid+',\''+esc(sz?sz.name:sid)+'\')">'+esc(sz?sz.name:sid)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>';
+      return head+'<div style="margin:4px 0">'+comps+'</div>'+sizeRow+'<button class="btn btn-sm" style="font-size:10px;padding:4px 8px;margin-top:6px;color:var(--acc)" onclick="openAnoKitPick('+v.id+')">'+Icon('ruler',11)+' Різні розміри комплектуючих</button></div></div>';
+    }
+    return head+
     (stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(function(e){var sid=e[0],qty=e[1];var sz=CC.sizes.find(function(s){return s.id==sid});return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px" onclick="addAnoItem('+v.id+','+sid+',\''+esc(sz?sz.name:sid)+'\',\''+esc(v.name||v.base_name)+'\','+price+',\''+esc(ph)+'\','+(v.model_weight||0.3)+')">'+esc(sz?sz.name:sid)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>')+
     '</div></div>'
   }).join(""):'<div style="padding:20px;text-align:center;color:var(--td)">Не знайдено</div>';
@@ -1975,6 +1982,61 @@ function addAnoItem(varId,sizeId,sizeName,name,price,photo,weight){
   if(existing)existing.quantity++;
   else anoItems.push({variation_id:varId,size_id:sizeId,size_name:sizeName,name:name,drop_price:price,photo:photo,quantity:1,kit_id:null,weight:weight||0.3});
   renderAnoItems();updateAnoCount();
+}
+// A kit is added as ONE line carrying kit_id (server applies the kit price and
+// expands components). component_sizes lets each component take its own size.
+function addAnoKit(kit,sizeId,sizeName,componentSizes){
+  anoItems.push({variation_id:null,kit_id:kit.id,size_id:sizeId,size_name:sizeName,component_sizes:componentSizes,name:kit.name,drop_price:kit.drop_price||0,photo:kit.photo||"",quantity:1,weight:kit.weight||0.5});
+  renderAnoItems();updateAnoCount();
+}
+// Quick path: one size for the whole kit — sized components take that size,
+// one-size components (cap) take their only size.
+function pickAnoKitUnified(kitId,sizeId,sizeName){
+  var kit=anoCatalog.find(function(v){return v.id===kitId&&v.is_kit});if(!kit||!kit.items)return;
+  var comp={};
+  kit.items.forEach(function(ci){
+    var cs=ci.component_stock||{};var sid=sizeId;
+    if(cs[sizeId]===undefined){var only=Object.keys(cs)[0];if(only)sid=parseInt(only)}
+    comp[ci.variation_id]=sid;
+  });
+  addAnoKit(kit,sizeId,sizeName,comp);
+}
+var anoKitPickData=null;
+function openAnoKitPick(kitId){
+  var kit=anoCatalog.find(function(v){return v.id===kitId&&v.is_kit});
+  if(!kit||!kit.items)return;
+  anoKitPickData={kit:kit,selections:{}};
+  var html='<div style="font-size:13px;color:var(--th);margin-bottom:10px">'+esc(kit.name)+' · '+(kit.drop_price||0)+'₴</div>';
+  kit.items.forEach(function(ci,idx){
+    var photo=ci.var_photo||ci.bp_photo||"";
+    html+='<div style="background:var(--bg);border-radius:8px;padding:10px;margin-bottom:8px">';
+    html+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'+(photo?'<img src="'+photo+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+'<div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(ci.var_name)+'</div></div>';
+    html+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
+    CC.sizes.forEach(function(s){
+      var q=ci.component_stock?ci.component_stock[s.id]:undefined;
+      if(q===undefined)return;
+      html+='<button class="btn btn-sm" data-kchip style="font-size:10px;padding:4px 8px'+(q<=0?';opacity:.5':'')+'" onclick="selectAnoKitSize('+idx+','+s.id+',\''+esc(s.name)+'\',this)">'+esc(s.name)+' ('+q+')</button>';
+    });
+    html+='</div></div>';
+  });
+  document.getElementById("anokit-body").innerHTML=html;
+  document.getElementById("anokit-err").style.display="none";
+  document.getElementById("anokit-title").innerHTML=Icon('gift',15)+" "+esc(kit.name);
+  openM("anokit-modal");
+}
+function selectAnoKitSize(compIdx,sizeId,sizeName,el){
+  anoKitPickData.selections[compIdx]={sizeId:sizeId,sizeName:sizeName};
+  el.parentElement.querySelectorAll("[data-kchip]").forEach(function(b){b.style.outline="none"});
+  el.style.outline="2px solid var(--acc)";
+}
+function confirmAnoKitPick(){
+  if(!anoKitPickData)return;
+  var kit=anoKitPickData.kit;var err=document.getElementById("anokit-err");
+  for(var i=0;i<kit.items.length;i++){if(!anoKitPickData.selections[i]){err.textContent="Оберіть розмір для: "+kit.items[i].var_name;err.style.display="";return}}
+  var comp={};var firstSize=null;
+  kit.items.forEach(function(ci,idx){var sel=anoKitPickData.selections[idx];comp[ci.variation_id]=sel.sizeId;if(firstSize===null)firstSize=sel.sizeId});
+  addAnoKit(kit,firstSize,"різні розміри",comp);
+  closeM("anokit-modal");
 }
 async function submitAdmOrder(){
   var el=document.getElementById("ano-err");el.style.display="none";
@@ -1988,7 +2050,7 @@ async function submitAdmOrder(){
   if(anoDeliveryType==="warehouse"&&!document.getElementById("ano-wh").value){el.textContent="Вкажіть відділення";el.style.display="";return}
   if(anoDeliveryType==="courier"&&!document.getElementById("ano-street").value){el.textContent="Вкажіть вулицю";el.style.display="";return}
   if(anoDeliveryType==="courier"&&!document.getElementById("ano-house").value){el.textContent="Вкажіть номер будинку";el.style.display="";return}
-  var data={dropshipper_id:parseInt(document.getElementById("ano-drop").value),items:anoItems.map(it=>({variation_id:it.variation_id,size_id:it.size_id,quantity:it.quantity,kit_id:it.kit_id})),client_name:name,client_phone:phone,client_city:document.getElementById("ano-city").value,client_warehouse:document.getElementById("ano-wh").value,cod_amount:parseFloat(document.getElementById("ano-cod").value)||0,is_prepaid:isPrepaid,own_ttn:ownTtn,own_ttn_number:ownTtn?document.getElementById("ano-own-ttn-num").value.trim():"",receipt_photo:anoReceipt,declared_value:parseFloat(document.getElementById("ano-dval").value)||0,note:document.getElementById("ano-note").value,cargo_description:document.getElementById("ano-cargo-desc").value||"Одяг",weight:parseFloat(document.getElementById("ano-weight").value)||0.5,delivery_type:anoDeliveryType,client_street:document.getElementById("ano-street").value,client_house:document.getElementById("ano-house").value,client_flat:document.getElementById("ano-flat").value,is_postomat:anoIsPostomat,parcel_width:parseFloat(document.getElementById("ano-pw").value)||0,parcel_height:parseFloat(document.getElementById("ano-ph").value)||0,parcel_length:parseFloat(document.getElementById("ano-pl").value)||0};
+  var data={dropshipper_id:parseInt(document.getElementById("ano-drop").value),items:anoItems.map(it=>({variation_id:it.variation_id,size_id:it.size_id,quantity:it.quantity,kit_id:it.kit_id,component_sizes:it.component_sizes})),client_name:name,client_phone:phone,client_city:document.getElementById("ano-city").value,client_warehouse:document.getElementById("ano-wh").value,cod_amount:parseFloat(document.getElementById("ano-cod").value)||0,is_prepaid:isPrepaid,own_ttn:ownTtn,own_ttn_number:ownTtn?document.getElementById("ano-own-ttn-num").value.trim():"",receipt_photo:anoReceipt,declared_value:parseFloat(document.getElementById("ano-dval").value)||0,note:document.getElementById("ano-note").value,cargo_description:document.getElementById("ano-cargo-desc").value||"Одяг",weight:parseFloat(document.getElementById("ano-weight").value)||0.5,delivery_type:anoDeliveryType,client_street:document.getElementById("ano-street").value,client_house:document.getElementById("ano-house").value,client_flat:document.getElementById("ano-flat").value,is_postomat:anoIsPostomat,parcel_width:parseFloat(document.getElementById("ano-pw").value)||0,parcel_height:parseFloat(document.getElementById("ano-ph").value)||0,parcel_length:parseFloat(document.getElementById("ano-pl").value)||0};
   try{await api("/api/orders",{method:"POST",body:JSON.stringify(data)});closeM("ano-modal");loadAdmOrders(admOrdFilter)}catch(e){el.textContent=e.message;el.style.display=""}
 }
 

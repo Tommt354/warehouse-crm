@@ -1161,13 +1161,23 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         totalWeight += (kit.weight || 0.5) * qty;
 
         const kitComps = db.prepare("SELECT ki.variation_id FROM kit_items ki WHERE ki.kit_id=?").all(item.kit_id);
+        // Optional per-component sizes (admin "різні розміри"): { variation_id: size_id }.
+        // Falls back to item.size_id (unified size) for any component not listed.
+        const compSizes = item.component_sizes || {};
         for (const comp of kitComps) {
-          const v = db.prepare("SELECT v.*,bp.id as bpid FROM variations v JOIN base_products bp ON v.base_product_id=bp.id WHERE v.id=?").get(comp.variation_id);
+          const v = db.prepare("SELECT v.*,bp.id as bpid,bp.model_id as mid FROM variations v JOIN base_products bp ON v.base_product_id=bp.id WHERE v.id=?").get(comp.variation_id);
           if (!v) continue;
+          let compSize = compSizes[comp.variation_id] || item.size_id;
+          // A one-size component (e.g. cap "Універсальний") doesn't carry the
+          // kit's clothing size — if the requested size isn't one of the
+          // component's own sizes and it has exactly one, use that instead so
+          // its stock is still deducted.
+          const compModelSizes = db.prepare("SELECT size_id FROM model_sizes WHERE model_id=?").all(v.mid).map(r => r.size_id);
+          if (!compModelSizes.includes(compSize) && compModelSizes.length === 1) compSize = compModelSizes[0];
           // A frozen row (active recount) skips the decrement here — it
           // gets reconciled in one shot by /api/recount/apply instead.
-          db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, v.bpid, item.size_id);
-          orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: 0, from_returns: 0, kit_id: item.kit_id });
+          db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, v.bpid, compSize);
+          orderItems.push({ variation_id: v.id, size_id: compSize, quantity: qty, drop_price: 0, from_returns: 0, kit_id: item.kit_id });
         }
         // First component gets the kit price for display
         if (orderItems.length && orderItems[orderItems.length - kitComps.length]) {
