@@ -381,18 +381,25 @@ app.put("/api/models/:id", authMiddleware, requireRole("admin"), (req, res) => {
       req.body.workers.forEach(w=>lw.run(mid,w.user_id,parseFloat(w.amount)||0));
     }
 
-    // Sync product names and prices if requested
-    if(sync_products && name){
+    // Sync names AND prices to all base products/variations if requested, so
+    // editing the whole model (e.g. a forgotten cost_price) propagates down
+    // instead of forcing per-product edits.
+    if(sync_products){
+      const cp = cost_price!==undefined ? (parseFloat(cost_price)||0) : null;
+      const dp = drop_price!==undefined ? (parseFloat(drop_price)||0) : null;
       const bps = db.prepare("SELECT bp.*,c.name as color_name FROM base_products bp LEFT JOIN colors c ON bp.color_id=c.id WHERE bp.model_id=?").all(mid);
       for(const bp of bps){
-        const newBpName = `${name.trim()} ${bp.color_name||""}`.trim();
-        db.prepare("UPDATE base_products SET name=? WHERE id=?").run(newBpName, bp.id);
-        // Update variation names
-        const vars = db.prepare("SELECT v.*,p.name as print_name FROM variations v LEFT JOIN prints p ON v.print_id=p.id WHERE v.base_product_id=?").all(bp.id);
-        for(const v of vars){
-          const newVarName = v.print_name ? `${newBpName} — ${v.print_name}` : newBpName;
-          db.prepare("UPDATE variations SET name=? WHERE id=?").run(newVarName, v.id);
+        if(name){
+          const newBpName = `${name.trim()} ${bp.color_name||""}`.trim();
+          db.prepare("UPDATE base_products SET name=? WHERE id=?").run(newBpName, bp.id);
+          const vars = db.prepare("SELECT v.*,p.name as print_name FROM variations v LEFT JOIN prints p ON v.print_id=p.id WHERE v.base_product_id=?").all(bp.id);
+          for(const v of vars){
+            const newVarName = v.print_name ? `${newBpName} — ${v.print_name}` : newBpName;
+            db.prepare("UPDATE variations SET name=? WHERE id=?").run(newVarName, v.id);
+          }
         }
+        if(cp!==null) db.prepare("UPDATE base_products SET cost_price=? WHERE id=?").run(cp, bp.id);
+        if(dp!==null) db.prepare("UPDATE base_products SET drop_price=? WHERE id=?").run(dp, bp.id);
       }
     }
   })();

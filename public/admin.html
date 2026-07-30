@@ -822,6 +822,7 @@ async function viewModel(id){
   document.getElementById("mv-t").textContent=m.name;
   let h=`<div style="font-size:12px">
   <div class="acts" style="margin-bottom:10px">
+    <button class="btn btn-p" onclick="editModelFields(${m.id})">${Icon('pencil',13)} Редагувати модель</button>
     <button class="btn btn-d" onclick="deleteModel(${m.id})">${Icon('trash2',13)} Видалити модель</button>
   </div>
   <div class="fld-row"><div><strong>Тип:</strong> ${m.is_ready_product?"Готовий":"База"}</div><div><strong>Категорія:</strong> ${esc(m.category_name||"—")}</div></div>
