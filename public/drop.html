@@ -472,16 +472,12 @@ function confirmKitPick(){
   for(var i=0;i<kit.items.length;i++){
     if(!kitPickData.selections[i]){err.textContent="Оберіть розмір для: "+kit.items[i].var_name;err.style.display="block";return}
   }
-  // Add each component as separate order item
-  kit.items.forEach(function(ci,idx){
-    var sel=kitPickData.selections[idx];
-    oItems.push({varId:ci.variation_id,sizeId:sel.sizeId,name:ci.var_name+" ("+kit.name+")",price:0,sz:sel.sizeName,photo:ci.var_photo||ci.bp_photo||"",qty:1,kitId:null,weight:0});
-  });
-  // Add kit price/weight as first item adjustment
-  if(oItems.length>=kit.items.length){
-    oItems[oItems.length-kit.items.length].price=kit.drop_price;
-    oItems[oItems.length-kit.items.length].weight=kit.weight||0.5;
-  }
+  // Add the kit as ONE line carrying kit_id (server applies the kit price and
+  // expands the components). component_sizes gives each component its size.
+  var comp={},firstSize=null;
+  kit.items.forEach(function(ci,idx){var sel=kitPickData.selections[idx];comp[ci.variation_id]=sel.sizeId;if(firstSize===null)firstSize=sel.sizeId});
+  var kph=kit.photo||(kit.items[0]&&(kit.items[0].var_photo||kit.items[0].bp_photo))||"";
+  oItems.push({varId:null,kitId:kit.id,sizeId:firstSize,sz:"різні розміри",componentSizes:comp,name:kit.name,price:kit.drop_price||0,photo:kph,qty:1,weight:kit.weight||0.5});
   renderOItems();calcPay();calcOrderWeight();clM("kit-pick-modal");updateCpCount();
   cpToast("Додано комплект: "+kit.name+" · різні розміри");
 }
@@ -489,12 +485,16 @@ function confirmKitPick(){
 // size, one-size components (cap) take their only size.
 function pickKitUnified(kitId,sizeId,sizeName){
   var kit=allV.find(function(v){return v.id===kitId&&v.is_kit});if(!kit||!kit.items)return;
+  // Sized components take the chosen size; one-size components (cap) take their
+  // only size. Add the kit as ONE line with kit_id + per-component sizes.
+  var comp={};
   kit.items.forEach(function(ci){
-    var cs=ci.component_stock||{};var sid=sizeId,sname=sizeName;
-    if(cs[sizeId]===undefined){var only=Object.keys(cs)[0];if(only){sid=parseInt(only);sname=(allSz.find(function(s){return s.id==sid})||{}).name||sizeName}}
-    oItems.push({varId:ci.variation_id,sizeId:sid,name:ci.var_name+" ("+kit.name+")",price:0,sz:sname,photo:ci.var_photo||ci.bp_photo||"",qty:1,kitId:null,weight:0});
+    var cs=ci.component_stock||{};var sid=sizeId;
+    if(cs[sizeId]===undefined){var only=Object.keys(cs)[0];if(only)sid=parseInt(only)}
+    comp[ci.variation_id]=sid;
   });
-  if(oItems.length>=kit.items.length){oItems[oItems.length-kit.items.length].price=kit.drop_price;oItems[oItems.length-kit.items.length].weight=kit.weight||0.5}
+  var kph=kit.photo||(kit.items[0]&&(kit.items[0].var_photo||kit.items[0].bp_photo))||"";
+  oItems.push({varId:null,kitId:kit.id,sizeId:sizeId,sz:sizeName,componentSizes:comp,name:kit.name,price:kit.drop_price||0,photo:kph,qty:1,weight:kit.weight||0.5});
   renderOItems();calcPay();calcOrderWeight();clM("cp-modal");
   cpToast("Додано комплект: "+kit.name+(sizeName?" · "+sizeName:""));
 }
@@ -570,7 +570,7 @@ async function submitOrder(){
   if(noDeliveryType==="courier"&&!document.getElementById("no-house").value){err.textContent="Вкажіть номер будинку";err.style.display="block";return}
   try{
     var r=await api("/api/orders",{method:"POST",body:JSON.stringify({
-      items:oItems.map(function(c){return{variation_id:c.kitId?undefined:c.varId,size_id:c.sizeId,quantity:c.qty,kit_id:c.kitId||undefined}}),
+      items:oItems.map(function(c){return{variation_id:c.kitId?undefined:c.varId,size_id:c.sizeId,quantity:c.qty,kit_id:c.kitId||undefined,component_sizes:c.componentSizes}}),
       client_name:document.getElementById("no-name").value,
       client_phone:document.getElementById("no-phone").value,
       client_city:document.getElementById("no-city").value,
