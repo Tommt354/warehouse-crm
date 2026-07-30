@@ -1843,7 +1843,10 @@ async function saveEditOrder(){
 }
 
 // ── ADMIN NEW ORDER ────────────────────────────────────────────────
-let anoItems=[],anoDrops=[],anoCatalog=[],anoChannel="ads",anoCityRef="",anoSettleRef="",anoReceipt="",anoKitPending=null;
+let anoItems=[],anoDrops=[],anoCatalog=[],anoSizes=[],anoChannel="ads",anoCityRef="",anoSettleRef="",anoReceipt="",anoKitPending=null;
+// Size-name resolver for the order picker. CC.sizes isn't always loaded in this
+// flow, so prefer the sizes list from /api/variations, then CC, then the raw id.
+function anoSzName(sid){var l=(anoSizes&&anoSizes.length)?anoSizes:(window.CC&&CC.sizes||[]);var s=l.find(function(x){return x.id==sid});return s?s.name:sid}
 let anoDeliveryType="warehouse",anoIsPostomat=false,anoWeightManual=false;
 function setAnoDeliveryType(type,btn){
   anoDeliveryType=type;
@@ -1955,7 +1958,7 @@ async function loadAnoCatalog(){
   bc+='</div>';document.getElementById("anocp-bread").innerHTML=bc;
   document.getElementById("anocp-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="anoCatP='+c.id+';loadAnoCatalog()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
   document.getElementById("ano-cat-list").innerHTML='<div style="text-align:center;padding:20px;color:var(--td)">Завантаження...</div>';
-  try{var r=await api("/api/variations?channel="+anoChannel);anoCatalog=r.variations;try{var kd=await api("/api/kits?channel="+anoChannel);(kd.kits||[]).forEach(function(k){k.is_kit=true;k.eff_category_drop_id=k.category_drop_id;anoCatalog.push(k)})}catch(e){}filterAnoCatalog(document.getElementById("ano-cat-search").value||"")}catch(e){}
+  try{var r=await api("/api/variations?channel="+anoChannel);anoCatalog=r.variations;anoSizes=r.sizes||[];try{var kd=await api("/api/kits?channel="+anoChannel);(kd.kits||[]).forEach(function(k){k.is_kit=true;k.eff_category_drop_id=k.category_drop_id;anoCatalog.push(k)})}catch(e){}filterAnoCatalog(document.getElementById("ano-cat-search").value||"")}catch(e){}
   updateAnoCount();
 }
 function filterAnoCatalog(q){
@@ -1968,11 +1971,11 @@ function filterAnoCatalog(q){
     '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(v.name||v.base_name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div style="font-size:11px;color:var(--td)">'+esc(v.model_name||"")+'</div><div style="font-size:13px;font-weight:700;color:var(--acc);margin-top:2px">'+price+'₴</div>';
     if(v.is_kit){
       var comps=(v.items||[]).map(function(ci){return '<div style="font-size:10px;color:var(--td)">'+esc(ci.var_name)+'</div>'}).join("");
-      var sizeRow=stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(function(e){var sid=e[0],qty=e[1];var sz=CC.sizes.find(function(s){return s.id==sid});return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px" onclick="pickAnoKitUnified('+v.id+','+sid+',\''+esc(sz?sz.name:sid)+'\')">'+esc(sz?sz.name:sid)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>';
+      var sizeRow=stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(function(e){var sid=e[0],qty=e[1];var sn=anoSzName(sid);return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px" onclick="pickAnoKitUnified('+v.id+','+sid+',\''+esc(sn)+'\')">'+esc(sn)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>';
       return head+'<div style="margin:4px 0">'+comps+'</div>'+sizeRow+'<button class="btn btn-sm" style="font-size:10px;padding:4px 8px;margin-top:6px;color:var(--acc)" onclick="openAnoKitPick('+v.id+')">'+Icon('ruler',11)+' Різні розміри комплектуючих</button></div></div>';
     }
     return head+
-    (stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(function(e){var sid=e[0],qty=e[1];var sz=CC.sizes.find(function(s){return s.id==sid});return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px" onclick="addAnoItem('+v.id+','+sid+',\''+esc(sz?sz.name:sid)+'\',\''+esc(v.name||v.base_name)+'\','+price+',\''+esc(ph)+'\','+(v.model_weight||0.3)+')">'+esc(sz?sz.name:sid)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>')+
+    (stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(function(e){var sid=e[0],qty=e[1];var sn=anoSzName(sid);return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px" onclick="addAnoItem('+v.id+','+sid+',\''+esc(sn)+'\',\''+esc(v.name||v.base_name)+'\','+price+',\''+esc(ph)+'\','+(v.model_weight||0.3)+')">'+esc(sn)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>')+
     '</div></div>'
   }).join(""):'<div style="padding:20px;text-align:center;color:var(--td)">Не знайдено</div>';
 }
@@ -2012,11 +2015,17 @@ function openAnoKitPick(kitId){
     html+='<div style="background:var(--bg);border-radius:8px;padding:10px;margin-bottom:8px">';
     html+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'+(photo?'<img src="'+photo+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover">':'')+'<div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(ci.var_name)+'</div></div>';
     html+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
-    CC.sizes.forEach(function(s){
-      var q=ci.component_stock?ci.component_stock[s.id]:undefined;
-      if(q===undefined)return;
-      html+='<button class="btn btn-sm" data-kchip style="font-size:10px;padding:4px 8px'+(q<=0?';opacity:.5':'')+'" onclick="selectAnoKitSize('+idx+','+s.id+',\''+esc(s.name)+'\',this)">'+esc(s.name)+' ('+q+')</button>';
-    });
+    // Iterate the component's OWN stocked sizes (not CC.sizes, which isn't
+    // always loaded here) so chips always render for whatever sizes it has.
+    var cs=ci.component_stock||{};var sids=Object.keys(cs);
+    if(sids.length){
+      sids.forEach(function(sidStr){
+        var sid=parseInt(sidStr);var q=cs[sidStr];var sn=anoSzName(sid);
+        html+='<button class="btn btn-sm" data-kchip style="font-size:10px;padding:4px 8px'+(q<=0?';opacity:.5':'')+'" onclick="selectAnoKitSize('+idx+','+sid+',\''+esc(sn)+'\',this)">'+esc(sn)+' ('+q+')</button>';
+      });
+    }else{
+      html+='<div style="font-size:10px;color:var(--red)">Розміри недоступні</div>';
+    }
     html+='</div></div>';
   });
   document.getElementById("anokit-body").innerHTML=html;
