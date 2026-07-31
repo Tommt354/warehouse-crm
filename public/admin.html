@@ -1744,13 +1744,23 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     let agItems="";
     for(const i of order.items){
       const aph=(i.var_photo||i.print_photo||i.bp_photo)||"";
-      agItems+='<div style="display:flex;gap:9px;padding:7px 0;align-items:center;border-top:1px solid var(--brd)">'+
-        '<div class="oc-photo" style="width:72px;height:72px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative">'+(aph?'<img src="'+aph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+(i.quantity>1?'<div style="position:absolute;bottom:1px;right:1px;background:rgba(0,0,0,.72);color:#fff;border-radius:4px;font-size:9px;padding:0 4px;font-weight:700">×'+i.quantity+'</div>':'')+'</div>'+
-        '<div style="flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--th)">'+esc(i.var_name)+(i.print_name?' <span style="color:var(--warn);font-size:10px">·'+esc(i.print_name)+'</span>':'')+'</div>'+
-        '<div style="font-size:12px;font-weight:700;color:var(--acc);font-family:JetBrains Mono,monospace;flex-shrink:0">'+esc(i.size_name)+(i.original_size_name?' <span style="color:var(--red);text-decoration:line-through;font-weight:400;font-size:10px">'+esc(i.original_size_name)+'</span>':'')+'</div>'+
+      agItems+='<div class="oc-row" style="display:flex;gap:12px;padding:9px 0;align-items:center;border-top:1px solid var(--brd)">'+
+        '<div class="oc-photo" style="width:96px;height:96px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative">'+(aph?'<img src="'+aph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',26)+'</div>')+(i.quantity>1?'<div style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,.72);color:#fff;border-radius:5px;font-size:10px;padding:0 5px;font-weight:700">×'+i.quantity+'</div>':'')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--th);line-height:1.3">'+esc(i.var_name)+(i.print_name?' <span style="color:var(--warn);font-size:11px">·'+esc(i.print_name)+'</span>':'')+'</div>'+
+          '<div style="font-size:18px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace;margin-top:3px">'+esc(i.size_name)+(i.original_size_name?' <span style="color:var(--red);text-decoration:line-through;font-weight:400;font-size:13px">'+esc(i.original_size_name)+'</span>':'')+'</div>'+
+        '</div>'+
       '</div>';
     }
-    html+='<div class="oc-items" style="padding:0 14px 4px;max-height:184px;overflow-y:auto;transition:max-height .25s ease">'+agItems+'</div>';
+    html+='<div class="oc-items" style="padding:0 14px 4px;max-height:236px;overflow-y:auto;transition:max-height .25s ease">'+agItems+'</div>';
+    var isRetA=(o.status==='refused'||o.status==='return_transit');
+    var dtlA={warehouse:"Відділення НП",courier:"Кур'єр",pickup:"Самовивіз"}[o.delivery_type]||o.delivery_type||"—";
+    var addrA=o.delivery_type==="courier"?(esc(o.client_city||"")+", вул. "+esc(o.client_street||"")+" "+esc(o.client_house||"")+(o.client_flat?", кв. "+esc(o.client_flat):"")):(esc(o.client_city||"—")+(o.client_warehouse?" · "+esc(o.client_warehouse):""));
+    var m2A=function(l,v,c){return '<div style="flex:1;background:var(--bg);border-radius:10px;padding:8px 4px;text-align:center;min-width:0"><div style="font-size:9px;color:var(--td);text-transform:uppercase;letter-spacing:.04em">'+l+'</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:800;color:'+c+';margin-top:3px">'+v+'</div></div>';};
+    var chipA=function(l,v){return '<span style="font-size:11px;background:var(--bg);border-radius:7px;padding:5px 9px"><span style="color:var(--td)">'+l+':</span> <span style="color:var(--th);font-weight:600">'+v+'</span></span>';};
+    var moreA='<div style="display:flex;gap:6px;margin-bottom:9px">'+m2A("Наложка",o.cod_amount+"₴","var(--th)")+m2A("Дроп-ціна",o.total_drop_price.toFixed(0)+"₴","var(--tt)")+m2A(isRetA?"Збиток":"Виплата",(isRetA?"-"+(o.return_cost||0).toFixed(0):o.payout_amount.toFixed(0))+"₴",isRetA?"var(--red)":"var(--acc)")+'</div>'+
+      '<div style="background:var(--bg);border-radius:10px;padding:9px 11px;margin-bottom:9px"><div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:5px">'+Icon("truck",13)+' '+dtlA+(o.is_postomat?" · поштомат":"")+'</div><div style="font-size:13px;color:var(--th);font-weight:600;line-height:1.35">'+addrA+'</div>'+(o.client_phone?'<div style="font-size:12px;color:var(--td);font-family:JetBrains Mono,monospace;margin-top:2px">'+esc(o.client_phone)+'</div>':'')+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+chipA("Вага",parseFloat((o.weight||0).toFixed(3))+" кг")+(o.declared_value?chipA("Оцінка",o.declared_value+"₴"):'')+(o.is_prepaid?chipA("Оплата",o.own_ttn?"Своя ТТН":"Повна"):'')+chipA("Опис",esc(o.cargo_description||"Одяг"))+(o.drop_name?chipA("Дропер",esc(o.drop_name)):'')+chipA("Створено",o.created_at?o.created_at.slice(0,16):"—")+'</div>';
+    html+='<div class="oc-more" style="display:none;padding:10px 14px 4px;border-top:1px solid var(--brd)">'+moreA+'</div>';
     html+='<div style="padding:2px 14px 8px"><button onclick="toggleWhOC(this)" style="width:100%;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:8px;padding:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">▾ Відкрити</button></div>';
     if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:12px;color:var(--warn);padding:6px 10px;background:rgba(255,167,38,.06);border-radius:6px;border:1px solid rgba(255,167,38,.1)">'+Icon('fileText',13)+' '+esc(o.note)+'</div></div>';
     html+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.1);flex-wrap:wrap;gap:6px">';
@@ -2246,10 +2256,11 @@ function toggleWhOC(btn){
   var it=btn.parentElement.previousElementSibling;
   while(it&&!(it.classList&&it.classList.contains("oc-items")))it=it.previousElementSibling;
   if(!it)return;
+  var more=it.parentElement.querySelector(".oc-more");
   var open=it.getAttribute("data-open")==="1";it.setAttribute("data-open",open?"0":"1");
   var photos=it.querySelectorAll(".oc-photo");
-  if(open){it.style.maxHeight="210px";it.style.overflowY="auto";photos.forEach(function(p){p.style.width="72px";p.style.height="72px"});btn.innerHTML="▾ Відкрити";}
-  else{it.style.maxHeight="none";it.style.overflowY="visible";photos.forEach(function(p){p.style.width="120px";p.style.height="120px"});btn.innerHTML="▴ Звернути";}
+  if(open){it.style.maxHeight="236px";it.style.overflowY="auto";if(more)more.style.display="none";photos.forEach(function(p){p.style.width="96px";p.style.height="96px"});btn.innerHTML="▾ Відкрити";}
+  else{it.style.maxHeight="none";it.style.overflowY="visible";if(more)more.style.display="";photos.forEach(function(p){p.style.width="120px";p.style.height="120px"});btn.innerHTML="▴ Звернути";}
 }
 async function markPaid(id){if(!confirm("Підтвердити виплату?"))return;try{await api("/api/payouts/"+id+"/paid",{method:"PUT"});loadAdmPayouts()}catch(e){}}
 async function applyBalance(id){if(!confirm("Перевести баланс дропера у цю виплату? Баланс обнулиться, а сума виплати перерахується."))return;try{await api("/api/payouts/"+id+"/apply-balance",{method:"POST"});loadAdmPayouts()}catch(e){alert(e.message)}}
