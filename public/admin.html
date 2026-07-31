@@ -1745,7 +1745,7 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     for(const i of order.items){
       const aph=(i.var_photo||i.print_photo||i.bp_photo)||"";
       agItems+='<div style="display:flex;gap:9px;padding:7px 0;align-items:center;border-top:1px solid var(--brd)">'+
-        '<div style="width:58px;height:58px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative">'+(aph?'<img src="'+aph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+(i.quantity>1?'<div style="position:absolute;bottom:1px;right:1px;background:rgba(0,0,0,.72);color:#fff;border-radius:4px;font-size:9px;padding:0 4px;font-weight:700">×'+i.quantity+'</div>':'')+'</div>'+
+        '<div class="oc-photo" style="width:72px;height:72px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative">'+(aph?'<img src="'+aph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+(i.quantity>1?'<div style="position:absolute;bottom:1px;right:1px;background:rgba(0,0,0,.72);color:#fff;border-radius:4px;font-size:9px;padding:0 4px;font-weight:700">×'+i.quantity+'</div>':'')+'</div>'+
         '<div style="flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--th)">'+esc(i.var_name)+(i.print_name?' <span style="color:var(--warn);font-size:10px">·'+esc(i.print_name)+'</span>':'')+'</div>'+
         '<div style="font-size:12px;font-weight:700;color:var(--acc);font-family:JetBrains Mono,monospace;flex-shrink:0">'+esc(i.size_name)+(i.original_size_name?' <span style="color:var(--red);text-decoration:line-through;font-weight:400;font-size:10px">'+esc(i.original_size_name)+'</span>':'')+'</div>'+
       '</div>';
@@ -2247,8 +2247,9 @@ function toggleWhOC(btn){
   while(it&&!(it.classList&&it.classList.contains("oc-items")))it=it.previousElementSibling;
   if(!it)return;
   var open=it.getAttribute("data-open")==="1";it.setAttribute("data-open",open?"0":"1");
-  if(open){it.style.maxHeight="184px";btn.innerHTML="▾ Відкрити";}
-  else{it.style.maxHeight="72vh";btn.innerHTML="▴ Звернути";}
+  var photos=it.querySelectorAll(".oc-photo");
+  if(open){it.style.maxHeight="210px";it.style.overflowY="auto";photos.forEach(function(p){p.style.width="72px";p.style.height="72px"});btn.innerHTML="▾ Відкрити";}
+  else{it.style.maxHeight="none";it.style.overflowY="visible";photos.forEach(function(p){p.style.width="120px";p.style.height="120px"});btn.innerHTML="▴ Звернути";}
 }
 async function markPaid(id){if(!confirm("Підтвердити виплату?"))return;try{await api("/api/payouts/"+id+"/paid",{method:"PUT"});loadAdmPayouts()}catch(e){}}
 async function applyBalance(id){if(!confirm("Перевести баланс дропера у цю виплату? Баланс обнулиться, а сума виплати перерахується."))return;try{await api("/api/payouts/"+id+"/apply-balance",{method:"POST"});loadAdmPayouts()}catch(e){alert(e.message)}}
