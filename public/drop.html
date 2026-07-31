@@ -389,24 +389,28 @@ function renderOC(o){
   // Full order detail — shown when the card is expanded.
   var dtl={warehouse:"Відділення НП",courier:"Кур'єр",pickup:"Самовивіз"}[o.delivery_type]||o.delivery_type||"—";
   var addr=o.delivery_type==="courier"?(esc(o.client_city||"")+", вул. "+esc(o.client_street||"")+" "+esc(o.client_house||"")+(o.client_flat?", кв. "+esc(o.client_flat):"")):(esc(o.client_city||"—")+(o.client_warehouse?" · "+esc(o.client_warehouse):""));
-  var infoRow=function(l,v){return '<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:var(--td);flex-shrink:0">'+l+'</span><span style="color:var(--th);text-align:right;font-weight:600;word-break:break-word">'+v+'</span></div>';};
+  var m2=function(l,v,c){return '<div style="flex:1;background:var(--bg);border-radius:10px;padding:8px 4px;text-align:center;min-width:0"><div style="font-size:9px;color:var(--td);text-transform:uppercase;letter-spacing:.04em">'+l+'</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:800;color:'+c+';margin-top:3px">'+v+'</div></div>';};
+  var chip=function(l,v){return '<span style="font-size:11px;background:var(--bg);border-radius:7px;padding:5px 9px"><span style="color:var(--td)">'+l+':</span> <span style="color:var(--th);font-weight:600">'+v+'</span></span>';};
   var moreHtml=
-    infoRow("Статус",SL[o.status]||o.status)+
-    infoRow("Клієнт",esc(o.client_name))+
-    infoRow("Телефон",esc(o.client_phone||"—"))+
-    infoRow("Доставка",dtl+(o.is_postomat?" (поштомат)":""))+
-    infoRow("Адреса",addr)+
-    infoRow("Наложка",o.cod_amount+"₴")+
-    infoRow("Дроп-ціна",(o.total_drop_price||0).toFixed(0)+"₴")+
-    infoRow(isRet?"Повернення":"Заробіток",'<span style="color:'+(isRet?'var(--red)':'var(--acc)')+'">'+(isRet?"-"+(o.return_cost||0).toFixed(0):"+"+o.payout_amount.toFixed(0))+"₴</span>")+
-    (o.is_prepaid?infoRow("Оплата",o.own_ttn?"Своя ТТН":"Повна оплата"):"")+
-    infoRow("Вага",parseFloat((o.weight||0).toFixed(3))+" кг")+
-    (o.declared_value?infoRow("Оцінка",o.declared_value+"₴"):"")+
-    infoRow("Опис для НП",esc(o.cargo_description||"Одяг"))+
-    (o.note?infoRow("Примітка",esc(o.note)):"")+
-    infoRow("Створено",o.created_at?o.created_at.slice(0,16):"—")+
-    (o.updated_at?infoRow("Оновлено",o.updated_at.slice(0,16)):"");
-  h+='<div class="oc-more" style="display:none;padding:8px 14px 4px;border-top:1px solid var(--brd)">'+moreHtml+'</div>';
+    '<div style="display:flex;gap:6px;margin-bottom:9px">'+
+      m2("Наложка",o.cod_amount+"₴","var(--th)")+
+      m2("Дроп-ціна",(o.total_drop_price||0).toFixed(0)+"₴","var(--tt)")+
+      m2(isRet?"Повернення":"Заробіток",(isRet?"-"+(o.return_cost||0).toFixed(0):"+"+o.payout_amount.toFixed(0))+"₴",isRet?"var(--red)":"var(--acc)")+
+    '</div>'+
+    '<div style="background:var(--bg);border-radius:10px;padding:9px 11px;margin-bottom:9px">'+
+      '<div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:5px">'+Icon("truck",13)+' '+dtl+(o.is_postomat?" · поштомат":"")+'</div>'+
+      '<div style="font-size:13px;color:var(--th);font-weight:600;line-height:1.35">'+addr+'</div>'+
+      (o.client_phone?'<div style="font-size:12px;color:var(--td);font-family:JetBrains Mono,monospace;margin-top:2px">'+esc(o.client_phone)+'</div>':'')+
+    '</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+      chip("Вага",parseFloat((o.weight||0).toFixed(3))+" кг")+
+      (o.declared_value?chip("Оцінка",o.declared_value+"₴"):'')+
+      (o.is_prepaid?chip("Оплата",o.own_ttn?"Своя ТТН":"Повна"):'')+
+      chip("Опис",esc(o.cargo_description||"Одяг"))+
+      chip("Створено",o.created_at?o.created_at.slice(0,16):"—")+
+    '</div>'+
+    (o.note?'<div style="margin-top:9px;font-size:12px;color:#e0b060;background:rgba(255,167,38,.08);border:1px solid rgba(255,167,38,.15);border-radius:8px;padding:8px 10px">'+Icon("fileText",12)+' '+esc(o.note)+'</div>':'');
+  h+='<div class="oc-more" style="display:none;padding:10px 14px 4px;border-top:1px solid var(--brd)">'+moreHtml+'</div>';
   if(o.ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px">'+(o.own_ttn?'<div style="font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">'+Icon('alertTriangle',10)+' Це ваш ТТН, не наша доставка</div>':'')+'<span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px;white-space:normal;overflow-wrap:break-word">'+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--red);cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();copyTTN(\''+esc(o.return_ttn)+'\')">'+Icon('undo2',13)+' '+esc(o.return_ttn)+'</span><span style="font-size:10px;color:var(--red);flex-shrink:0">повернення</span></div>':'')+'</div>';
   else if(o.own_ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px"><div style="font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+Icon('alertTriangle',10)+' Це ваш ТТН — менеджер ще не вніс номер</div></div>';
   else if(!o.is_prepaid&&o.status==="new")h+='<div style="border-top:1px solid var(--brd);padding:8px 14px;display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:12px;color:var(--warn)">Формування ТТН...</span></div>';
