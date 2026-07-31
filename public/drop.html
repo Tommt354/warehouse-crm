@@ -32,7 +32,7 @@
 .oc-pay{font-size:13px;color:var(--accent);font-weight:600}
 .oc-items{display:block}
 .oc-row{display:flex;gap:9px;align-items:center}
-.oc-photo{width:58px;height:58px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative}
+.oc-photo{width:72px;height:72px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative}
 .oc-thumb{width:48px;height:48px;border-radius:var(--radius-sm);object-fit:cover;border:1px solid var(--border-default);flex-shrink:0}
 .oc-thumb-empty{width:48px;height:48px;border-radius:var(--radius-sm);background:var(--bg-deep);border:1px solid var(--border-default);flex-shrink:0}
 /* Status tags */
@@ -163,7 +163,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div class="fld"><label>ПІБ клієнта</label><input id="no-name"></div>
 <div class="fld"><label>Телефон</label><input id="no-phone" placeholder="+380..."></div>
 <div class="fld"><label>Тип доставки</label><div style="display:flex;gap:4px" id="no-dt-tabs"><button type="button" class="stab on" onclick="setDeliveryType('warehouse',this)">Відділення</button><button type="button" class="stab" onclick="setDeliveryType('courier',this)">Кур'єр</button><button type="button" class="stab" onclick="setDeliveryType('pickup',this)">Самовивіз</button></div></div>
-<div id="no-city-wrap"><div class="fld"><label>Місто</label><input id="no-city" placeholder="Натисніть або введіть..." oninput="searchNpCity(this.value)" onfocus="if(!this.value)searchNpCity('Київ')"><div id="no-city-dd" style="max-height:150px;overflow-y:auto"></div></div></div>
+<div id="no-city-wrap"><div class="fld"><label>Місто</label><input id="no-city" placeholder="Натисніть або введіть..." oninput="searchNpCity(this.value)" onfocus="if(!this.value)searchNpCity('Київ')"><div id="no-city-dd" style="max-height:210px;overflow-y:auto"></div></div></div>
 <div id="no-wh-wrap"><div class="fld"><label>Відділення НП</label><input id="no-wh" placeholder="Натисніть або введіть №..." oninput="searchNpWh(this.value)" onfocus="if(!this.value&&dropCityRef)searchNpWh('')"><div id="no-wh-dd" style="max-height:150px;overflow-y:auto"></div></div></div>
 <div id="no-postomat-wrap" style="display:none;padding:8px;background:rgba(124,134,255,.08);border:1px solid rgba(124,134,255,.25);border-radius:8px;margin-bottom:10px"><div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:6px">Поштомат — вкажіть розміри посилки (см)</div><div class="fld-row"><div class="fld"><label>Ширина</label><input id="no-pw" type="number" value="20"></div><div class="fld"><label>Висота</label><input id="no-ph" type="number" value="20"></div><div class="fld"><label>Довжина</label><input id="no-pl" type="number" value="20"></div></div></div>
 <div id="no-courier-wrap" style="display:none"><div class="fld"><label>Вулиця</label><input id="no-street" placeholder="Назва вулиці"></div><div class="fld-row"><div class="fld"><label>Будинок</label><input id="no-house"></div><div class="fld"><label>Квартира</label><input id="no-flat"></div></div></div>
@@ -369,7 +369,7 @@ function toggleOC(btn){
   card.setAttribute("data-open",open?"0":"1");
   var it=card.querySelector(".oc-items");var more=card.querySelector(".oc-more");
   var photos=card.querySelectorAll(".oc-photo");
-  if(open){it.style.maxHeight="150px";it.style.overflowY="auto";if(more)more.style.display="none";photos.forEach(function(p){p.style.width="58px";p.style.height="58px";});card.querySelectorAll(".oc-row").forEach(function(r){r.style.alignItems="center"});btn.innerHTML="▾"+" Відкрити";}
+  if(open){it.style.maxHeight="210px";it.style.overflowY="auto";if(more)more.style.display="none";photos.forEach(function(p){p.style.width="72px";p.style.height="72px";});card.querySelectorAll(".oc-row").forEach(function(r){r.style.alignItems="center"});btn.innerHTML="▾"+" Відкрити";}
   else{it.style.maxHeight="none";it.style.overflowY="visible";if(more)more.style.display="";photos.forEach(function(p){p.style.width="120px";p.style.height="120px";});card.querySelectorAll(".oc-row").forEach(function(r){r.style.alignItems="flex-start"});btn.innerHTML="▴"+" Звернути";}
 }
 function renderOC(o){
