@@ -1135,7 +1135,10 @@ app.post("/api/orders", authMiddleware, (req, res) => {
   // number itself is filled in later by an admin/manager, not the
   // dropshipper, so it's left blank at creation time.
   const ownTtn = !!req.body.own_ttn;
-  if ((ownTtn || req.body.is_prepaid) && !req.body.receipt_photo) return res.status(400).json({ error: "Завантажте скрін чеку оплати" });
+  // Own-TTN means the dropshipper sends the payment screenshot + TTN to the
+  // manager in Telegram, so no receipt is collected here. A regular full-payment
+  // order still requires one.
+  if (req.body.is_prepaid && !ownTtn && !req.body.receipt_photo) return res.status(400).json({ error: "Завантажте скрін чеку оплати" });
 
   const dropId = req.user.role === "admin" ? (req.body.dropshipper_id || req.user.id) : req.user.id;
   // Get dropshipper discount
