@@ -541,20 +541,28 @@ function renderOItems(){
 }
 
 var dropCityRef="",dropSettleRef="",receiptPhoto="",lastCities=[];
+// Reflect the current prepaid state in the UI. Runs even when the prepaid
+// toggle is locked (dis) — e.g. forced on by own-TTN — so the наложка field
+// actually hides.
+function applyPrepaidUI(){
+  var p=document.getElementById("no-prepaid").classList.contains("on");
+  document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";
+  if(p){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
+  calcPay();
+}
 function togglePrepaid(el){
   var pre=document.getElementById("no-prepaid");
   if(pre.classList.contains("dis"))return;
   if(el)pre.classList.toggle("on");
-  var p=pre.classList.contains("on");
-  document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";
-  if(p){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
-  calcPay()}
+  applyPrepaidUI();
+}
 function toggleOwnTtn(el){
   el.classList.toggle("on");
   var own=el.classList.contains("on");
   var pre=document.getElementById("no-prepaid");
-  if(own){pre.classList.add("on");pre.classList.add("dis")}else{pre.classList.remove("dis")}
-  togglePrepaid();
+  // Own TTN means the dropshipper ships it themselves = full payment, no COD.
+  if(own){pre.classList.add("on");pre.classList.add("dis")}else{pre.classList.remove("dis");pre.classList.remove("on")}
+  applyPrepaidUI();
 }
 
 var cityTimer;
@@ -656,8 +664,25 @@ async function loadCatalog(){
   document.getElementById("cat-prods").innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||v.bp_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>'+(v.size_grid_photo?'<button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();showSizeGrid(\''+v.size_grid_photo+'\')">'+Icon('ruler',11)+' Розмірна сітка</button>':'')+'</div></div>';
+    var isKit=v.is_kit?1:0;
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"'+(q>0?' style="cursor:pointer" onclick="catPickSize('+v.id+','+s.id+',\''+esc(s.name).replace(/'/g,"\\'")+'\','+isKit+',this)"':'')+'><b>'+esc(s.name)+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>'+(v.size_grid_photo?'<button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();showSizeGrid(\''+v.size_grid_photo+'\')">'+Icon('ruler',11)+' Розмірна сітка</button>':'')+'<button style="width:100%;margin-top:6px;padding:7px;font-size:11px;font-weight:700;background:var(--acc);color:#0a0e17;border:none;border-radius:6px;cursor:pointer;font-family:inherit" onclick="catOrder('+v.id+','+isKit+')">＋ Оформити замовлення</button></div></div>';
   }).join("");
+}
+// Select a size on a catalog card (highlight it) so the whole order can be
+// placed straight from the catalog.
+var catSel={};
+function catPickSize(varId,sizeId,sizeName,isKit,el){
+  var v=allV.find(function(x){return x.id===varId&&(x.is_kit?1:0)===isKit});if(!v)return;
+  catSel[(isKit?'k':'v')+varId]={varId:varId,sizeId:sizeId,sizeName:sizeName,isKit:!!isKit,name:v.name,price:v.drop_price,photo:v.photo||v.print_photo||v.bp_photo||"",weight:v.model_weight||0.3};
+  var card=el.closest(".pcard");if(card)card.querySelectorAll(".stock-sz").forEach(function(b){b.style.outline="none"});
+  el.style.outline="2px solid var(--acc)";
+}
+async function catOrder(varId,isKit){
+  var sel=catSel[(isKit?'k':'v')+varId];
+  if(!sel){cpToast("Спочатку оберіть розмір");return}
+  await openNewOrder();
+  if(sel.isKit)pickKitUnified(varId,sel.sizeId,sel.sizeName);
+  else pickItem(varId,sel.sizeId,sel.name,sel.price,sel.sizeName,sel.photo,false,sel.weight);
 }
 function showSizeGrid(photo){document.getElementById("sizegrid-img").src=photo;opM("sizegrid-modal")}
 
