@@ -446,7 +446,8 @@
 <div class="fld"><label>Пароль</label><input id="um-pass" type="password"></div>
 <div class="fld"><label>Ім'я</label><input id="um-name"></div>
 <div class="fld-row"><div class="fld"><label>Телефон</label><input id="um-phone"></div><div class="fld"><label>Telegram</label><input id="um-tg"></div></div>
-<div id="um-drop" style="display:none"><div class="fld-row"><div class="fld"><label>Знижка %</label><input id="um-dp" type="number" value="0"></div><div class="fld"><label>Знижка ₴</label><input id="um-df" type="number" value="0"></div></div></div>
+<div id="um-drop" style="display:none"><div class="fld-row"><div class="fld"><label>Знижка %</label><input id="um-dp" type="number" value="0"></div><div class="fld"><label>Знижка ₴</label><input id="um-df" type="number" value="0"></div></div>
+<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(53,210,154,.08);border:1px solid rgba(53,210,154,.25);border-radius:8px;cursor:pointer;font-size:13px;color:#35d29a;font-weight:600"><input type="checkbox" id="um-balance" style="width:16px;height:16px;accent-color:#35d29a"> Дозволити роботу з балансом (списувати замовлення з балансу)</label></div>
 <div id="um-wrk" style="display:none"><div class="fld"><label>Роль</label><select id="um-wr"><option value="">—</option><option value="packer">Пакувальник</option><option value="printer">Принтувальник</option><option value="sewer">Нашивальник</option><option value="distributor">Видавач</option></select></div><div class="fld"><label>Ставка ₴</label><input id="um-wrt" type="number" value="0"></div><div class="fld"><label>Склад</label><select id="um-wh"><option value="">Всі склади</option><option value="base">Склад База</option><option value="molod">Склад Молодіжна</option></select></div></div>
 <div id="um-err" class="msg msg-err" style="display:none"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveUser()">Зберегти</button><button class="btn" onclick="closeM('user-modal')">Скасувати</button><button class="btn btn-d btn-sm" id="um-del" style="display:none;margin-left:auto" onclick="delUser()"><i data-icon="trash2" data-size="13"></i></button></div>
@@ -633,7 +634,7 @@
 <!-- Admin new order modal -->
 <div class="modal-bg" id="ano-modal"><div class="modal" style="max-width:560px">
 <h3><i data-icon="plus" data-size="16"></i> Нове замовлення</h3>
-<div class="fld"><label>Дропшипер</label><select id="ano-drop" onchange="anoCalc()"></select></div>
+<div class="fld"><label>Дропшипер</label><select id="ano-drop" onchange="anoCalc();updateAnoBalanceUI()"></select></div>
 <div class="fld"><label>Товари в замовленні</label><div id="ano-items"><div style="color:var(--td);font-size:11px">Натисніть "Додати товар" щоб обрати</div></div></div>
 <button class="btn" onclick="openAnoCatPicker()" style="width:100%;margin-bottom:10px;border-color:rgba(124,134,255,.2);color:var(--acc)"><i data-icon="package" data-size="13"></i> Додати товар з каталогу</button>
 <div class="fld"><label>ПІБ клієнта</label><input id="ano-name"></div>
@@ -647,6 +648,7 @@
 <div class="sw" style="padding:8px;background:rgba(193,127,78,.08);border:1px solid rgba(193,127,78,.25);border-radius:8px"><div class="swb" id="ano-own-ttn" onclick="toggleAnoOwnTtn(this)"></div><label style="color:#c17f4e;font-weight:600" onclick="document.getElementById('ano-own-ttn').click()">Це ТТН дропера (не наша доставка)</label></div>
 <div class="fld" id="ano-own-ttn-wrap" style="display:none"><label style="color:#c17f4e">ТТН дропера (вставте номер, якщо вже відомий)</label><input id="ano-own-ttn-num" placeholder="20450xxxxxxx" style="border-color:rgba(193,127,78,.35)"></div>
 <div class="sw" style="padding:8px;background:var(--bg);border-radius:8px"><div class="swb" id="ano-prepaid" onclick="toggleAnoPrepaid(this)"></div><label onclick="document.getElementById('ano-prepaid').click()">Повна оплата (без наложки)</label></div>
+<div class="sw" id="ano-balance-wrap" style="display:none;padding:8px;background:rgba(53,210,154,.08);border:1px solid rgba(53,210,154,.25);border-radius:8px"><div class="swb" id="ano-balance" onclick="toggleAnoBalance(this)"></div><label style="color:#35d29a;font-weight:600" onclick="document.getElementById('ano-balance').click()">Списати з балансу дропера (без оплати)</label></div>
 <div id="ano-cod-wrap"><div class="fld"><label>Наложка ₴</label><input id="ano-cod" type="number" oninput="anoCalc()"></div></div>
 <div id="ano-prepaid-wrap" style="display:none">
   <div class="fld"><label>Оціночна вартість ₴</label><input id="ano-dval" type="number" value="0"></div>
@@ -1882,9 +1884,10 @@ async function openAdmNewOrder(){
   document.getElementById("ano-prepaid").classList.remove("on");document.getElementById("ano-prepaid").classList.remove("dis");
   document.getElementById("ano-cod-wrap").style.display="";document.getElementById("ano-prepaid-wrap").style.display="none";
   document.getElementById("ano-receipt-preview").innerHTML="—";document.getElementById("ano-pay").textContent="";
+  document.getElementById("ano-balance").classList.remove("on");document.getElementById("ano-balance-wrap").style.display="none";
   document.getElementById("ano-err").style.display="none";document.getElementById("ano-city-dd").innerHTML="";document.getElementById("ano-wh-dd").innerHTML="";
   try{var r=await api("/api/users?role=dropshipper");anoDrops=r.users.filter(u=>u.active);
-  document.getElementById("ano-drop").innerHTML=anoDrops.map(u=>'<option value="'+u.id+'">'+esc(u.name||u.username)+' (ID:'+u.id+')</option>').join("")}catch(e){}
+  document.getElementById("ano-drop").innerHTML=anoDrops.map(u=>'<option value="'+u.id+'">'+esc(u.name||u.username)+' (ID:'+u.id+')</option>').join("");updateAnoBalanceUI()}catch(e){}
   openM("ano-modal");
 }
 function renderAnoItems(){
@@ -1914,16 +1917,30 @@ function toggleAnoPrepaid(el){
   var ch=pre.classList.contains("on");
   document.getElementById("ano-cod-wrap").style.display=ch?"none":"";
   document.getElementById("ano-prepaid-wrap").style.display=ch?"":"none";
-  anoCalc();
+  updateAnoBalanceUI();anoCalc();
 }
 function toggleAnoOwnTtn(el){
   el.classList.toggle("on");
   var ch=el.classList.contains("on");
   document.getElementById("ano-own-ttn-wrap").style.display=ch?"":"none";
   var pre=document.getElementById("ano-prepaid");
-  if(ch){pre.classList.add("on");pre.classList.add("dis");toggleAnoPrepaid()}
+  if(ch){pre.classList.add("on");pre.classList.add("dis");document.getElementById("ano-cod-wrap").style.display="none";document.getElementById("ano-prepaid-wrap").style.display=""}
   else{pre.classList.remove("dis")}
+  updateAnoBalanceUI();
 }
+// The selected dropshipper (for the "списати з балансу" option).
+function anoSelDrop(){var id=parseInt(document.getElementById("ano-drop").value);return anoDrops.find(function(u){return u.id===id})}
+function updateAnoBalanceUI(){
+  var d=anoSelDrop();
+  var pre=document.getElementById("ano-prepaid").classList.contains("on");
+  var own=document.getElementById("ano-own-ttn").classList.contains("on");
+  var canBal=!!(d&&d.balance_enabled)&&(pre||own);
+  document.getElementById("ano-balance-wrap").style.display=canBal?"":"none";
+  if(!canBal)document.getElementById("ano-balance").classList.remove("on");
+  // Settling from balance means no receipt/оцінка.
+  if(canBal&&document.getElementById("ano-balance").classList.contains("on"))document.getElementById("ano-prepaid-wrap").style.display="none";
+}
+function toggleAnoBalance(el){el.classList.toggle("on");updateAnoBalanceUI()}
 async function uploadAnoReceipt(e){
   var f=e.target.files[0];if(!f)return;var r=new FileReader;
   r.onload=async function(){try{var d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});anoReceipt=d.url;document.getElementById("ano-receipt-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){alert(e.message)}};
@@ -2100,12 +2117,14 @@ async function submitAdmOrder(){
   var phone=document.getElementById("ano-phone").value.trim();if(!phone){el.textContent="Вкажіть телефон";el.style.display="";return}
   var isPrepaid=document.getElementById("ano-prepaid").classList.contains("on");
   var ownTtn=document.getElementById("ano-own-ttn").classList.contains("on");
-  if((isPrepaid||ownTtn)&&!anoReceipt){el.textContent="Завантажте скрін чеку";el.style.display="";return}
+  var sd=anoSelDrop();
+  var payFromBalance=!!(sd&&sd.balance_enabled)&&document.getElementById("ano-balance").classList.contains("on")&&(isPrepaid||ownTtn);
+  if((isPrepaid||ownTtn)&&!anoReceipt&&!payFromBalance){el.textContent="Завантажте скрін чеку";el.style.display="";return}
   if(anoDeliveryType!=="pickup"&&!document.getElementById("ano-city").value){el.textContent="Вкажіть місто";el.style.display="";return}
   if(anoDeliveryType==="warehouse"&&!document.getElementById("ano-wh").value){el.textContent="Вкажіть відділення";el.style.display="";return}
   if(anoDeliveryType==="courier"&&!document.getElementById("ano-street").value){el.textContent="Вкажіть вулицю";el.style.display="";return}
   if(anoDeliveryType==="courier"&&!document.getElementById("ano-house").value){el.textContent="Вкажіть номер будинку";el.style.display="";return}
-  var data={dropshipper_id:parseInt(document.getElementById("ano-drop").value),items:anoItems.map(it=>({variation_id:it.variation_id,size_id:it.size_id,quantity:it.quantity,kit_id:it.kit_id,component_sizes:it.component_sizes})),client_name:name,client_phone:phone,client_city:document.getElementById("ano-city").value,client_warehouse:document.getElementById("ano-wh").value,cod_amount:parseFloat(document.getElementById("ano-cod").value)||0,is_prepaid:isPrepaid,own_ttn:ownTtn,own_ttn_number:ownTtn?document.getElementById("ano-own-ttn-num").value.trim():"",receipt_photo:anoReceipt,declared_value:parseFloat(document.getElementById("ano-dval").value)||0,note:document.getElementById("ano-note").value,cargo_description:document.getElementById("ano-cargo-desc").value||"Одяг",weight:parseFloat(document.getElementById("ano-weight").value)||0.5,delivery_type:anoDeliveryType,client_street:document.getElementById("ano-street").value,client_house:document.getElementById("ano-house").value,client_flat:document.getElementById("ano-flat").value,is_postomat:anoIsPostomat,parcel_width:parseFloat(document.getElementById("ano-pw").value)||0,parcel_height:parseFloat(document.getElementById("ano-ph").value)||0,parcel_length:parseFloat(document.getElementById("ano-pl").value)||0};
+  var data={dropshipper_id:parseInt(document.getElementById("ano-drop").value),items:anoItems.map(it=>({variation_id:it.variation_id,size_id:it.size_id,quantity:it.quantity,kit_id:it.kit_id,component_sizes:it.component_sizes})),client_name:name,client_phone:phone,client_city:document.getElementById("ano-city").value,client_warehouse:document.getElementById("ano-wh").value,cod_amount:parseFloat(document.getElementById("ano-cod").value)||0,is_prepaid:isPrepaid,pay_from_balance:payFromBalance,own_ttn:ownTtn,own_ttn_number:ownTtn?document.getElementById("ano-own-ttn-num").value.trim():"",receipt_photo:payFromBalance?"":anoReceipt,declared_value:parseFloat(document.getElementById("ano-dval").value)||0,note:document.getElementById("ano-note").value,cargo_description:document.getElementById("ano-cargo-desc").value||"Одяг",weight:parseFloat(document.getElementById("ano-weight").value)||0.5,delivery_type:anoDeliveryType,client_street:document.getElementById("ano-street").value,client_house:document.getElementById("ano-house").value,client_flat:document.getElementById("ano-flat").value,is_postomat:anoIsPostomat,parcel_width:parseFloat(document.getElementById("ano-pw").value)||0,parcel_height:parseFloat(document.getElementById("ano-ph").value)||0,parcel_length:parseFloat(document.getElementById("ano-pl").value)||0};
   try{await api("/api/orders",{method:"POST",body:JSON.stringify(data)});closeM("ano-modal");loadAdmOrders(admOrdFilter)}catch(e){el.textContent=e.message;el.style.display=""}
 }
 
@@ -2199,6 +2218,7 @@ function renderPayouts(list){
     var returns=p.items.filter(function(i){return i.is_return});
     var successSum=success.reduce(function(s,i){return s+i.amount},0);
     var returnSum=returns.reduce(function(s,i){return s+Math.abs(i.amount)},0);
+    var applied=p.balance_applied||0;var bal=p.balance||0;var finalTotal=p.total_amount+applied;
     return '<div style="background:var(--card);border:1px solid '+(isPaid?'rgba(124,134,255,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:10px;overflow:hidden">'+
     '<div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
     '<div><div style="font-size:15px;font-weight:700;color:var(--th)">'+esc(p.drop_name)+' <span style="font-size:11px;color:var(--td)">#'+p.dropshipper_id+'</span></div>'+
@@ -2206,8 +2226,14 @@ function renderPayouts(list){
     (p.comment?'<div style="font-size:11px;color:var(--t);margin-top:2px">'+Icon('messageSquare',12)+' '+esc(p.comment)+'</div>':'')+
     '<div style="font-size:10px;color:var(--td);margin-top:2px">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+
     '<div style="font-size:10px;margin-top:3px"><span style="color:var(--acc)">'+Icon('check',11)+' '+success.length+' успішних (+'+successSum.toFixed(0)+'₴)</span> · <span style="color:var(--red)">'+Icon('x',11)+' '+returns.length+' повернень (-'+returnSum.toFixed(0)+'₴)</span></div>'+
-    '</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(isPaid?'var(--acc)':'var(--red)')+'">'+p.total_amount.toFixed(0)+'₴</div>'+
-    '<div style="margin-top:4px">'+(isPaid?'<span style="color:var(--acc);font-size:12px;font-weight:600">'+Icon('check',13)+' Виплачено</span>':'<button class="btn btn-p" onclick="event.stopPropagation();markPaid('+p.id+')" style="font-size:11px">'+Icon('banknote',12)+' Виплачено</button>')+'</div></div></div>'+
+    '</div><div style="text-align:right;min-width:150px">'+
+      '<div style="font-size:10px;color:var(--td)">Замовлення</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--th)">'+p.total_amount.toFixed(0)+'₴</div>'+
+      (p.balance_enabled?(
+        (applied?'<div style="font-size:11px;color:'+(applied>=0?'var(--acc)':'var(--red)')+';margin-top:3px">Баланс залічено: '+(applied>=0?'+':'')+applied.toFixed(0)+'₴</div>':'')+
+        (!isPaid&&Math.abs(bal)>=0.01?'<div style="margin-top:5px;padding:6px 8px;background:'+(bal>=0?'rgba(53,210,154,.1)':'rgba(255,107,107,.1)')+';border-radius:8px"><div style="font-size:10px;color:var(--td)">Баланс дропера</div><div style="font-family:JetBrains Mono,monospace;font-weight:700;color:'+(bal>=0?'var(--acc)':'var(--red)')+'">'+(bal>=0?'+':'')+bal.toFixed(0)+'₴</div><button class="btn btn-sm" style="font-size:10px;margin-top:5px" onclick="event.stopPropagation();applyBalance('+p.id+')">'+Icon('plusCircle',11)+' Перевести у виплату</button></div>':'')+
+        '<div style="border-top:1px solid var(--brd);margin-top:6px;padding-top:5px"><div style="font-size:10px;color:var(--td)">До виплати</div><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:800;color:'+(finalTotal>=0?'var(--acc)':'var(--red)')+'">'+finalTotal.toFixed(0)+'₴</div></div>'
+      ):'<div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(isPaid?'var(--acc)':'var(--red)')+';margin-top:2px">'+p.total_amount.toFixed(0)+'₴</div>')+
+    '<div style="margin-top:6px">'+(isPaid?'<span style="color:var(--acc);font-size:12px;font-weight:600">'+Icon('check',13)+' Виплачено</span>':'<button class="btn btn-p" onclick="event.stopPropagation();markPaid('+p.id+')" style="font-size:11px">'+Icon('banknote',12)+' Виплачено</button>')+'</div></div></div>'+
     '<div style="display:none;border-top:1px solid var(--brd)">'+
     (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">'+Icon('check',12)+' Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
     (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">'+Icon('x',12)+' Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
@@ -2215,6 +2241,7 @@ function renderPayouts(list){
   }).join(""):'<div class="empty"><span class="ic">'+Icon('banknote',40)+'</span>Немає запитів на виплату</div>';
 }
 async function markPaid(id){if(!confirm("Підтвердити виплату?"))return;try{await api("/api/payouts/"+id+"/paid",{method:"PUT"});loadAdmPayouts()}catch(e){}}
+async function applyBalance(id){if(!confirm("Перевести баланс дропера у цю виплату? Баланс обнулиться, а сума виплати перерахується."))return;try{await api("/api/payouts/"+id+"/apply-balance",{method:"POST"});loadAdmPayouts()}catch(e){alert(e.message)}}
 
 // ── STOCK LOG ────────────────────────────────────────────────────
 
@@ -2688,8 +2715,8 @@ async function openWorkerDetail(id){
 }
 async function payWorker(id){if(!confirm("Виплатити?"))return;try{await api("/api/workers/"+id+"/pay",{method:"POST"});closeM("wk-detail-modal");loadWorkers()}catch(e){}}
 function openUM(role){editUID=null;editUR=role;document.getElementById("um-t").textContent=role==="dropshipper"?"Новий дроп":"Новий працівник";["um-user","um-pass","um-name","um-phone","um-tg"].forEach(id=>document.getElementById(id).value="");document.getElementById("um-user").disabled=false;document.getElementById("um-drop").style.display=role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=role==="warehouse"?"block":"none";if(role==="warehouse"){document.getElementById("um-wr").value="";document.getElementById("um-wrt").value="0";document.getElementById("um-wh").value=""}document.getElementById("um-del").style.display="none";document.getElementById("um-err").style.display="none";openM("user-modal")}
-async function editU(id,role){const{user:u}=await api("/api/users/"+id);editUID=id;editUR=role||u.role;document.getElementById("um-t").textContent=u.name;document.getElementById("um-user").value=u.username;document.getElementById("um-user").disabled=true;document.getElementById("um-pass").value="";document.getElementById("um-name").value=u.name;document.getElementById("um-phone").value=u.phone;document.getElementById("um-tg").value=u.telegram;document.getElementById("um-drop").style.display=u.role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=u.role==="warehouse"?"block":"none";if(u.role==="dropshipper"){document.getElementById("um-dp").value=u.discount_percent;document.getElementById("um-df").value=u.discount_fixed}if(u.role==="warehouse"){document.getElementById("um-wr").value=u.worker_role;document.getElementById("um-wrt").value=u.worker_rate;document.getElementById("um-wh").value=u.assigned_warehouse||""}document.getElementById("um-del").style.display="block";document.getElementById("um-err").style.display="none";openM("user-modal")}
-async function saveUser(){const err=document.getElementById("um-err");err.style.display="none";const d={username:document.getElementById("um-user").value,password:document.getElementById("um-pass").value,role:editUR,name:document.getElementById("um-name").value,phone:document.getElementById("um-phone").value,telegram:document.getElementById("um-tg").value,discount_percent:parseFloat(document.getElementById("um-dp")?.value)||0,discount_fixed:parseFloat(document.getElementById("um-df")?.value)||0,worker_role:document.getElementById("um-wr")?.value||"",worker_rate:parseFloat(document.getElementById("um-wrt")?.value)||0,assigned_warehouse:document.getElementById("um-wh")?.value||"",active:1};try{if(editUID)await api("/api/users/"+editUID,{method:"PUT",body:JSON.stringify(d)});else await api("/api/users",{method:"POST",body:JSON.stringify(d)});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}}
+async function editU(id,role){const{user:u}=await api("/api/users/"+id);editUID=id;editUR=role||u.role;document.getElementById("um-t").textContent=u.name;document.getElementById("um-user").value=u.username;document.getElementById("um-user").disabled=true;document.getElementById("um-pass").value="";document.getElementById("um-name").value=u.name;document.getElementById("um-phone").value=u.phone;document.getElementById("um-tg").value=u.telegram;document.getElementById("um-drop").style.display=u.role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=u.role==="warehouse"?"block":"none";if(u.role==="dropshipper"){document.getElementById("um-dp").value=u.discount_percent;document.getElementById("um-df").value=u.discount_fixed;document.getElementById("um-balance").checked=!!u.balance_enabled}if(u.role==="warehouse"){document.getElementById("um-wr").value=u.worker_role;document.getElementById("um-wrt").value=u.worker_rate;document.getElementById("um-wh").value=u.assigned_warehouse||""}document.getElementById("um-del").style.display="block";document.getElementById("um-err").style.display="none";openM("user-modal")}
+async function saveUser(){const err=document.getElementById("um-err");err.style.display="none";const d={username:document.getElementById("um-user").value,password:document.getElementById("um-pass").value,role:editUR,name:document.getElementById("um-name").value,phone:document.getElementById("um-phone").value,telegram:document.getElementById("um-tg").value,discount_percent:parseFloat(document.getElementById("um-dp")?.value)||0,discount_fixed:parseFloat(document.getElementById("um-df")?.value)||0,worker_role:document.getElementById("um-wr")?.value||"",worker_rate:parseFloat(document.getElementById("um-wrt")?.value)||0,assigned_warehouse:document.getElementById("um-wh")?.value||"",balance_enabled:document.getElementById("um-balance")?.checked?1:0,active:1};try{if(editUID)await api("/api/users/"+editUID,{method:"PUT",body:JSON.stringify(d)});else await api("/api/users",{method:"POST",body:JSON.stringify(d)});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}}
 async function delUser(){if(!editUID||!confirm("Видалити?"))return;await api("/api/users/"+editUID,{method:"DELETE"});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}
 
 var balUserId=null;

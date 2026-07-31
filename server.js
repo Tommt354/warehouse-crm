@@ -78,7 +78,7 @@ app.post("/api/auth/dev-login/:role", (req, res) => {
 // ── USERS ────────────────────────────────────────────────────────
 app.get("/api/users", authMiddleware, requireRole("admin"), (req, res) => {
   const r = req.query.role;
-  res.json({ users: r ? db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,active,created_at,last_login,balance FROM users WHERE role=? ORDER BY name").all(r) : db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,active,created_at,last_login,balance FROM users ORDER BY role,name").all() });
+  res.json({ users: r ? db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,active,created_at,last_login,balance,balance_enabled FROM users WHERE role=? ORDER BY name").all(r) : db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,active,created_at,last_login,balance,balance_enabled FROM users ORDER BY role,name").all() });
 });
 // Dropshipper leaderboard for the Дропшипери tab: order count + success% per
 // dropshipper within a date range, sorted by order count descending.
@@ -95,7 +95,7 @@ app.get("/api/dropshippers/leaderboard", authMiddleware, requireRole("admin"), (
 });
 
 app.get("/api/users/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const u = db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,payout_details,active FROM users WHERE id=?").get(req.params.id);
+  const u = db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,worker_rate,payout_details,active,assigned_warehouse,balance,balance_enabled FROM users WHERE id=?").get(req.params.id);
   if (!u) return res.status(404).json({ error: "Не знайдено" });
   res.json({ user: u });
 });

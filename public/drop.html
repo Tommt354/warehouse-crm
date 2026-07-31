@@ -115,6 +115,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 </div>
 
 <div class="page" id="pg-payouts">
+<div id="pay-balance-block" style="display:none"></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
   <div class="sc"><div class="sl">В роботі</div><div class="sv" style="color:var(--th)" id="pay-inwork">0</div><div class="sl" id="pay-inwork-c">0 замовл.</div></div>
   <div class="sc"><div class="sl">Запит</div><div class="sv" style="color:var(--acc)" id="pay-request">0</div><div class="sl" id="pay-request-c">0 замовл.</div></div>
@@ -167,6 +168,8 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div class="fld"><label>Вага посилки (кг)</label><input id="no-weight" type="number" step="0.1" value="0.5" onchange="noWeightManual=true"></div>
 <div class="sw" style="padding:8px;background:rgba(193,127,78,.08);border:1px solid rgba(193,127,78,.25);border-radius:8px"><div class="swb" id="no-own-ttn" onclick="toggleOwnTtn(this)"></div><label style="color:#c17f4e;font-weight:600" onclick="document.getElementById('no-own-ttn').click()">Це мій ТТН — менеджер внесе номер ТТН пізніше</label></div>
 <div class="sw" style="padding:8px;background:var(--bg);border-radius:8px"><div class="swb" id="no-prepaid" onclick="togglePrepaid(this)"></div><label onclick="document.getElementById('no-prepaid').click()">Повна оплата (без наложки)</label></div>
+<div class="sw" id="no-balance-wrap" style="display:none;padding:8px;background:rgba(53,210,154,.08);border:1px solid rgba(53,210,154,.25);border-radius:8px"><div class="swb" id="no-balance" onclick="toggleBalancePay(this)"></div><label style="color:#35d29a;font-weight:600" onclick="document.getElementById('no-balance').click()">Списати з балансу (без оплати)</label></div>
+<div id="no-balance-note" style="display:none;padding:9px 12px;background:rgba(53,210,154,.08);border:1px solid rgba(53,210,154,.25);border-radius:8px;font-size:12px;color:#35d29a;line-height:1.5;margin:4px 0"></div>
 <div id="no-cod-wrap"><div class="fld"><label>Наложка ₴</label><input id="no-cod" type="number" oninput="calcPay()"></div></div>
 <div id="no-prepaid-wrap" style="display:none">
   <div class="fld"><label>Оціночна вартість ₴</label><input id="no-dval" type="number" value="0"></div>
@@ -422,6 +425,7 @@ async function openNewOrder(){
   setDeliveryType("warehouse",document.querySelector("#no-dt-tabs .stab"));
   document.getElementById("no-pay").innerHTML="";document.getElementById("no-err").style.display="none";
   document.getElementById("no-own-ttn").classList.remove("on");
+  document.getElementById("no-balance").classList.remove("on");
   document.getElementById("no-prepaid").classList.remove("dis");document.getElementById("no-prepaid").classList.remove("on");togglePrepaid();
   receiptPhoto="";document.getElementById("no-receipt-preview").innerHTML="—";
   var d=await api("/api/variations?channel="+dropCh);allV=d.variations;allSz=d.sizes;
@@ -558,14 +562,19 @@ var dropCityRef="",dropSettleRef="",receiptPhoto="",lastCities=[];
 function applyPrepaidUI(){
   var p=document.getElementById("no-prepaid").classList.contains("on");
   var own=document.getElementById("no-own-ttn").classList.contains("on");
+  var canBal=!!(window.ME&&ME.balance_enabled)&&(p||own);
+  var bal=canBal&&document.getElementById("no-balance").classList.contains("on");
+  document.getElementById("no-balance-wrap").style.display=canBal?"":"none";
   document.getElementById("no-cod-wrap").style.display=p?"none":"";
-  // Оцінка + чек тільки для звичайної повної оплати. Для «моя ТТН» дропер шле
-  // скрін і ТТН менеджеру в лс — показуємо блок із посиланням на менеджера.
-  document.getElementById("no-prepaid-wrap").style.display=(p&&!own)?"":"none";
-  document.getElementById("no-ownttn-note").style.display=own?"":"none";
-  if(p&&!own){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
+  // Оцінка + чек тільки для звичайної повної оплати (не «моя ТТН», не «з балансу»).
+  document.getElementById("no-prepaid-wrap").style.display=(p&&!own&&!bal)?"":"none";
+  document.getElementById("no-ownttn-note").style.display=(own&&!bal)?"":"none";
+  var bn=document.getElementById("no-balance-note");
+  if(bal){var dpb=oItems.reduce(function(s,c){return s+c.price*c.qty},0);bn.style.display="";bn.innerHTML='Спишеться <b>'+dpb.toFixed(0)+'₴</b> з балансу. Поточний баланс: <b>'+((window.ME&&ME.balance)||0).toFixed(0)+'₴</b>'}else bn.style.display="none";
+  if(p&&!own&&!bal){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
   calcPay();
 }
+function toggleBalancePay(el){el.classList.toggle("on");applyPrepaidUI()}
 function togglePrepaid(el){
   var pre=document.getElementById("no-prepaid");
   if(pre.classList.contains("dis"))return;
@@ -615,9 +624,10 @@ async function submitOrder(){
   if(!oItems.length){err.textContent="Додайте товари";err.style.display="block";return}
   var isPre=document.getElementById("no-prepaid").classList.contains("on");
   var isOwnTtn=document.getElementById("no-own-ttn").classList.contains("on");
+  var payFromBalance=!!(window.ME&&ME.balance_enabled)&&document.getElementById("no-balance").classList.contains("on")&&(isPre||isOwnTtn);
   // Regular full payment requires оцінка + чек. Own-TTN sends them to the
-  // manager in Telegram instead, so neither is collected here.
-  if(isPre&&!isOwnTtn){
+  // manager in Telegram; a balance order settles from balance — both skip these.
+  if(isPre&&!isOwnTtn&&!payFromBalance){
     if(!receiptPhoto){err.textContent="Завантажте скрін чеку оплати";err.style.display="block";return}
     if(!(parseFloat(document.getElementById("no-dval").value)>0)){err.textContent="Вкажіть оціночну вартість";err.style.display="block";return}
   }
@@ -642,8 +652,9 @@ async function submitOrder(){
       cod_amount:isPre?0:(parseFloat(document.getElementById("no-cod").value)||0),
       note:document.getElementById("no-note").value,
       is_prepaid:isPre,
-      receipt_photo:(isPre&&!isOwnTtn)?receiptPhoto:"",
-      declared_value:(isPre&&!isOwnTtn)?(parseFloat(document.getElementById("no-dval").value)||0):0,
+      pay_from_balance:payFromBalance,
+      receipt_photo:(isPre&&!isOwnTtn&&!payFromBalance)?receiptPhoto:"",
+      declared_value:(isPre&&!isOwnTtn&&!payFromBalance)?(parseFloat(document.getElementById("no-dval").value)||0):0,
       own_ttn:isOwnTtn,
       cargo_description:document.getElementById("no-cargo-desc").value||"Одяг",
       weight:parseFloat(document.getElementById("no-weight").value)||0.5,
@@ -708,7 +719,26 @@ async function catOrder(varId,isKit){
 function showSizeGrid(photo){document.getElementById("sizegrid-img").src=photo;opM("sizegrid-modal")}
 
 // ── PAYOUTS ──────────────────────────────────────────────────────
+// Balance card + history (only for dropshippers allowed to work with balance).
+var TXT={order:"Замовлення",refund:"Повернення",payout:"Залік у виплату",topup:"Поповнення",adjust:"Коригування"};
+async function loadBalanceBlock(){
+  var box=document.getElementById("pay-balance-block");
+  if(!(window.ME&&ME.balance_enabled)){box.style.display="none";return}
+  box.style.display="";
+  try{
+    var r=await api("/api/users/"+ME.id+"/balance");ME.balance=r.balance;
+    var bc=r.balance>=0?"var(--acc)":"var(--red)";
+    box.innerHTML='<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:14px;margin-bottom:14px">'+
+      '<div style="font-size:12px;color:var(--td);margin-bottom:2px">Ваш баланс</div>'+
+      '<div style="font-family:JetBrains Mono,monospace;font-size:30px;font-weight:800;color:'+bc+'">'+(r.balance>0?"+":"")+r.balance.toFixed(2)+'₴</div>'+
+      (r.balance<0?'<div style="font-size:11px;color:var(--red)">Борг — відніметься від наступної виплати</div>':'')+
+      '<div style="font-size:12px;font-weight:600;color:var(--th);margin:12px 0 6px">Історія</div>'+
+      (r.transactions.length?'<div style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">'+r.transactions.map(function(t){var pos=t.amount>=0;return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--brd)"><div style="min-width:0"><div style="font-size:12px;color:var(--th)">'+(TXT[t.type]||t.type)+(t.oid?" #"+t.oid:"")+'</div><div style="font-size:10px;color:var(--td)">'+esc((t.note||""))+' · '+(t.created_at?t.created_at.slice(0,16):"")+'</div></div><div style="font-family:JetBrains Mono,monospace;font-weight:700;color:'+(pos?"var(--acc)":"var(--red)")+';white-space:nowrap">'+(pos?"+":"")+t.amount.toFixed(2)+'₴</div></div>'}).join("")+'</div>':'<div style="color:var(--td);font-size:11px">Ще немає операцій</div>')+
+    '</div>';
+  }catch(e){box.style.display="none"}
+}
 async function loadPayouts(){
+  loadBalanceBlock();
   try{
     var r=await api("/api/payouts/my");
     var unpaidTotal=r.unpaid.reduce(function(s,o){return s+o.payout_amount},0);
