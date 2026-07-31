@@ -255,6 +255,10 @@ function renderStabs(){
 }
 function renderOrderCard(o){
   var isActive=o.status==="new"||o.status==="in_progress";
+  // "Taken into work": show item check boxes and expand the order. Regular
+  // packers take an order (new→in_progress) via the footer button; packer_ready
+  // works "new" orders directly, so they're treated as taken.
+  var taken=o.status==="in_progress"||ME.worker_role==="packer_ready";
   var hasOOS=isActive&&o.items.some(function(i){return i.current_stock<=0});
   var html='<div class="ocard'+(hasOOS?' out-of-stock':'')+'">';
   html+='<div class="ocard-header"><div>';
@@ -271,7 +275,7 @@ function renderOrderCard(o){
     var i=o.items[ii];var missing=isActive&&i.current_stock<=0;var hasRet=isActive&&i.return_available>0;var usedRet=isActive&&i.from_returns>0;
     var ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
     var dot=isActive?(missing?'<div style="color:var(--red);font-weight:700;font-size:12px;margin-top:3px">'+Icon('x',12)+' немає ('+i.current_stock+')</div>':'<div style="color:var(--green);font-weight:700;font-size:12px;margin-top:3px">'+Icon('check',12)+' на складі</div>'):'';
-    var chk=missing?'<div style="width:34px;flex-shrink:0;text-align:center;color:var(--red)">'+Icon('x',22)+'</div>':'<div class="wh-chk" data-on="0" onclick="whCheck(this)" style="width:34px;height:34px;border-radius:9px;border:2px solid var(--brd);flex-shrink:0;display:grid;place-items:center;cursor:pointer"></div>';
+    var chk=!taken?'':(missing?'<div style="width:34px;height:34px;flex-shrink:0;display:grid;place-items:center;color:var(--red)">'+Icon('x',22)+'</div>':'<div class="wh-chk" data-on="0" onclick="whCheck(this)" style="width:34px;height:34px;border-radius:9px;border:2px solid var(--brd);flex-shrink:0;display:grid;place-items:center;cursor:pointer"></div>');
     rows+='<div class="wh-item" style="display:flex;gap:12px;padding:11px 0;align-items:center;border-top:1px solid var(--brd)">'+chk+
       '<div style="width:96px;height:96px;border-radius:11px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative'+(isActive?(missing?';outline:2px solid var(--red);outline-offset:-2px':';outline:2px solid rgba(53,210,154,.55);outline-offset:-2px'):'')+'">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',26)+'</div>')+(usedRet?'<div style="position:absolute;top:3px;left:3px;background:var(--acc);color:#0a0e17;border-radius:5px;font-size:8px;padding:1px 4px;font-weight:800">поверн.</div>':'')+'</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--th);line-height:1.3">'+esc(i.var_name)+(i.print_name?' <span style="color:var(--warn);font-size:11px">·'+esc(i.print_name)+'</span>':'')+'</div>'+
@@ -280,13 +284,11 @@ function renderOrderCard(o){
     if(missing)prob+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd)"><div style="font-size:11px;color:var(--th)">'+esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b> — <span style="color:var(--red)">немає</span></div><button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);flex-shrink:0" onclick="openSwapSize('+i.id+',\''+esc(i.var_name).replace(/'/g,"")+'\','+o.id+')">'+Icon('refreshCw',12)+' Замінити розмір</button></div>';
     if(hasRet)prob+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd)"><div style="font-size:11px;color:var(--th)">'+esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b> — <span style="color:var(--warn)">є повернення ('+i.return_available+')</span></div><button class="btn btn-sm btn-w" style="flex-shrink:0" onclick="useRet('+i.id+','+o.id+',this)">'+Icon('package',12)+' З повернень</button></div>';
   }
-  html+='<div class="oc-items" style="padding:0 14px 6px;max-height:236px;overflow-y:auto;transition:max-height .25s ease">'+rows+'</div>';
+  html+='<div class="oc-items" style="padding:0 14px 6px;'+(taken?'':'max-height:236px;overflow-y:auto;')+'transition:max-height .25s ease">'+rows+'</div>';
   if(prob)html+='<div style="margin:0 14px 8px;padding:2px 10px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.18);border-radius:8px"><div style="font-size:11px;font-weight:700;color:var(--warn);padding-top:6px">'+Icon('alertTriangle',12)+' Потребує уваги:</div>'+prob+'</div>';
   if(o.note)html+='<div style="padding:0 16px 10px"><div class="ocard-note">'+Icon('fileText',12)+' '+esc(o.note)+'</div></div>';
-  // "Взяти в роботу" reveals the packing controls and expands the order until packed.
-  html+='<div style="padding:4px 14px 10px"><button onclick="whTake(this)" style="width:100%;background:var(--green);color:#052018;border:none;border-radius:9px;padding:11px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">'+Icon("check",15)+' Взяти в роботу</button></div>';
   var osi=WHS.find(function(s){return s.key===o.status});
-  html+='<div class="ocard-footer wh-actions" style="justify-content:flex-end;display:none"><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
+  html+='<div class="ocard-footer" style="justify-content:flex-end"><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
   if(ME.worker_role==="packer_ready"){
     // Simplified 2-status flow: he packs solo and the single action both
     // finishes the order and credits his own per-item pay (server-side).
@@ -308,14 +310,6 @@ function renderOrderCard(o){
   return html;
 }
 // Expand/collapse a packer card's item list.
-// "Взяти в роботу": expand the order (drop the scroll cap) and reveal the
-// packing controls; toggles back with "Згорнути".
-function whTake(btn){
-  var card=btn.closest(".ocard");var it=card.querySelector(".oc-items");var actions=card.querySelector(".wh-actions");
-  var open=card.getAttribute("data-taken")==="1";card.setAttribute("data-taken",open?"0":"1");
-  if(open){it.style.maxHeight="236px";it.style.overflowY="auto";if(actions)actions.style.display="none";btn.innerHTML=Icon("check",15)+' Взяти в роботу';btn.style.background="var(--green)";btn.style.color="#052018";}
-  else{it.style.maxHeight="none";it.style.overflowY="visible";if(actions)actions.style.display="flex";btn.innerHTML="▴ Згорнути";btn.style.background="var(--accbg)";btn.style.color="var(--acc)";}
-}
 // Packer checkbox: mark an item as taken (visual aid, dims the row).
 function whCheck(el){
   var on=el.getAttribute("data-on")==="1";el.setAttribute("data-on",on?"0":"1");
