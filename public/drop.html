@@ -31,6 +31,8 @@
 .oc-cod{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--text-primary)}
 .oc-pay{font-size:13px;color:var(--accent);font-weight:600}
 .oc-items{display:block}
+.oc-row{display:flex;gap:9px;align-items:center}
+.oc-photo{width:58px;height:58px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative}
 .oc-thumb{width:48px;height:48px;border-radius:var(--radius-sm);object-fit:cover;border:1px solid var(--border-default);flex-shrink:0}
 .oc-thumb-empty{width:48px;height:48px;border-radius:var(--radius-sm);background:var(--bg-deep);border:1px solid var(--border-default);flex-shrink:0}
 /* Status tags */
@@ -352,12 +354,12 @@ function groupOrderItems(items){
 function ocRows(groups){
   return groups.map(function(g){
     var ph=g.photo||"";
-    var thumb='<div style="width:58px;height:58px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+(g.quantity>1?'<div style="position:absolute;bottom:1px;right:1px;background:rgba(0,0,0,.72);color:#fff;border-radius:4px;font-size:9px;padding:0 4px;font-weight:700">×'+g.quantity+'</div>':'')+'</div>';
+    var thumb='<div class="oc-photo">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+(g.quantity>1?'<div style="position:absolute;bottom:1px;right:1px;background:rgba(0,0,0,.72);color:#fff;border-radius:4px;font-size:9px;padding:0 4px;font-weight:700">×'+g.quantity+'</div>':'')+'</div>';
     if(g.kit){
       var comps=(g.items||[]).map(function(ci){return '<div style="font-size:10px;color:var(--td);line-height:1.4">'+esc(ci.var_name)+' — '+esc(ci.original_size_name||ci.size_name)+'</div>'}).join("");
-      return '<div style="display:flex;gap:9px;padding:7px 0;align-items:flex-start;border-top:1px solid var(--brd)">'+thumb+'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--th)">'+Icon('gift',11)+' '+esc(g.name)+'</div>'+comps+'</div></div>';
+      return '<div class="oc-row" style="padding:7px 0;border-top:1px solid var(--brd)">'+thumb+'<div style="flex:1;min-width:0"><div class="oc-name" style="font-size:12px;font-weight:600;color:var(--th)">'+Icon('gift',11)+' '+esc(g.name)+'</div>'+comps+'</div></div>';
     }
-    return '<div style="display:flex;gap:9px;padding:7px 0;align-items:center;border-top:1px solid var(--brd)">'+thumb+'<div style="flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--th)">'+esc(g.name)+'</div><div style="font-size:12px;font-weight:700;color:var(--acc);font-family:JetBrains Mono,monospace;flex-shrink:0">'+esc(g.size||"")+'</div></div>';
+    return '<div class="oc-row" style="padding:7px 0;border-top:1px solid var(--brd)">'+thumb+'<div class="oc-name" style="flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--th)">'+esc(g.name)+'</div><div style="font-size:12px;font-weight:700;color:var(--acc);font-family:JetBrains Mono,monospace;flex-shrink:0">'+esc(g.size||"")+'</div></div>';
   }).join("");
 }
 // Expand/collapse a compact order card: uncaps the item list and reveals extra
@@ -366,8 +368,9 @@ function toggleOC(btn){
   var card=btn.closest(".oc");var open=card.getAttribute("data-open")==="1";
   card.setAttribute("data-open",open?"0":"1");
   var it=card.querySelector(".oc-items");var more=card.querySelector(".oc-more");
-  if(open){it.style.maxHeight="150px";if(more)more.style.display="none";btn.innerHTML="▾"+" Відкрити";}
-  else{it.style.maxHeight="66vh";if(more)more.style.display="";btn.innerHTML="▴"+" Звернути";}
+  var photos=card.querySelectorAll(".oc-photo");
+  if(open){it.style.maxHeight="150px";it.style.overflowY="auto";if(more)more.style.display="none";photos.forEach(function(p){p.style.width="58px";p.style.height="58px";});card.querySelectorAll(".oc-row").forEach(function(r){r.style.alignItems="center"});btn.innerHTML="▾"+" Відкрити";}
+  else{it.style.maxHeight="none";it.style.overflowY="visible";if(more)more.style.display="";photos.forEach(function(p){p.style.width="120px";p.style.height="120px";});card.querySelectorAll(".oc-row").forEach(function(r){r.style.alignItems="flex-start"});btn.innerHTML="▴"+" Звернути";}
 }
 function renderOC(o){
   var groups=groupOrderItems(o._items||[]);
@@ -380,11 +383,30 @@ function renderOC(o){
     '<div style="font-size:13px;font-weight:700;color:var(--th);margin-top:5px">'+esc(o.client_name)+(o.client_phone?' <span style="color:var(--acc);font-weight:500;font-family:JetBrains Mono,monospace;font-size:11px">'+esc(o.client_phone)+'</span>':'')+'</div>'+
     (o.client_city?'<div style="font-size:11px;color:var(--td);margin-top:1px">'+esc(o.client_city)+(o.client_warehouse?' · '+esc(o.client_warehouse):'')+'</div>':'<div style="font-size:11px;color:var(--td);margin-top:1px">'+(o.created_at?o.created_at.slice(5,16):"")+'</div>')+
     '</div>'+
-    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+money+'₴</div><div style="font-size:10px;color:var(--td)">'+o.cod_amount+'₴ нал</div></div>'+
+    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+money+'₴</div><div style="font-size:10px;color:var(--td)">'+o.cod_amount+'₴ нал</div><div style="font-size:10px;color:var(--td);font-family:JetBrains Mono,monospace">дроп '+(o.total_drop_price||0).toFixed(0)+'₴</div></div>'+
   '</div>';
   h+='<div class="oc-items" style="padding:0 14px;max-height:150px;overflow-y:auto;transition:max-height .25s ease">'+ocRows(groups)+'</div>';
-  var moreHtml=(o.note?'<div style="font-size:11px;color:var(--warn)">'+Icon('fileText',11)+' '+esc(o.note)+'</div>':'')+'<div style="font-size:10px;color:var(--td);margin-top:2px">Створено: '+(o.created_at?o.created_at.slice(0,16):"")+'</div>';
-  h+='<div class="oc-more" style="display:none;padding:6px 14px 0;border-top:1px solid var(--brd)">'+moreHtml+'</div>';
+  // Full order detail — shown when the card is expanded.
+  var dtl={warehouse:"Відділення НП",courier:"Кур'єр",pickup:"Самовивіз"}[o.delivery_type]||o.delivery_type||"—";
+  var addr=o.delivery_type==="courier"?(esc(o.client_city||"")+", вул. "+esc(o.client_street||"")+" "+esc(o.client_house||"")+(o.client_flat?", кв. "+esc(o.client_flat):"")):(esc(o.client_city||"—")+(o.client_warehouse?" · "+esc(o.client_warehouse):""));
+  var infoRow=function(l,v){return '<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:var(--td);flex-shrink:0">'+l+'</span><span style="color:var(--th);text-align:right;font-weight:600;word-break:break-word">'+v+'</span></div>';};
+  var moreHtml=
+    infoRow("Статус",SL[o.status]||o.status)+
+    infoRow("Клієнт",esc(o.client_name))+
+    infoRow("Телефон",esc(o.client_phone||"—"))+
+    infoRow("Доставка",dtl+(o.is_postomat?" (поштомат)":""))+
+    infoRow("Адреса",addr)+
+    infoRow("Наложка",o.cod_amount+"₴")+
+    infoRow("Дроп-ціна",(o.total_drop_price||0).toFixed(0)+"₴")+
+    infoRow(isRet?"Повернення":"Заробіток",'<span style="color:'+(isRet?'var(--red)':'var(--acc)')+'">'+(isRet?"-"+(o.return_cost||0).toFixed(0):"+"+o.payout_amount.toFixed(0))+"₴</span>")+
+    (o.is_prepaid?infoRow("Оплата",o.own_ttn?"Своя ТТН":"Повна оплата"):"")+
+    infoRow("Вага",parseFloat((o.weight||0).toFixed(3))+" кг")+
+    (o.declared_value?infoRow("Оцінка",o.declared_value+"₴"):"")+
+    infoRow("Опис для НП",esc(o.cargo_description||"Одяг"))+
+    (o.note?infoRow("Примітка",esc(o.note)):"")+
+    infoRow("Створено",o.created_at?o.created_at.slice(0,16):"—")+
+    (o.updated_at?infoRow("Оновлено",o.updated_at.slice(0,16)):"");
+  h+='<div class="oc-more" style="display:none;padding:8px 14px 4px;border-top:1px solid var(--brd)">'+moreHtml+'</div>';
   if(o.ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px">'+(o.own_ttn?'<div style="font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">'+Icon('alertTriangle',10)+' Це ваш ТТН, не наша доставка</div>':'')+'<span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px;white-space:normal;overflow-wrap:break-word">'+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--red);cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();copyTTN(\''+esc(o.return_ttn)+'\')">'+Icon('undo2',13)+' '+esc(o.return_ttn)+'</span><span style="font-size:10px;color:var(--red);flex-shrink:0">повернення</span></div>':'')+'</div>';
   else if(o.own_ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px"><div style="font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+Icon('alertTriangle',10)+' Це ваш ТТН — менеджер ще не вніс номер</div></div>';
   else if(!o.is_prepaid&&o.status==="new")h+='<div style="border-top:1px solid var(--brd);padding:8px 14px;display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:12px;color:var(--warn)">Формування ТТН...</span></div>';
