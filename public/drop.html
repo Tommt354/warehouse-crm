@@ -383,7 +383,7 @@ function renderOC(o){
     '<div style="font-size:13px;font-weight:700;color:var(--th);margin-top:5px">'+esc(o.client_name)+(o.client_phone?' <span style="color:var(--acc);font-weight:500;font-family:JetBrains Mono,monospace;font-size:11px">'+esc(o.client_phone)+'</span>':'')+'</div>'+
     (o.client_city?'<div style="font-size:11px;color:var(--td);margin-top:1px">'+esc(o.client_city)+(o.client_warehouse?' · '+esc(o.client_warehouse):'')+'</div>':'<div style="font-size:11px;color:var(--td);margin-top:1px">'+(o.created_at?o.created_at.slice(5,16):"")+'</div>')+
     '</div>'+
-    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+money+'₴</div><div style="font-size:10px;color:var(--td)">'+o.cod_amount+'₴ нал</div><div style="font-size:10px;color:var(--td);font-family:JetBrains Mono,monospace">дроп '+(o.total_drop_price||0).toFixed(0)+'₴</div></div>'+
+    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+money+'₴</div><div style="font-size:12px;color:var(--tt);font-family:JetBrains Mono,monospace">'+o.cod_amount+'₴ нал</div><div style="font-size:12px;color:var(--td);font-family:JetBrains Mono,monospace">дроп '+(o.total_drop_price||0).toFixed(0)+'₴</div></div>'+
   '</div>';
   h+='<div class="oc-items" style="padding:0 14px;max-height:150px;overflow-y:auto;transition:max-height .25s ease">'+ocRows(groups)+'</div>';
   // Full order detail — shown when the card is expanded.
