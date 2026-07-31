@@ -271,18 +271,40 @@ function renderOrderCard(o){
   // Compact item list (rows). Photo outline: green = на складі, red = немає.
   // Per-item actions for problem items go into "Потребує уваги" below.
   var rows='',prob='';
-  for(var ii=0;ii<o.items.length;ii++){
-    var i=o.items[ii];var missing=isActive&&i.current_stock<=0;var hasRet=isActive&&i.return_available>0;var usedRet=isActive&&i.from_returns>0;
+  // Render one pickable item row (photo + size + stock + checkbox). Reused for
+  // standalone items and for the components inside a kit.
+  function whRow(i){
+    var missing=isActive&&i.current_stock<=0;var hasRet=isActive&&i.return_available>0;var usedRet=isActive&&i.from_returns>0;
     var ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
     var dot=isActive?(missing?'<div style="color:var(--red);font-weight:700;font-size:12px;margin-top:3px">'+Icon('x',12)+' немає ('+i.current_stock+')</div>':'<div style="color:var(--green);font-weight:700;font-size:12px;margin-top:3px">'+Icon('check',12)+' на складі</div>'):'';
     var chk=!taken?'':(missing?'<div style="width:34px;height:34px;flex-shrink:0;display:grid;place-items:center;color:var(--red)">'+Icon('x',22)+'</div>':'<div class="wh-chk" data-on="0" onclick="whCheck(this)" style="width:34px;height:34px;border-radius:9px;border:2px solid var(--brd);flex-shrink:0;display:grid;place-items:center;cursor:pointer"></div>');
-    rows+='<div class="wh-item" style="display:flex;gap:12px;padding:11px 0;align-items:center;border-top:1px solid var(--brd)">'+chk+
+    if(missing)prob+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd)"><div style="font-size:11px;color:var(--th)">'+esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b> — <span style="color:var(--red)">немає</span></div><button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);flex-shrink:0" onclick="openSwapSize('+i.id+',\''+esc(i.var_name).replace(/'/g,"")+'\','+o.id+')">'+Icon('refreshCw',12)+' Замінити розмір</button></div>';
+    if(hasRet)prob+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd)"><div style="font-size:11px;color:var(--th)">'+esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b> — <span style="color:var(--warn)">є повернення ('+i.return_available+')</span></div><button class="btn btn-sm btn-w" style="flex-shrink:0" onclick="useRet('+i.id+','+o.id+',this)">'+Icon('package',12)+' З повернень</button></div>';
+    return '<div class="wh-item" style="display:flex;gap:12px;padding:11px 0;align-items:center;border-top:1px solid var(--brd)">'+chk+
       '<div style="width:96px;height:96px;border-radius:11px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative'+(isActive?(missing?';outline:2px solid var(--red);outline-offset:-2px':';outline:2px solid rgba(53,210,154,.55);outline-offset:-2px'):'')+'">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',26)+'</div>')+(usedRet?'<div style="position:absolute;top:3px;left:3px;background:var(--acc);color:#0a0e17;border-radius:5px;font-size:8px;padding:1px 4px;font-weight:800">поверн.</div>':'')+'</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--th);line-height:1.3">'+esc(i.var_name)+(i.print_name?' <span style="color:var(--warn);font-size:11px">·'+esc(i.print_name)+'</span>':'')+'</div>'+
         '<div style="font-size:18px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace;margin-top:3px">'+esc(i.size_name)+(i.quantity>1?' <span style="color:var(--td);font-size:14px">×'+i.quantity+'</span>':'')+(i.original_size_name?' <span style="color:var(--red);text-decoration:line-through;font-weight:400;font-size:13px">'+esc(i.original_size_name)+'</span>':'')+'</div>'+dot+'</div>'+
     '</div>';
-    if(missing)prob+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd)"><div style="font-size:11px;color:var(--th)">'+esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b> — <span style="color:var(--red)">немає</span></div><button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);flex-shrink:0" onclick="openSwapSize('+i.id+',\''+esc(i.var_name).replace(/'/g,"")+'\','+o.id+')">'+Icon('refreshCw',12)+' Замінити розмір</button></div>';
-    if(hasRet)prob+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd)"><div style="font-size:11px;color:var(--th)">'+esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b> — <span style="color:var(--warn)">є повернення ('+i.return_available+')</span></div><button class="btn btn-sm btn-w" style="flex-shrink:0" onclick="useRet('+i.id+','+o.id+',this)">'+Icon('package',12)+' З повернень</button></div>';
+  }
+  // Group kit components under a kit header (like the dropshipper), while each
+  // component keeps its own photo, stock status and pick checkbox.
+  var _cur=null,_grp=[];
+  for(var ii=0;ii<o.items.length;ii++){var gi=o.items[ii];
+    if(gi.kit_id){ if(_cur&&_cur.kit_id===gi.kit_id){_cur.items.push(gi);} else {_cur={kit:true,kit_id:gi.kit_id,kit_name:gi.kit_name,kit_photo:gi.kit_photo,items:[gi]};_grp.push(_cur);} }
+    else {_grp.push({kit:false,it:gi});_cur=null;}
+  }
+  for(var gj=0;gj<_grp.length;gj++){var g=_grp[gj];
+    if(g.kit){
+      var kph=g.kit_photo||(g.items[0]&&(g.items[0].var_photo||g.items[0].print_photo||g.items[0].bp_photo))||"";
+      var nc=g.items.length;
+      rows+='<div style="display:flex;gap:10px;align-items:center;padding:10px 0 6px;border-top:1px solid var(--brd)">'+
+        '<div style="width:44px;height:44px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(kph?'<img src="'+kph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:grid;place-items:center;height:100%;color:var(--acc)">'+Icon("gift",20)+'</div>')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--acc);display:flex;align-items:center;gap:5px">'+Icon("gift",14)+' '+esc(g.kit_name||"Комплект")+'</div><div style="font-size:11px;color:var(--td);margin-top:1px">'+nc+' товар'+(nc>4?'ів':nc>1?'и':'')+' у комплекті — зібрати всі</div></div>'+
+      '</div>'+
+      '<div style="border-left:2px solid var(--accbg);margin-left:21px;padding-left:12px">';
+      for(var ci=0;ci<g.items.length;ci++)rows+=whRow(g.items[ci]);
+      rows+='</div>';
+    } else rows+=whRow(g.it);
   }
   html+='<div class="oc-items" style="padding:0 14px 6px;'+(taken?'':'max-height:236px;overflow-y:auto;')+'transition:max-height .25s ease">'+rows+'</div>';
   if(prob)html+='<div style="margin:0 14px 8px;padding:2px 10px;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.18);border-radius:8px"><div style="font-size:11px;font-weight:700;color:var(--warn);padding-top:6px">'+Icon('alertTriangle',12)+' Потребує уваги:</div>'+prob+'</div>';

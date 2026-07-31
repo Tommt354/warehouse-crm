@@ -1451,6 +1451,66 @@ app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","
   res.json({ ok: true });
 });
 
+// Swap the whole PRODUCT of an order item (not just its size). Admin-only.
+// Returns the old product+size to stock, pulls the new one, recomputes the
+// item's drop price (with the dropshipper's discount, like order creation),
+// updates the order total/payout, and — for balance-settled orders — adjusts
+// the dropshipper's balance by the price delta.
+app.post("/api/order-items/:id/swap-product", authMiddleware, requireRole("admin"), (req, res) => {
+  const { new_variation_id, new_size_id } = req.body;
+  if (!new_variation_id || !new_size_id) return res.status(400).json({ error: "Оберіть товар і розмір" });
+  const item = db.prepare("SELECT oi.*,v.base_product_id as old_bp,o.status as order_status,o.dropshipper_id,o.cod_amount,o.is_prepaid,o.paid_from_balance,o.total_drop_price FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id WHERE oi.id=?").get(req.params.id);
+  if (!item) return res.status(404).json({ error: "Не знайдено" });
+  if (item.kit_id) return res.status(400).json({ error: "Товар у комплекті не можна змінити окремо — редагуйте комплект" });
+  if (!["new", "in_progress", "packed"].includes(item.order_status)) return res.status(400).json({ error: "Замовлення вже не можна редагувати" });
+
+  const nv = db.prepare("SELECT v.*,bp.id as new_bp,bp.drop_price as bp_drop,m.drop_price as m_drop FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=? AND v.active=1 AND bp.active=1 AND m.active=1").get(new_variation_id);
+  if (!nv) return res.status(404).json({ error: "Новий товар не знайдено" });
+  const sizeOk = db.prepare("SELECT 1 FROM stock_base WHERE base_product_id=? AND size_id=?").get(nv.new_bp, new_size_id);
+  if (!sizeOk) return res.status(400).json({ error: "Розмір недоступний для цього товару" });
+
+  // New drop price mirrors order-creation pricing for a regular item.
+  const drop = db.prepare("SELECT discount_percent,discount_fixed FROM users WHERE id=?").get(item.dropshipper_id);
+  let dropPrice = nv.drop_price_override || nv.bp_drop || nv.m_drop || 0;
+  if (drop?.discount_percent) dropPrice = dropPrice * (1 - drop.discount_percent / 100);
+  if (drop?.discount_fixed) dropPrice = Math.max(0, dropPrice - drop.discount_fixed);
+  dropPrice = Math.round(dropPrice * 100) / 100;
+
+  const touchActual = item.order_status !== "new";
+  const qty = item.quantity;
+
+  const result = db.transaction(() => {
+    if (touchActual) {
+      db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=MAX(0,quantity_actual+?) WHERE base_product_id=? AND size_id=?").run(qty, qty, item.old_bp, item.size_id);
+      db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(qty, qty, nv.new_bp, new_size_id);
+    } else {
+      db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty, item.old_bp, item.size_id);
+      db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, nv.new_bp, new_size_id);
+    }
+    // Swap the item; a product change makes the old size-history meaningless.
+    db.prepare("UPDATE order_items SET variation_id=?,size_id=?,drop_price=?,original_size_id=NULL,from_returns=0 WHERE id=?").run(new_variation_id, new_size_id, dropPrice, item.id);
+
+    const newTotal = Math.round((db.prepare("SELECT COALESCE(SUM(drop_price*quantity),0) as t FROM order_items WHERE order_id=?").get(item.order_id).t) * 100) / 100;
+    const payout = item.is_prepaid ? 0 : Math.round(((item.cod_amount || 0) - newTotal) * 100) / 100;
+    db.prepare("UPDATE orders SET total_drop_price=?,payout_amount=? WHERE id=?").run(newTotal, payout, item.order_id);
+
+    let balanceDelta = 0;
+    if (item.paid_from_balance) {
+      balanceDelta = Math.round((newTotal - (item.total_drop_price || 0)) * 100) / 100; // >0 = deduct more
+      if (balanceDelta !== 0) {
+        db.prepare("INSERT INTO balance_transactions(user_id,amount,type,order_id,note,created_by)VALUES(?,?,?,?,?,?)")
+          .run(item.dropshipper_id, -balanceDelta, "adjust", item.order_id, "Зміна товару у замовленні #" + item.order_id, req.user.id);
+        db.prepare("UPDATE users SET balance=balance-? WHERE id=?").run(balanceDelta, item.dropshipper_id);
+      }
+    }
+    const nName = db.prepare("SELECT name FROM variations WHERE id=?").get(new_variation_id)?.name || "";
+    db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('swap',?,?,?,?,?)").run(nv.new_bp, new_size_id, qty, "Зміна товару → " + nName + " (замовлення #" + item.order_id + ")", req.user.id);
+    return { total_drop: newTotal, payout, balance_delta: balanceDelta };
+  })();
+
+  res.json({ ok: true, ...result });
+});
+
 // Get available sizes for a variation
 app.get("/api/order-items/:id/available-sizes", authMiddleware, (req, res) => {
   const item = db.prepare("SELECT oi.*,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
