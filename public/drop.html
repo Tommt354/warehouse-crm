@@ -171,6 +171,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
   <div class="fld"><label>Оціночна вартість ₴</label><input id="no-dval" type="number" value="0"></div>
   <div class="fld"><label>Скрін чеку оплати (обов'язково)</label><div style="display:flex;gap:6px;align-items:center"><div id="no-receipt-preview" style="width:60px;height:60px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--td);font-size:9px">—</div><button class="btn btn-sm" onclick="document.getElementById('no-receipt-fi').click()"><i data-icon="camera" data-size="12"></i> Завантажити</button><input type="file" id="no-receipt-fi" accept="image/*" style="display:none" onchange="uploadReceipt(event)"></div></div>
 </div>
+<div id="no-ownttn-note" style="display:none;padding:10px 12px;background:rgba(193,127,78,.1);border:1px solid rgba(193,127,78,.3);border-radius:8px;font-size:12px;color:#c17f4e;line-height:1.5;margin:4px 0">Перешли скрін оплати та ТТН менеджеру — і менеджер додасть ТТН.<br><a href="https://t.me/Drop_mm" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#fff;background:#229ED9;padding:7px 14px;border-radius:8px;text-decoration:none;font-weight:700">✈ Написати менеджеру @Drop_mm</a></div>
 <div id="no-pay" style="font-size:12px;margin:4px 0;color:var(--th)"></div>
 <div class="fld"><label>Примітка</label><input id="no-note"></div>
 <div class="fld"><label>Опис посилки (для НП)</label><input id="no-cargo-desc" value="Одяг"></div>
@@ -546,8 +547,13 @@ var dropCityRef="",dropSettleRef="",receiptPhoto="",lastCities=[];
 // actually hides.
 function applyPrepaidUI(){
   var p=document.getElementById("no-prepaid").classList.contains("on");
-  document.getElementById("no-cod-wrap").style.display=p?"none":"";document.getElementById("no-prepaid-wrap").style.display=p?"":"none";
-  if(p){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
+  var own=document.getElementById("no-own-ttn").classList.contains("on");
+  document.getElementById("no-cod-wrap").style.display=p?"none":"";
+  // Оцінка + чек тільки для звичайної повної оплати. Для «моя ТТН» дропер шле
+  // скрін і ТТН менеджеру в лс — показуємо блок із посиланням на менеджера.
+  document.getElementById("no-prepaid-wrap").style.display=(p&&!own)?"":"none";
+  document.getElementById("no-ownttn-note").style.display=own?"":"none";
+  if(p&&!own){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
   calcPay();
 }
 function togglePrepaid(el){
@@ -599,7 +605,12 @@ async function submitOrder(){
   if(!oItems.length){err.textContent="Додайте товари";err.style.display="block";return}
   var isPre=document.getElementById("no-prepaid").classList.contains("on");
   var isOwnTtn=document.getElementById("no-own-ttn").classList.contains("on");
-  if(isPre&&!receiptPhoto){err.textContent="Завантажте скрін чеку оплати";err.style.display="block";return}
+  // Regular full payment requires оцінка + чек. Own-TTN sends them to the
+  // manager in Telegram instead, so neither is collected here.
+  if(isPre&&!isOwnTtn){
+    if(!receiptPhoto){err.textContent="Завантажте скрін чеку оплати";err.style.display="block";return}
+    if(!(parseFloat(document.getElementById("no-dval").value)>0)){err.textContent="Вкажіть оціночну вартість";err.style.display="block";return}
+  }
   if(!document.getElementById("no-name").value){err.textContent="Вкажіть ПІБ";err.style.display="block";return}
   if(!document.getElementById("no-phone").value){err.textContent="Вкажіть телефон";err.style.display="block";return}
   if(!isPre&&!isOwnTtn){
@@ -621,8 +632,8 @@ async function submitOrder(){
       cod_amount:isPre?0:(parseFloat(document.getElementById("no-cod").value)||0),
       note:document.getElementById("no-note").value,
       is_prepaid:isPre,
-      receipt_photo:isPre?receiptPhoto:"",
-      declared_value:isPre?(parseFloat(document.getElementById("no-dval").value)||0):0,
+      receipt_photo:(isPre&&!isOwnTtn)?receiptPhoto:"",
+      declared_value:(isPre&&!isOwnTtn)?(parseFloat(document.getElementById("no-dval").value)||0):0,
       own_ttn:isOwnTtn,
       cargo_description:document.getElementById("no-cargo-desc").value||"Одяг",
       weight:parseFloat(document.getElementById("no-weight").value)||0.5,
