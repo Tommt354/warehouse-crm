@@ -2574,12 +2574,24 @@ app.get("/api/stats/detailed", authMiddleware, (req, res) => {
     FROM orders o WHERE o.dropshipper_id=? AND date(o.created_at) BETWEEN ? AND ?
     GROUP BY day ORDER BY day`).all(uid, df, dt);
 
+  // This dropshipper's own best-selling products in the period.
+  const topProducts = db.prepare(`SELECT v.id as vid, v.name as name, bp.name as base_name,
+      COALESCE(NULLIF(v.photo,''), p.photo, bp.photo) as photo,
+      SUM(oi.quantity) as qty, COUNT(DISTINCT o.id) as orders
+    FROM order_items oi
+    JOIN orders o ON oi.order_id=o.id
+    JOIN variations v ON oi.variation_id=v.id
+    LEFT JOIN prints p ON v.print_id=p.id
+    JOIN base_products bp ON v.base_product_id=bp.id
+    WHERE o.dropshipper_id=? AND date(o.created_at) BETWEEN ? AND ? AND o.status NOT IN ('cancelled')
+    GROUP BY v.id ORDER BY qty DESC, orders DESC LIMIT 8`).all(uid, df, dt);
+
   res.json({
     total, success, failed, profit, codTotal, dropTotal, returnCost, paid, orderSum,
     avgProfit: success > 0 ? profit / success : 0,
     successRate: (success + failed) > 0 ? (success / (success + failed) * 100) : 0,
     unpaid: profit - returnCost - paid,
-    daily, date_from: df, date_to: dt
+    daily, topProducts, date_from: df, date_to: dt
   });
 });
 

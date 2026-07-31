@@ -87,6 +87,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
   <button class="stab on" id="sp-30" onclick="setStatPeriod(30)">30д</button>
 </div>
 <div id="stat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px"></div>
+<div id="stat-top"></div>
 <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:6px">Прибуток / Збиток по днях</div>
 <div id="chart-profit" style="overflow-x:auto;margin-bottom:14px"></div>
 <div style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:6px">Кількість замовлень по днях</div>
@@ -275,6 +276,15 @@ async function loadStats(){
     {l:"Дроп ціна",v:r.dropTotal.toFixed(2)+"₴",c:"var(--td)"}
   ];
   document.getElementById("stat-grid").innerHTML=items.map(function(i){return '<div class="sc"><div class="sl">'+i.l+'</div><div class="sv" style="color:'+i.c+';font-size:16px">'+i.v+'</div></div>'}).join("");
+  // Your own best-selling products in the period.
+  var tp=r.topProducts||[];
+  document.getElementById("stat-top").innerHTML=tp.length?(
+    '<div style="font-size:13px;font-weight:600;color:var(--th);margin:2px 0 8px;display:flex;align-items:center;gap:6px">'+Icon("flame",14)+' Ваші топ-товари</div>'+
+    '<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px">'+tp.map(function(p,idx){var ph=p.photo||"";return '<div style="flex-shrink:0;width:108px;background:var(--card);border:1px solid var(--brd);border-radius:12px;overflow:hidden">'+
+      '<div style="width:108px;height:108px;background:var(--bg);display:flex;align-items:center;justify-content:center;position:relative">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<span style="color:var(--td)">'+Icon("camera",22)+'</span>')+'<span style="position:absolute;top:5px;left:5px;background:var(--acc);color:#0a0e17;font-size:10px;font-weight:800;padding:1px 7px;border-radius:6px">#'+(idx+1)+'</span></div>'+
+      '<div style="padding:7px 8px"><div style="font-size:11px;font-weight:600;color:var(--th);line-height:1.25;height:28px;overflow:hidden">'+esc(p.name||p.base_name||"")+'</div><div style="font-size:13px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace;margin-top:4px">'+p.qty+' шт</div><div style="font-size:9px;color:var(--td)">'+p.orders+' замовл.</div></div>'+
+    '</div>'}).join("")+'</div>'
+  ):'';
   if(r.daily.length){
     var maxP=Math.max.apply(null,r.daily.map(function(d){return Math.max(d.profit,d.loss)}))||1;
     var maxO=Math.max.apply(null,r.daily.map(function(d){return d.orders}))||1;
@@ -294,7 +304,7 @@ async function loadStats(){
       co+='<text x="'+(x+bw/2)+'" y="210" fill="#f0f2f5" font-size="12" font-weight="500" text-anchor="middle" font-family="Inter,sans-serif">'+d.day.slice(5)+'</text>';
     });co+='</svg>';document.getElementById("chart-orders").innerHTML=co;
   }else{document.getElementById("chart-profit").innerHTML='<div style="color:var(--td);font-size:11px;padding:10px">Немає даних</div>';document.getElementById("chart-orders").innerHTML=''}
-  }catch(e){document.getElementById("stat-grid").innerHTML='<div style="color:var(--red);font-size:11px">Помилка завантаження</div>'}
+  }catch(e){document.getElementById("stat-grid").innerHTML='<div style="color:var(--red);font-size:11px">Помилка завантаження</div>';document.getElementById("stat-top").innerHTML=''}
 }
 async function loadDash(){if(!document.getElementById("stat-from").value)setStatPeriod(30);else loadStats()}
 
