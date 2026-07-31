@@ -39,7 +39,7 @@ app.post("/api/auth/login", (req, res) => {
   res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, worker_role: user.worker_role }, redirect });
 });
 app.get("/api/auth/me", authMiddleware, (req, res) => {
-  const u = db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,payout_details,payment_type,payment_card,payment_iban,edrpou,full_name,payment_purpose FROM users WHERE id=?").get(req.user.id);
+  const u = db.prepare("SELECT id,username,role,name,phone,email,telegram,discount_percent,discount_fixed,worker_role,payout_details,payment_type,payment_card,payment_iban,edrpou,full_name,payment_purpose,balance,balance_enabled FROM users WHERE id=?").get(req.user.id);
   if (!u) return res.status(401).json({ error: "Не знайдено" });
   res.json({ user: u });
 });
@@ -108,8 +108,9 @@ app.post("/api/users", authMiddleware, requireRole("admin"), (req, res) => {
   res.json({ ok: true, user: db.prepare("SELECT id,username,role,name FROM users WHERE id=?").get(r.lastInsertRowid) });
 });
 app.put("/api/users/:id", authMiddleware, requireRole("admin"), (req, res) => {
-  const { name, phone, email, telegram, discount_percent, discount_fixed, worker_role, worker_rate, active, password, assigned_warehouse } = req.body;
+  const { name, phone, email, telegram, discount_percent, discount_fixed, worker_role, worker_rate, active, password, assigned_warehouse, balance_enabled } = req.body;
   db.prepare("UPDATE users SET name=?,phone=?,email=?,telegram=?,discount_percent=?,discount_fixed=?,worker_role=?,worker_rate=?,active=?,assigned_warehouse=? WHERE id=?").run((name||""),(phone||""),(email||""),(telegram||""),parseFloat(discount_percent)||0,parseFloat(discount_fixed)||0,worker_role||"",parseFloat(worker_rate)||0,active!==undefined?(active?1:0):1,assigned_warehouse||"",req.params.id);
+  if(balance_enabled!==undefined)db.prepare("UPDATE users SET balance_enabled=? WHERE id=?").run(balance_enabled?1:0,req.params.id);
   if(password&&password.length>=4)db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(bcrypt.hashSync(password,10),req.params.id);
   res.json({ ok: true });
 });
@@ -1135,14 +1136,16 @@ app.post("/api/orders", authMiddleware, (req, res) => {
   // number itself is filled in later by an admin/manager, not the
   // dropshipper, so it's left blank at creation time.
   const ownTtn = !!req.body.own_ttn;
-  // Own-TTN means the dropshipper sends the payment screenshot + TTN to the
-  // manager in Telegram, so no receipt is collected here. A regular full-payment
-  // order still requires one.
-  if (req.body.is_prepaid && !ownTtn && !req.body.receipt_photo) return res.status(400).json({ error: "Завантажте скрін чеку оплати" });
-
   const dropId = req.user.role === "admin" ? (req.body.dropshipper_id || req.user.id) : req.user.id;
-  // Get dropshipper discount
-  const drop = db.prepare("SELECT discount_percent,discount_fixed FROM users WHERE id=?").get(dropId);
+  // Get dropshipper discount + whether they may settle orders from balance.
+  const drop = db.prepare("SELECT discount_percent,discount_fixed,balance_enabled FROM users WHERE id=?").get(dropId);
+  // Charge the order's drop price to the dropshipper's balance instead of a
+  // payment: only balance-enabled dropshippers, only on full-payment / own-TTN
+  // orders. When active, no receipt is required.
+  const payFromBalance = !!req.body.pay_from_balance && !!(drop && drop.balance_enabled) && !!(req.body.is_prepaid || ownTtn);
+  // A regular full-payment order still requires a receipt. Own-TTN sends it to
+  // the manager in Telegram; a balance order settles from the balance instead.
+  if (req.body.is_prepaid && !ownTtn && !payFromBalance && !req.body.receipt_photo) return res.status(400).json({ error: "Завантажте скрін чеку оплати" });
 
   const result = db.transaction(() => {
     let totalDrop = 0;
@@ -1241,7 +1244,15 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id)VALUES(?,?,?,?,?,?,?)");
     orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id));
 
-    return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout, is_prepaid: isPrepaid };
+    // Settle the order from balance: deduct the drop price and record it.
+    if (payFromBalance) {
+      db.prepare("UPDATE orders SET paid_from_balance=1 WHERE id=?").run(o.lastInsertRowid);
+      db.prepare("INSERT INTO balance_transactions(user_id,amount,type,order_id,note,created_by)VALUES(?,?,?,?,?,?)")
+        .run(dropId, -totalDrop, "order", o.lastInsertRowid, "Замовлення #" + o.lastInsertRowid, req.user.id);
+      db.prepare("UPDATE users SET balance=balance-? WHERE id=?").run(totalDrop, dropId);
+    }
+
+    return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout, is_prepaid: isPrepaid, paid_from_balance: payFromBalance ? 1 : 0 };
   })();
 
 // Auto-generate TTN for COD orders (not prepaid, not self-pickup)
@@ -1630,6 +1641,15 @@ function autoDestinationFor(status) {
 // at the warehouse so returning them to base is unambiguous. Marks the order
 // "Скасовано" (kept in history) and detaches it from any payout. Packed/shipped
 // and later statuses must use delete, which routes the goods explicitly.
+// Return a balance-charged order's drop price to the dropshipper's balance
+// (on cancel or delete), so a scrapped order doesn't leave them charged.
+function refundOrderBalance(o, byUserId) {
+  if (!o || !o.paid_from_balance) return;
+  db.prepare("INSERT INTO balance_transactions(user_id,amount,type,order_id,note,created_by)VALUES(?,?,?,?,?,?)")
+    .run(o.dropshipper_id, o.total_drop_price, "refund", o.id, "Повернення за скасоване замовлення #" + o.id, byUserId || null);
+  db.prepare("UPDATE users SET balance=balance+? WHERE id=?").run(o.total_drop_price, o.dropshipper_id);
+}
+
 app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
@@ -1641,6 +1661,7 @@ app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehous
   db.transaction(() => {
     applyOrderStockRemoval(o.id, o.status, "base", req.user.id);
     db.prepare("DELETE FROM payout_items WHERE order_id=?").run(o.id);
+    refundOrderBalance(o, req.user.id);
     db.prepare("UPDATE orders SET status='cancelled',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
   })();
   res.json({ ok: true });
@@ -1669,6 +1690,7 @@ app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) =
   db.transaction(() => {
     if (destination) applyOrderStockRemoval(o.id, o.status, destination, req.user.id);
     db.prepare("DELETE FROM payout_items WHERE order_id=?").run(o.id);
+    refundOrderBalance(o, req.user.id);
     db.prepare("UPDATE balance_transactions SET order_id=NULL WHERE order_id=?").run(o.id);
     db.prepare("DELETE FROM orders WHERE id=?").run(o.id);
   })();
@@ -2654,11 +2676,31 @@ app.post("/api/payouts/request", authMiddleware, (req, res) => {
 
 // Admin: list all payout requests
 app.get("/api/payouts/all", authMiddleware, requireRole("admin"), (req, res) => {
-  const requests = db.prepare(`SELECT pr.*,u.name as drop_name,u.payment_type,u.payment_card,u.payment_iban,u.full_name,u.phone FROM payout_requests pr JOIN users u ON pr.dropshipper_id=u.id ORDER BY CASE WHEN pr.status='pending' THEN 0 ELSE 1 END, pr.created_at DESC`).all();
+  const requests = db.prepare(`SELECT pr.*,u.name as drop_name,u.payment_type,u.payment_card,u.payment_iban,u.full_name,u.phone,u.balance,u.balance_enabled FROM payout_requests pr JOIN users u ON pr.dropshipper_id=u.id ORDER BY CASE WHEN pr.status='pending' THEN 0 ELSE 1 END, pr.created_at DESC`).all();
   requests.forEach(r => {
     r.items = db.prepare(`SELECT pi.*,o.cod_amount,o.client_name,o.ttn,o.return_ttn,o.return_cost,o.status as order_status FROM payout_items pi JOIN orders o ON pi.order_id=o.id WHERE pi.payout_request_id=?`).all(r.id);
   });
   res.json({ requests });
+});
+
+// Admin: fold the dropshipper's balance into this payout and settle it to 0.
+// A negative balance (debt from balance-charged orders) reduces the payout; a
+// positive balance (credit) increases it. Final payout = items total + applied.
+app.post("/api/payouts/:id/apply-balance", authMiddleware, requireRole("admin"), (req, res) => {
+  const pr = db.prepare("SELECT * FROM payout_requests WHERE id=?").get(req.params.id);
+  if (!pr) return res.status(404).json({ error: "Не знайдено" });
+  if (pr.status !== "pending") return res.status(400).json({ error: "Виплата вже проведена" });
+  const u = db.prepare("SELECT balance FROM users WHERE id=?").get(pr.dropshipper_id);
+  const bal = u ? (u.balance || 0) : 0;
+  if (!bal) return res.status(400).json({ error: "Баланс нульовий" });
+  db.transaction(() => {
+    db.prepare("UPDATE payout_requests SET balance_applied=balance_applied+? WHERE id=?").run(bal, pr.id);
+    db.prepare("INSERT INTO balance_transactions(user_id,amount,type,note,created_by)VALUES(?,?,?,?,?)")
+      .run(pr.dropshipper_id, -bal, "payout", "Залік у виплату #" + pr.id, req.user.id);
+    db.prepare("UPDATE users SET balance=balance-? WHERE id=?").run(bal, pr.dropshipper_id);
+  })();
+  const applied = db.prepare("SELECT balance_applied FROM payout_requests WHERE id=?").get(pr.id).balance_applied;
+  res.json({ ok: true, balance_applied: applied, final_total: (pr.total_amount || 0) + applied });
 });
 
 // Admin: mark payout as paid
