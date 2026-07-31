@@ -348,26 +348,36 @@ function groupOrderItems(items){
   });
   return groups;
 }
+// A big-photo gallery of the order's products (grouped), scrolls sideways
+// inside the card. Names clamp to 2 lines; an edge fade + count chip hint
+// there are more when the strip overflows.
+function ocGallery(groups){
+  if(!groups.length)return '';
+  var cnt=groups.length;
+  return '<div style="position:relative">'+
+    '<div style="display:flex;gap:8px;overflow-x:auto;padding:2px 14px 12px;scroll-snap-type:x proximity">'+groups.map(function(g){var ph=g.photo||"";
+      return '<div style="flex-shrink:0;width:90px;scroll-snap-align:start">'+
+        '<div style="width:90px;height:90px;border-radius:10px;overflow:hidden;position:relative;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',24)+'</div>')+(g.kit?'<div style="position:absolute;top:3px;left:3px;background:var(--acc);color:#0a0e17;border-radius:5px;font-size:9px;padding:1px 5px;font-weight:800;display:flex;align-items:center;gap:2px">'+Icon('gift',9)+'</div>':'')+(g.quantity>1?'<div style="position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,.72);color:#fff;border-radius:5px;font-size:10px;padding:0 5px;font-weight:700">×'+g.quantity+'</div>':'')+'</div>'+
+        '<div style="font-size:11px;font-weight:600;color:var(--th);line-height:1.25;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:28px">'+esc(g.name)+'</div>'+
+        (g.size?'<div style="font-size:11px;font-weight:700;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(g.size)+'</div>':(g.kit?'<div style="font-size:10px;color:var(--td)">комплект</div>':''))+
+      '</div>';
+    }).join("")+'</div>'+
+    (cnt>3?'<div style="position:absolute;top:0;right:0;bottom:12px;width:42px;background:linear-gradient(90deg,rgba(20,26,39,0),var(--card) 92%);pointer-events:none"></div><div style="position:absolute;top:33px;right:8px;background:var(--acc);color:#0a0e17;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;pointer-events:none">'+cnt+' →</div>':'')+
+  '</div>';
+}
 function renderOC(o){
-  var items=o._items||[];
-  var groups=groupOrderItems(items);
-  var nm;
-  if(groups.length===0)nm='—';
-  else if(groups.length===1){var g0=groups[0];nm=(g0.kit?Icon('gift',12)+' ':'')+esc(g0.name)+(g0.size?' <b style="color:var(--acc)">'+esc(g0.size)+'</b>':'')+(g0.quantity>1?' ×'+g0.quantity:'')}
-  else nm='<span style="color:var(--acc);font-weight:700">'+groups.length+' '+(groups.length>4?'товарів':groups.length>1?'товари':'товар')+'</span> · '+groups.slice(0,2).map(function(g){var n=g.name.length>15?g.name.slice(0,15)+'…':g.name;return (g.kit?'🎁 ':'')+esc(n)}).join(', ')+(groups.length>2?' <span style="color:var(--td)">+ще '+(groups.length-2)+'</span>':'');
+  var groups=groupOrderItems(o._items||[]);
+  var cnt=groups.length;
   var chB=o.drop_channel==='hot'?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(255,167,38,.12);color:#ffa726;font-weight:600">HOT</span>':'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(124,134,255,.12);color:#7c86ff;font-weight:600">ADS</span>';
-  // All products shown as a scrollable photo strip with size / kit badge.
-  var thumbs=groups.length?'<div style="display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px">'+groups.map(function(g){
-    return '<div style="flex-shrink:0;width:52px"><div style="width:52px;height:52px;border-radius:8px;overflow:hidden;background:var(--bg);position:relative">'+(g.photo?'<img src="'+g.photo+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+(g.kit?'<div style="position:absolute;top:2px;left:2px;background:var(--acc);color:#0a0e17;border-radius:4px;font-size:8px;padding:1px 3px;font-weight:700;display:flex;align-items:center">'+Icon('gift',9)+'</div>':'')+(g.quantity>1?'<div style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,.72);color:#fff;border-radius:4px;font-size:9px;padding:0 4px;font-weight:700">×'+g.quantity+'</div>':'')+'</div><div style="font-size:9px;color:var(--acc);text-align:center;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(g.kit?'компл.':(g.size||''))+'</div></div>';
-  }).join("")+'</div>':'';
+  var isRet=(o.status==='refused'||o.status==='return_transit');
+  var money=isRet?'-'+(o.return_cost||0).toFixed(0):'+'+o.payout_amount.toFixed(0);
   var h='<div class="oc" onclick="viewOrder('+o.id+')">';
-  h+='<div style="padding:12px 14px">';
-  h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">';
-  h+='<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--th);line-height:1.3;margin-bottom:3px">'+nm+'</div>';
-  h+='<div><span style="font-size:12px;color:var(--td);font-weight:500">#'+o.id+'</span> <span class="tag '+(SCL[o.status]||"")+'" style="font-size:10px;padding:2px 8px">'+(SL[o.status]||o.status)+'</span> '+chB+'</div>';
-  h+='<div style="font-size:11px;color:var(--td);margin-top:3px">'+esc(o.client_name)+' · '+(o.created_at?o.created_at.slice(5,16):"")+'</div></div>';
-  h+='<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:'+((o.status==='refused'||o.status==='return_transit')?'var(--red)':'var(--acc)')+'">'+(o.status==='refused'||o.status==='return_transit'?'-'+(o.return_cost||0).toFixed(0):'+'+o.payout_amount.toFixed(0))+'₴</div><div style="font-size:11px;color:var(--td)">'+o.cod_amount+'₴ нал</div></div>';
-  h+='</div>'+thumbs+'</div>';
+  h+='<div style="padding:12px 14px 8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'+
+    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:12px;color:var(--td);font-weight:600">#'+o.id+'</span><span class="tag '+(SCL[o.status]||"")+'" style="font-size:10px;padding:2px 8px">'+(SL[o.status]||o.status)+'</span> '+chB+'</div>'+
+    '<div style="font-size:13px;font-weight:700;color:var(--th);margin-top:5px"><span style="color:var(--acc)">'+cnt+' '+(cnt>4?'товарів':cnt>1?'товари':'товар')+'</span> · '+esc(o.client_name)+'</div>'+
+    '<div style="font-size:11px;color:var(--td);margin-top:2px">'+(o.created_at?o.created_at.slice(5,16):"")+'</div></div>'+
+    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:18px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+money+'₴</div><div style="font-size:11px;color:var(--td)">'+o.cod_amount+'₴ нал</div></div>'+
+  '</div>'+ocGallery(groups);
   if(o.ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px" onclick="event.stopPropagation()">'+(o.own_ttn?'<div style="font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">'+Icon('alertTriangle',10)+' Це ваш ТТН, не наша доставка</div>':'')+'<span style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:'+ttnColor(o)+';cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(o.ttn)+'\')">'+esc(o.ttn)+'</span>'+(o.np_status_text?'<div style="font-size:10px;color:'+ttnColor(o)+';margin-top:2px;white-space:normal;overflow-wrap:break-word">'+esc(o.np_status_text)+'</div>':'')+(o.return_ttn?'<div style="margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--red);cursor:pointer;flex-shrink:0" onclick="event.stopPropagation();copyTTN(\''+esc(o.return_ttn)+'\')">'+Icon('undo2',13)+' '+esc(o.return_ttn)+'</span><span style="font-size:10px;color:var(--red);flex-shrink:0">повернення</span></div>':'')+'</div>';
   else if(o.own_ttn)h+='<div style="border-top:1px solid var(--brd);padding:8px 14px" onclick="event.stopPropagation()"><div style="font-size:9px;color:#c17f4e;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+Icon('alertTriangle',10)+' Це ваш ТТН — менеджер ще не вніс номер</div></div>';
   else if(!o.is_prepaid&&o.status==="new")h+='<div style="border-top:1px solid var(--brd);padding:8px 14px;display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border:2px solid var(--brd);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite"></div><span style="font-size:12px;color:var(--warn)">Формування ТТН...</span></div>';
