@@ -1758,13 +1758,11 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     for(const g of _grp){
       if(g.kit){
         const kph=g.kit_photo||(g.items[0]&&(g.items[0].var_photo||g.items[0].print_photo||g.items[0].bp_photo))||"";
-        const nc=g.items.length;
-        const sub=g.items.map(function(ci){return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-top:1px solid rgba(255,255,255,.05)"><span style="color:var(--th)">'+esc(ci.var_name)+(ci.print_name?' <span style="color:var(--warn);font-size:11px">·'+esc(ci.print_name)+'</span>':'')+'</span><span style="font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace;flex-shrink:0">'+esc(ci.size_name)+'</span></div>';}).join("");
-        agItems+='<div class="oc-row" data-open="0" onclick="toggleKitRow(this)" style="display:flex;gap:12px;padding:9px 0;align-items:center;border-top:1px solid var(--brd);cursor:pointer">'+
+        const sub=g.items.map(function(ci){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 0"><span style="font-size:13px;color:var(--th);min-width:0">'+esc(ci.var_name)+(ci.print_name?' <span style="color:var(--warn);font-size:11px">·'+esc(ci.print_name)+'</span>':'')+'</span><span style="font-size:17px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace;flex-shrink:0">'+esc(ci.size_name)+'</span></div>';}).join("");
+        agItems+='<div class="oc-row" style="display:flex;gap:12px;padding:9px 0;align-items:center;border-top:1px solid var(--brd)">'+
           '<div class="oc-photo" style="width:96px;height:96px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--bg);position:relative">'+(kph?'<img src="'+kph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon("gift",28)+'</div>')+'<div style="position:absolute;top:3px;left:3px;background:var(--acc);color:#0a0e17;border-radius:5px;font-size:9px;padding:1px 5px;font-weight:800;display:flex;align-items:center">'+Icon("gift",9)+'</div></div>'+
-          '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--th);line-height:1.3">'+esc(g.kit_name||"Комплект")+'</div><div style="font-size:13px;color:var(--acc);margin-top:4px;font-weight:600"><span class="kit-arrow">▾</span> '+nc+' '+(nc>4?"товарів":nc>1?"товари":"товар")+' — розгорнути</div></div>'+
-        '</div>'+
-        '<div class="kit-sub" style="display:none;padding:0 14px 6px 122px">'+sub+'</div>';
+          '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--th);line-height:1.3;margin-bottom:4px">'+Icon("gift",12)+' '+esc(g.kit_name||"Комплект")+'</div>'+sub+'</div>'+
+        '</div>';
       }else{
         const i=g.it;const aph=(i.var_photo||i.print_photo||i.bp_photo)||"";
         agItems+='<div class="oc-row" style="display:flex;gap:12px;padding:9px 0;align-items:center;border-top:1px solid var(--brd)">'+
@@ -2322,13 +2320,6 @@ function renderPayouts(list){
     (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">'+Icon('x',12)+' Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
     '</div></div>';
   }).join(""):'<div class="empty"><span class="ic">'+Icon('banknote',40)+'</span>Немає запитів на виплату</div>';
-}
-// Expand/collapse a kit row to reveal its component products.
-function toggleKitRow(el){
-  var sub=el.nextElementSibling;if(!sub)return;
-  var on=el.getAttribute("data-open")==="1";el.setAttribute("data-open",on?"0":"1");
-  sub.style.display=on?"none":"";
-  var arr=el.querySelector(".kit-arrow");if(arr)arr.textContent=on?"▾":"▴";
 }
 // Expand/collapse an order card's item list.
 function toggleWhOC(btn){
