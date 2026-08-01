@@ -1498,6 +1498,12 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
     // shelf and simply hasn't been picked for this order yet.
     const stk = db.prepare("SELECT quantity_actual FROM stock_base WHERE base_product_id=? AND size_id=?").get(i.base_product_id, i.size_id);
     i.current_stock = stk ? stk.quantity_actual : 0;
+    // Позиція, вже взята з полиці повернень, фізично лежить у пакувальника —
+    // порожня полиця бази для неї не означає "немає". use-return повертає на
+    // базу лише списану кількість, а не фактичну (річ прийшла з повернень, не
+    // з бази), тому quantity_actual тут лишається 0 і без цього прапорця
+    // позиція виглядала б відсутньою й блокувала кнопку "Готово".
+    i.covered_from_returns = (i.from_returns || 0) >= i.quantity ? 1 : 0;
   });
   res.json({ order: o });
 });
@@ -1659,7 +1665,10 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
   const updates = ["status=?","updated_at=datetime('now','localtime')"];
   const vals = [status];
 
-  if (status === "in_progress" || status === "packed") {
+  // packed_by = хто фізично працював із замовленням: взяв у роботу, зібрав або
+  // запакував. packed_at лишається тільки для packed — це час фактичного
+  // пакування, на ньому тримається статистика.
+  if (status === "in_progress" || status === "collected" || status === "packed") {
     updates.push("packed_by=?"); vals.push(req.user.id);
     if (status === "packed") { updates.push("packed_at=datetime('now','localtime')"); }
   }

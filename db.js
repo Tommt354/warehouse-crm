@@ -723,6 +723,18 @@ if(!db.prepare("SELECT id FROM order_statuses LIMIT 1").get()){
   });
   db.prepare("UPDATE order_statuses SET is_system=1 WHERE code IN ('new','in_progress','packed','shipped','delivering','delivered','refused','return_transit','cancelled')").run();
 })();
+// "Зібрано" — проміжний статус між "В роботі" і "Запаковано". Пакувальник Бази
+// ставить його, зібравши речі з полиці; фінальний "Запаковано" лишається за
+// пакувальницею (скан ТТН, /api/scan/finalize). Додається тут, а не в seed вище,
+// бо на проді order_statuses уже заповнена. is_system — щоб адмін не видалив
+// статус, на якому тримається потік складу.
+if (!db.prepare("SELECT id FROM order_statuses WHERE code='collected'").get()) {
+  const ip = db.prepare("SELECT sort_order FROM order_statuses WHERE code='in_progress'").get();
+  const base = ip ? ip.sort_order : 2;
+  db.prepare("UPDATE order_statuses SET sort_order=sort_order+1 WHERE sort_order>?").run(base);
+  db.prepare("INSERT INTO order_statuses(code,name,color,sort_order,is_system)VALUES('collected','Зібрано','#14b8a6',?,1)").run(base + 1);
+  console.log("✅ Додано статус 'Зібрано'");
+}
 if(!db.prepare("SELECT id FROM sizes LIMIT 1").get()){
   const s=db.prepare("INSERT INTO sizes(name,sort_order)VALUES(?,?)");
   ["XXS","XS","S","M","L","XL","2XL","3XL"].forEach((n,i)=>s.run(n,i));
