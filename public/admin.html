@@ -453,17 +453,9 @@
   <div id="um-disc-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px"></div>
   <div id="um-disc-newuser" style="display:none;font-size:11px;color:var(--td)">Спершу збережіть дропера, потім зможете додати знижки.</div>
   <div id="um-disc-add" style="display:none;background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:8px">
-    <div style="display:flex;gap:5px;margin-bottom:7px">
-      <button type="button" class="btn btn-sm on" id="um-disc-mcat" onclick="umDiscMode('cat')" style="flex:1">Категорія</button>
-      <button type="button" class="btn btn-sm" id="um-disc-mprod" onclick="umDiscMode('prod')" style="flex:1">Товар</button>
-    </div>
-    <div id="um-disc-cat-wrap"><select id="um-disc-cat" style="width:100%;padding:8px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit"></select></div>
-    <div id="um-disc-prod-wrap" style="display:none">
-      <input id="um-disc-prod-search" placeholder="Пошук товару..." oninput="umDiscSearchProd(this.value)" style="width:100%;padding:8px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">
-      <div id="um-disc-prod-list" style="max-height:140px;overflow-y:auto;margin-top:4px;display:flex;flex-direction:column;gap:3px"></div>
-      <div id="um-disc-prod-chosen" style="font-size:11px;color:var(--acc);margin-top:4px"></div>
-    </div>
-    <div style="display:flex;gap:5px;margin-top:8px;align-items:center">
+    <button type="button" class="btn" style="width:100%;justify-content:center" onclick="openDiscCatPicker()"><i data-icon="search" data-size="13"></i> Обрати категорію або товар</button>
+    <div id="um-disc-chosen" style="font-size:12px;color:var(--acc);margin:8px 0;min-height:16px"></div>
+    <div style="display:flex;gap:5px;align-items:center">
       <input id="um-disc-amt" type="number" placeholder="Знижка ₴" style="flex:1;padding:8px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-family:inherit">
       <button type="button" class="btn btn-p btn-sm" onclick="addUmDiscount()">Додати</button>
     </div>
@@ -700,6 +692,19 @@
 <div id="ano-cat-list"></div>
 </div>
 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--brd);display:flex;align-items:center;gap:8px"><span id="anocp-count" style="font-size:12px;color:var(--acc);font-weight:600"></span><button class="btn" style="margin-left:auto" onclick="closeM('ano-cat-modal')">Скасувати</button><button class="btn btn-p" onclick="closeM('ano-cat-modal')"><i data-icon="check" data-size="14"></i> Готово</button></div>
+</div></div>
+
+<div class="modal-bg" id="disc-cat-modal" style="z-index:320"><div class="modal" style="max-width:650px;display:flex;flex-direction:column;overflow:hidden">
+<h3 style="display:flex;align-items:center"><i data-icon="tag" data-size="16"></i> Оберіть категорію або товар <button onclick="closeM('disc-cat-modal')" style="margin-left:auto;background:none;border:none;color:var(--td);cursor:pointer;font-size:22px;line-height:1;padding:0 4px">✕</button></h3>
+<div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn" id="discc-hot" onclick="discChannel='hot';discCatP=null;loadDiscCatalog()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="btn on" id="discc-ads" onclick="discChannel='ads';discCatP=null;loadDiscCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS</button></div>
+<div style="margin-bottom:8px"><input id="disc-cat-search" placeholder="Пошук товару за назвою..." oninput="filterDiscCatalog(this.value)" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"></div>
+<div style="flex:1;overflow-y:auto;min-height:0;margin:0 -4px;padding:0 4px">
+<div id="discp-bread"></div>
+<div id="discp-catpick" style="margin-bottom:8px"></div>
+<div id="discp-cats" class="cards" style="margin-bottom:8px"></div>
+<div id="disc-cat-list"></div>
+</div>
+<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--brd);display:flex;justify-content:flex-end"><button class="btn" onclick="closeM('disc-cat-modal')">Закрити</button></div>
 </div></div>
 
 <!-- Admin kit size picker modal -->
@@ -2828,15 +2833,12 @@ async function openWorkerDetail(id){
 }
 async function payWorker(id){if(!confirm("Виплатити?"))return;try{await api("/api/workers/"+id+"/pay",{method:"POST"});closeM("wk-detail-modal");loadWorkers()}catch(e){}}
 function openUM(role){editUID=null;editUR=role;document.getElementById("um-t").textContent=role==="dropshipper"?"Новий дроп":"Новий працівник";["um-user","um-pass","um-name","um-phone","um-tg"].forEach(id=>document.getElementById(id).value="");document.getElementById("um-user").disabled=false;document.getElementById("um-drop").style.display=role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=role==="warehouse"?"block":"none";if(role==="warehouse"){document.getElementById("um-wr").value="";document.getElementById("um-wrt").value="0";document.getElementById("um-wh").value=""}if(role==="dropshipper"){document.getElementById("um-dp").value=0;document.getElementById("um-df").value=0;document.getElementById("um-balance").checked=false;loadUmDiscounts()}document.getElementById("um-del").style.display="none";document.getElementById("um-err").style.display="none";openM("user-modal")}
-var umDiscMode_='cat',umDiscCats=[],umDiscVars=[],umDiscProdSel=null;
+var discDiscSel=null;
 async function loadUmDiscounts(){
   if(!editUID){document.getElementById("um-disc-add").style.display="none";document.getElementById("um-disc-newuser").style.display="block";document.getElementById("um-disc-list").innerHTML="";return}
   document.getElementById("um-disc-newuser").style.display="none";
   document.getElementById("um-disc-add").style.display="block";
-  if(!umDiscCats.length){try{var c=await api("/api/categories?scope=drop");umDiscCats=(c.flat||[]);}catch(e){}}
-  document.getElementById("um-disc-cat").innerHTML=umDiscCats.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>'}).join("");
-  if(!umDiscVars.length){try{var v=await api("/api/variations");umDiscVars=v.variations||[];}catch(e){}}
-  umDiscMode("cat");umDiscProdSel=null;document.getElementById("um-disc-amt").value="";document.getElementById("um-disc-prod-chosen").textContent="";document.getElementById("um-disc-prod-search").value="";document.getElementById("um-disc-prod-list").innerHTML="";
+  discDiscSel=null;showDiscChosen();document.getElementById("um-disc-amt").value="";
   try{var r=await api("/api/users/"+editUID+"/discounts");renderUmDiscList(r.discounts);}catch(e){}
 }
 function renderUmDiscList(list){
@@ -2844,18 +2846,53 @@ function renderUmDiscList(list){
     return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--brd);border-radius:6px;padding:6px 9px"><div style="min-width:0"><span style="font-size:9px;text-transform:uppercase;color:var(--td)">'+(d.target_type==="variation"?"товар":"категорія")+'</span><div style="font-size:12px;color:var(--th);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(d.target_name)+'</div></div><div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><span style="font-family:JetBrains Mono,monospace;font-weight:700;color:var(--green)">−'+d.amount+'₴</span><button type="button" onclick="delUmDiscount('+d.id+')" style="background:none;border:none;color:var(--red);cursor:pointer;padding:2px">'+Icon("trash2",13)+'</button></div></div>';
   }).join("")||'<div style="font-size:11px;color:var(--td)">Знижок ще немає.</div>';
 }
-function umDiscMode(m){umDiscMode_=m;document.getElementById("um-disc-mcat").classList.toggle("on",m==="cat");document.getElementById("um-disc-mprod").classList.toggle("on",m==="prod");document.getElementById("um-disc-cat-wrap").style.display=m==="cat"?"":"none";document.getElementById("um-disc-prod-wrap").style.display=m==="prod"?"":"none"}
-function umDiscSearchProd(q){q=(q||"").toLowerCase().trim();var list=umDiscVars;if(q)list=list.filter(function(v){return ((v.name||"")+" "+(v.model_name||"")).toLowerCase().includes(q)});list=list.slice(0,40);document.getElementById("um-disc-prod-list").innerHTML=list.map(function(v){return '<div onclick="umDiscPickProd('+v.id+',\''+esc(v.name).replace(/'/g,"")+'\')" style="padding:5px 7px;border:1px solid var(--brd);border-radius:5px;cursor:pointer;font-size:12px;color:var(--th)">'+esc(v.name)+' <span style="color:var(--td);font-size:10px">'+(v.list_drop_price||v.drop_price||0)+'₴</span></div>'}).join("")||'<div style="font-size:11px;color:var(--td)">Нічого не знайдено</div>'}
-function umDiscPickProd(vid,name){umDiscProdSel={id:vid,name:name};document.getElementById("um-disc-prod-chosen").textContent="Обрано: "+name;document.getElementById("um-disc-prod-list").innerHTML="";document.getElementById("um-disc-prod-search").value=name}
+function showDiscChosen(){
+  var el=document.getElementById("um-disc-chosen");if(!el)return;
+  el.innerHTML=discDiscSel?('<span style="font-size:9px;text-transform:uppercase;color:var(--td)">'+(discDiscSel.type==="variation"?"товар":"категорія")+'</span> <b style="color:var(--th)">'+esc(discDiscSel.name)+'</b>'):'<span style="color:var(--td)">Нічого не обрано</span>';
+}
 async function addUmDiscount(){
+  if(!discDiscSel){alert("Оберіть категорію або товар");return}
   var amt=parseFloat(document.getElementById("um-disc-amt").value);
   if(!amt||amt<=0){alert("Вкажіть суму знижки");return}
   var body={amount:amt};
-  if(umDiscMode_==="cat"){body.category_id=parseInt(document.getElementById("um-disc-cat").value);if(!body.category_id){alert("Оберіть категорію");return}}
-  else{if(!umDiscProdSel){alert("Оберіть товар");return}body.variation_id=umDiscProdSel.id}
-  try{var r=await api("/api/users/"+editUID+"/discounts",{method:"POST",body:JSON.stringify(body)});renderUmDiscList(r.discounts);document.getElementById("um-disc-amt").value="";umDiscProdSel=null;document.getElementById("um-disc-prod-chosen").textContent="";document.getElementById("um-disc-prod-search").value=""}catch(e){alert(e.message)}
+  if(discDiscSel.type==="category")body.category_id=discDiscSel.id;else body.variation_id=discDiscSel.id;
+  try{var r=await api("/api/users/"+editUID+"/discounts",{method:"POST",body:JSON.stringify(body)});renderUmDiscList(r.discounts);document.getElementById("um-disc-amt").value="";discDiscSel=null;showDiscChosen()}catch(e){alert(e.message)}
 }
 async function delUmDiscount(id){try{await api("/api/discounts/"+id,{method:"DELETE"});var r=await api("/api/users/"+editUID+"/discounts");renderUmDiscList(r.discounts)}catch(e){alert(e.message)}}
+// Catalog navigation picker for a discount target (same UX as the order picker).
+var discCatP=null,discChannel="ads",discCatalog=[];
+async function openDiscCatPicker(){
+  document.getElementById("disc-cat-search").value="";
+  discChannel="ads";discCatP=null;
+  document.getElementById("discc-ads").classList.add("on");document.getElementById("discc-hot").classList.remove("on");
+  await loadDiscCatalog();openM("disc-cat-modal");
+}
+async function loadDiscCatalog(){
+  document.getElementById("discc-hot").classList.toggle("on",discChannel==="hot");
+  document.getElementById("discc-ads").classList.toggle("on",discChannel==="ads");
+  var cd=await api("/api/categories?parent_id="+(discCatP||"")+"&scope=drop");
+  var bc=catBackBtn(cd.breadcrumb,"discCatP="+catParentId(cd.breadcrumb)+";loadDiscCatalog()");
+  bc+='<div class="bread"><a onclick="discCatP=null;loadDiscCatalog()">'+Icon('package',13)+' Каталог</a>';
+  cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="discCatP='+b.id+';loadDiscCatalog()">'+esc(b.name)+'</a>'});
+  bc+='</div>';document.getElementById("discp-bread").innerHTML=bc;
+  var curCat=cd.breadcrumb.length?cd.breadcrumb[cd.breadcrumb.length-1]:null;
+  document.getElementById("discp-catpick").innerHTML=curCat?'<button class="btn btn-p" style="width:100%;justify-content:center" onclick="discPickCategory('+curCat.id+',\''+esc(curCat.name).replace(/'/g,"")+'\')">'+Icon('tag',13)+' Знижка на всю категорію «'+esc(curCat.name)+'»</button>':'';
+  document.getElementById("discp-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="discCatP='+c.id+';loadDiscCatalog()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
+  document.getElementById("disc-cat-list").innerHTML='<div style="text-align:center;padding:20px;color:var(--td)">Завантаження...</div>';
+  try{var r=await api("/api/variations?channel="+discChannel);discCatalog=r.variations||[];filterDiscCatalog(document.getElementById("disc-cat-search").value||"")}catch(e){}
+}
+function filterDiscCatalog(q){
+  q=(q||"").toLowerCase();
+  var list=q?discCatalog.filter(function(v){return (v.name||"").toLowerCase().includes(q)||(v.base_name||"").toLowerCase().includes(q)||(v.model_name||"").toLowerCase().includes(q)}):(discCatP?discCatalog.filter(function(v){return v.eff_category_drop_id==discCatP}):discCatalog);
+  document.getElementById("disc-cat-list").innerHTML=list.length?list.map(function(v){
+    var ph=v.photo||v.print_photo||v.bp_photo||"";var price=v.list_drop_price||v.drop_price||v.model_drop_price||0;
+    return '<div style="display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--brd);align-items:center">'+(ph?'<img src="'+ph+'" style="width:54px;height:54px;border-radius:8px;object-fit:cover">':'<div style="width:54px;height:54px;background:var(--bg);border-radius:8px;display:grid;place-items:center;color:var(--td)">'+Icon('camera',20)+'</div>')+
+    '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(v.name||v.base_name)+'</div><div style="font-size:11px;color:var(--td)">'+esc(v.model_name||"")+' · '+price+'₴</div></div>'+
+    '<button class="btn btn-sm btn-p" style="flex-shrink:0" onclick="discPickProduct('+v.id+',\''+esc(v.name||v.base_name).replace(/'/g,"")+'\')">'+Icon('check',13)+' Обрати</button></div>';
+  }).join(""):'<div style="padding:20px;text-align:center;color:var(--td)">Не знайдено</div>';
+}
+function discPickCategory(id,name){discDiscSel={type:"category",id:id,name:name};showDiscChosen();closeM("disc-cat-modal")}
+function discPickProduct(id,name){discDiscSel={type:"variation",id:id,name:name};showDiscChosen();closeM("disc-cat-modal")}
 async function editU(id,role){const{user:u}=await api("/api/users/"+id);editUID=id;editUR=role||u.role;document.getElementById("um-t").textContent=u.name;document.getElementById("um-user").value=u.username;document.getElementById("um-user").disabled=true;document.getElementById("um-pass").value="";document.getElementById("um-name").value=u.name;document.getElementById("um-phone").value=u.phone;document.getElementById("um-tg").value=u.telegram;document.getElementById("um-drop").style.display=u.role==="dropshipper"?"block":"none";document.getElementById("um-wrk").style.display=u.role==="warehouse"?"block":"none";if(u.role==="dropshipper"){document.getElementById("um-dp").value=u.discount_percent;document.getElementById("um-df").value=u.discount_fixed;document.getElementById("um-balance").checked=!!u.balance_enabled;loadUmDiscounts()}if(u.role==="warehouse"){document.getElementById("um-wr").value=u.worker_role;document.getElementById("um-wrt").value=u.worker_rate;document.getElementById("um-wh").value=u.assigned_warehouse||""}document.getElementById("um-del").style.display="block";document.getElementById("um-err").style.display="none";openM("user-modal")}
 async function saveUser(){const err=document.getElementById("um-err");err.style.display="none";const d={username:document.getElementById("um-user").value,password:document.getElementById("um-pass").value,role:editUR,name:document.getElementById("um-name").value,phone:document.getElementById("um-phone").value,telegram:document.getElementById("um-tg").value,discount_percent:parseFloat(document.getElementById("um-dp")?.value)||0,discount_fixed:parseFloat(document.getElementById("um-df")?.value)||0,worker_role:document.getElementById("um-wr")?.value||"",worker_rate:parseFloat(document.getElementById("um-wrt")?.value)||0,assigned_warehouse:document.getElementById("um-wh")?.value||"",balance_enabled:document.getElementById("um-balance")?.checked?1:0,active:1};try{if(editUID)await api("/api/users/"+editUID,{method:"PUT",body:JSON.stringify(d)});else await api("/api/users",{method:"POST",body:JSON.stringify(d)});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}catch(e){err.textContent=e.message;err.style.display="block"}}
 async function delUser(){if(!editUID||!confirm("Видалити?"))return;await api("/api/users/"+editUID,{method:"DELETE"});closeM("user-modal");editUR==="dropshipper"?loadDrops():loadWorkers()}

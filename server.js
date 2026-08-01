@@ -779,20 +779,30 @@ function loadDropDiscounts(dropId) {
   if (!dropId) return [];
   return db.prepare("SELECT category_id,variation_id,amount FROM dropshipper_discounts WHERE dropshipper_id=?").all(dropId);
 }
+// A category id plus all of its ancestors (walking up parent_id). A discount on
+// a parent category therefore cascades to every sub-category and its products.
+function categoryAncestors(catId) {
+  const out = []; let cur = catId; const seen = new Set();
+  while (cur && !seen.has(cur)) { seen.add(cur); out.push(cur); cur = db.prepare("SELECT parent_id FROM categories WHERE id=?").get(cur)?.parent_id || null; }
+  return out;
+}
 // Best (largest) ₴ discount that applies to a variation: a variation-level row
-// wins by amount against its category-level row (max of the two, per spec).
+// wins by amount against a category-level row (max of the two, per spec). A
+// category row matches the variation's category OR any of its ancestors.
 function discountForVariation(discounts, variationId, effCategoryId) {
+  const cats = effCategoryId ? categoryAncestors(effCategoryId) : [];
   let d = 0;
   for (const r of discounts) {
     if (r.variation_id && r.variation_id === variationId) d = Math.max(d, r.amount || 0);
-    else if (r.category_id && effCategoryId && r.category_id === effCategoryId) d = Math.max(d, r.amount || 0);
+    else if (r.category_id && cats.includes(r.category_id)) d = Math.max(d, r.amount || 0);
   }
   return d;
 }
 // Category-only discount (for kits, which aren't a single variation).
 function discountForCategory(discounts, effCategoryId) {
+  const cats = effCategoryId ? categoryAncestors(effCategoryId) : [];
   let d = 0;
-  for (const r of discounts) if (r.category_id && effCategoryId && r.category_id === effCategoryId) d = Math.max(d, r.amount || 0);
+  for (const r of discounts) if (r.category_id && cats.includes(r.category_id)) d = Math.max(d, r.amount || 0);
   return d;
 }
 
