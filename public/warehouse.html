@@ -259,7 +259,8 @@ function renderOrderCard(o){
   // packers take an order (new→in_progress) via the footer button; packer_ready
   // works "new" orders directly, so they're treated as taken.
   var taken=o.status==="in_progress"||ME.worker_role==="packer_ready";
-  var hasOOS=isActive&&o.items.some(function(i){return i.current_stock<=0});
+  // Позиції, покриті з повернень, не рахуються відсутніми — річ уже в руках.
+  var hasOOS=isActive&&o.items.some(function(i){return i.current_stock<=0&&!i.covered_from_returns});
   var html='<div class="ocard'+(hasOOS?' out-of-stock':'')+'">';
   html+='<div class="ocard-header"><div>';
   var totalItems=o.items.reduce(function(s,i){return s+i.quantity},0);
@@ -274,9 +275,10 @@ function renderOrderCard(o){
   // Render one pickable item row (photo + size + stock + checkbox). Reused for
   // standalone items and for the components inside a kit.
   function whRow(i){
-    var missing=isActive&&i.current_stock<=0;var hasRet=isActive&&i.return_available>0;var usedRet=isActive&&i.from_returns>0;
+    var usedRet=isActive&&i.from_returns>0;
+    var missing=isActive&&i.current_stock<=0&&!i.covered_from_returns;var hasRet=isActive&&i.return_available>0;
     var ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
-    var dot=isActive?(missing?'<div style="color:var(--red);font-weight:700;font-size:12px;margin-top:3px">'+Icon('x',12)+' немає ('+i.current_stock+')</div>':'<div style="color:var(--green);font-weight:700;font-size:12px;margin-top:3px">'+Icon('check',12)+' на складі</div>'):'';
+    var dot=isActive?(missing?'<div style="color:var(--red);font-weight:700;font-size:12px;margin-top:3px">'+Icon('x',12)+' немає ('+i.current_stock+')</div>':'<div style="color:var(--green);font-weight:700;font-size:12px;margin-top:3px">'+Icon('check',12)+' '+(usedRet?'з повернень':'на складі')+'</div>'):'';
     var chk=!taken?'':(missing?'<div style="width:34px;height:34px;flex-shrink:0;display:grid;place-items:center;color:var(--red)">'+Icon('x',22)+'</div>':'<div class="wh-chk" data-on="0" onclick="whCheck(this)" style="width:34px;height:34px;border-radius:9px;border:2px solid var(--brd);flex-shrink:0;display:grid;place-items:center;cursor:pointer"></div>');
     if(missing)prob+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd)"><div style="font-size:11px;color:var(--th)">'+esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b> — <span style="color:var(--red)">немає</span></div><button class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);flex-shrink:0" onclick="openSwapSize('+i.id+',\''+esc(i.var_name).replace(/'/g,"")+'\','+o.id+')">'+Icon('refreshCw',12)+' Замінити розмір</button></div>';
     if(hasRet)prob+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--brd)"><div style="font-size:11px;color:var(--th)">'+esc(i.var_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b> — <span style="color:var(--warn)">є повернення ('+i.return_available+')</span></div><button class="btn btn-sm btn-w" style="flex-shrink:0" onclick="useRet('+i.id+','+o.id+',this)">'+Icon('package',12)+' З повернень</button></div>';
