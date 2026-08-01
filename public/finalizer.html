@@ -93,7 +93,7 @@
 
 <script>
 var ME;
-var SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
+var SL={new:"Нове",in_progress:"В роботі",collected:"Зібрано",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
 var SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 
 var _lc=0,_lt=null;function _ls(){_lc++;if(_lt)clearTimeout(_lt);_lt=setTimeout(function(){if(_lc>0){var l=document.getElementById("loader");if(l)l.style.display="flex"}},800)}function _lh(){_lc=Math.max(0,_lc-1);if(!_lc){if(_lt){clearTimeout(_lt);_lt=null}var l=document.getElementById("loader");if(l)l.style.display="none"}}
@@ -170,7 +170,7 @@ async function doScan(){
       html+='</div></div></div>';
     }
     html+='<div style="padding:12px 14px;background:rgba(0,0,0,.1);text-align:center">';
-    if(o.status==="packed"||o.status==="new"||o.status==="in_progress")
+    if(o.status==="packed"||o.status==="new"||o.status==="in_progress"||o.status==="collected")
       html+='<button class="btn btn-p" onclick="finalizeOrder('+o.id+')">'+Icon('check',14)+' Підтвердити відправку</button>';
     else html+='<div style="color:var(--acc);font-size:13px;font-weight:600">'+Icon('check',13)+' Зареєстровано</div>';
     html+='</div></div>';

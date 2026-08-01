@@ -57,6 +57,7 @@
 .tag-done{background:var(--success-soft);color:var(--success)}
 .tag-ship{background:var(--warning-soft);color:var(--warning)}
 .tag-bad{background:var(--error-soft);color:var(--error)}
+.tag-coll{background:rgba(20,184,166,.14);color:#14b8a6}
 /* Stock sizes */
 .stock-sz.neg{color:var(--error);font-weight:700;border-color:rgba(239,68,68,.4)}
 /* Date inputs */
@@ -189,9 +190,9 @@ function setStockViewMode(mode){
   document.querySelectorAll('.svm-btn').forEach(function(b){b.classList.toggle('on',b.dataset.mode===mode)});
   renderWhStockPage();
 }
-const SL={new:"Нове",in_progress:"В роботі",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
-const SC={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
-const WHS=[{key:"",label:Icon('clipboardList',13)+" Всі"},{key:"new",label:Icon('download',13)+" Нові",next:"in_progress",nl:Icon('settings',13)+" Взяти"},{key:"in_progress",label:Icon('settings',13)+" В роботі",next:"packed",nl:Icon('check',13)+" Готово"},{key:"packed",label:Icon('check',13)+" Готові"},{key:"shipped",label:Icon('truck',13)+" Відправлені"},{key:"delivered",label:Icon('packageOpen',13)+" Отримані"},{key:"refused",label:Icon('x',13)+" Відмови"},{key:"cancelled",label:Icon('x',13)+" Скасовані"}];
+const SL={new:"Нове",in_progress:"В роботі",collected:"Зібрано",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
+const SC={new:"tag-new",in_progress:"tag-prog",collected:"tag-coll",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
+const WHS=[{key:"",label:Icon('clipboardList',13)+" Всі"},{key:"new",label:Icon('download',13)+" Нові",next:"in_progress",nl:Icon('settings',13)+" Взяти"},{key:"in_progress",label:Icon('settings',13)+" В роботі",next:"collected",nl:Icon('check',13)+" Готово"},{key:"collected",label:Icon('package',13)+" Зібрані"},{key:"packed",label:Icon('check',13)+" Готові"},{key:"shipped",label:Icon('truck',13)+" Відправлені"},{key:"delivered",label:Icon('packageOpen',13)+" Отримані"},{key:"refused",label:Icon('x',13)+" Відмови"},{key:"cancelled",label:Icon('x',13)+" Скасовані"}];
 
 async function init(){
   try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent=ME.name;
@@ -254,6 +255,8 @@ function renderStabs(){
   document.getElementById("wh-stabs").innerHTML=WHS.map(s=>'<div class="stab'+(s.key===whStatus?' on':'')+'" onclick="whStatus=\''+s.key+'\';whOrdPage=0;renderStabs();loadOrders()">'+s.label+'</div>').join("");
 }
 function renderOrderCard(o){
+  // Пакувальник Готового товару має власний потік і зібраних не бачить.
+  if(o.status==="collected"&&ME.worker_role!=="packer_ready"&&!whExpanded[o.id])return renderCollectedCard(o);
   var isActive=o.status==="new"||o.status==="in_progress";
   // "Taken into work": show item check boxes and expand the order. Regular
   // packers take an order (new→in_progress) via the footer button; packer_ready
@@ -342,9 +345,28 @@ function whCheck(el){
   else{el.style.background="var(--green)";el.style.borderColor="var(--green)";el.innerHTML='<span style="color:#052018;display:flex">'+Icon("check",20)+'</span>';if(row)row.style.opacity=".5";}
 }
 
+// Зібране замовлення пакувальник бачить згорнутим і приглушеним, щоб не роздати
+// одне й те саме двічі. whExpanded тримає ті, які він сам розгорнув кнопкою
+// «Детальніше» — скидається при перезавантаженні списку.
+var whExpanded={};
+function expandCollected(id){whExpanded[id]=1;refreshOrderCard(id)}
+function renderCollectedCard(o){
+  var totalItems=o.items.reduce(function(s,i){return s+i.quantity},0);
+  return '<div class="ocard" style="opacity:.45">'+
+    '<div class="ocard-header"><div>'+
+    '<div class="ocard-id"><span style="font-size:18px">#'+o.id+'</span> <span class="tag tag-coll">'+Icon('check',11)+' Зібрано</span> <span class="tag" style="background:var(--accbg);color:var(--acc)">'+totalItems+' шт</span></div>'+
+    '<div class="cl-name">'+esc(o.client_name)+'</div>'+
+    '<div class="cl-addr">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>'+
+    (o.ttn?'<div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--warn);margin-top:3px">'+esc(o.ttn)+'</div>':'')+
+    '</div><div class="ocard-meta"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div><div>'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div></div>'+
+    '<div class="ocard-footer" style="justify-content:flex-end"><button class="btn btn-sm" onclick="expandCollected('+o.id+')">'+Icon('eye',13)+' Детальніше</button></div>'+
+  '</div>';
+}
+
 var whLoadedOrders=[];
 async function loadOrders(silent){if(!silent)document.getElementById("wh-orders").innerHTML='<div class="inline-load" style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   renderStabs();
+  whExpanded={};
   document.querySelectorAll("[id^=rf-]").forEach(function(b){b.classList.toggle("on",b.id===("rf-"+(whReady||"all")))});
   document.querySelectorAll("[id^=wc-]").forEach(function(b){b.classList.toggle("on",b.id==="wc-"+whCh)});
   var df=document.getElementById("wh-df").value,dt=document.getElementById("wh-dt").value;
