@@ -118,6 +118,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 
 <div class="page" id="pg-payouts">
 <div id="pay-balance-block" style="display:none"></div>
+<div id="pay-discounts-block" style="display:none"></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
   <div class="sc"><div class="sl">В роботі</div><div class="sv" style="color:var(--th)" id="pay-inwork">0</div><div class="sl" id="pay-inwork-c">0 замовл.</div></div>
   <div class="sc"><div class="sl">Запит</div><div class="sv" style="color:var(--acc)" id="pay-request">0</div><div class="sl" id="pay-request-c">0 замовл.</div></div>
@@ -356,7 +357,7 @@ function ocRows(groups){
     var ph=g.photo||"";
     var thumb='<div class="oc-photo">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+(g.quantity>1?'<div style="position:absolute;bottom:1px;right:1px;background:rgba(0,0,0,.72);color:#fff;border-radius:4px;font-size:9px;padding:0 4px;font-weight:700">×'+g.quantity+'</div>':'')+'</div>';
     if(g.kit){
-      var comps=(g.items||[]).map(function(ci){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:2px 0"><span style="font-size:12px;color:var(--th);min-width:0">'+esc(ci.var_name)+'</span><span style="font-size:16px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace;flex-shrink:0">'+esc(ci.original_size_name||ci.size_name)+'</span></div>'}).join("");
+      var comps=(g.items||[]).map(function(ci){return '<div style="padding:3px 0;font-size:12px;color:var(--th);line-height:1.4">'+esc(ci.var_name)+' <span style="font-size:15px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(ci.original_size_name||ci.size_name)+'</span></div>'}).join("");
       return '<div class="oc-row" style="padding:9px 0;border-top:1px solid var(--brd)">'+thumb+'<div style="flex:1;min-width:0"><div class="oc-name" style="font-size:14px;font-weight:600;color:var(--th);line-height:1.3">'+Icon('gift',12)+' '+esc(g.name)+'</div>'+comps+'</div></div>';
     }
     return '<div class="oc-row" style="padding:9px 0;border-top:1px solid var(--brd)">'+thumb+'<div style="flex:1;min-width:0"><div class="oc-name" style="font-size:14px;font-weight:600;color:var(--th);line-height:1.3">'+esc(g.name)+'</div>'+(g.size?'<div style="font-size:18px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace;margin-top:3px">'+esc(g.size)+'</div>':'')+'</div></div>';
@@ -502,7 +503,7 @@ function renderCpProds(){
   el.innerHTML=filtered.map(function(v){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||v.bp_photo||"";
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"'+(q>0?' onclick="pickKitUnified('+v.id+','+s.id+',\''+s.name+'\')"':'')+'><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div><button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('ruler',11)+' Різні розміри комплектуючих</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')"><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>')+'</div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴'+(v.discount_amount>0?' <span style="font-size:11px;color:var(--td);text-decoration:line-through;font-weight:400">'+(v.list_drop_price||v.drop_price)+'₴</span>':'')+'</div>'+(v.is_kit&&v.items?'<div style="margin-bottom:4px">'+v.items.map(function(ci){return '<div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(ci.var_name)+'</div>'}).join("")+'</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"'+(q>0?' onclick="pickKitUnified('+v.id+','+s.id+',\''+s.name+'\')"':'')+'><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div><button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();openKitPick('+v.id+')">'+Icon('ruler',11)+' Різні розміри комплектуючих</button>':'<div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'" onclick="pickItem('+v.id+','+s.id+',\''+esc(v.name).replace(/'/g,"\\'")+'\','+v.drop_price+',\''+s.name+'\',\''+(photo).replace(/'/g,"\\'")+'\','+(v.is_kit?"true":"false")+','+(v.model_weight||0.3)+')"><b>'+s.name+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>')+'</div></div>';
   }).join("")||'<div class="empty"><span class="ic">'+Icon('package',30)+'</span>Немає товарів</div>';
 }
 
@@ -741,7 +742,7 @@ async function loadCatalog(){
     var szs=allSz.filter(function(s){return v.stock&&v.stock[s.id]!==undefined});
     var photo=v.photo||v.print_photo||v.bp_photo||"";
     var isKit=v.is_kit?1:0;
-    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"'+(q>0?' style="cursor:pointer" onclick="catPickSize('+v.id+','+s.id+',\''+esc(s.name).replace(/'/g,"\\'")+'\','+isKit+',this)"':'')+'><b>'+esc(s.name)+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>'+(v.size_grid_photo?'<button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();showSizeGrid(\''+v.size_grid_photo+'\')">'+Icon('ruler',11)+' Розмірна сітка</button>':'')+'<button style="width:100%;margin-top:6px;padding:7px;font-size:11px;font-weight:700;background:var(--acc);color:#0a0e17;border:none;border-radius:6px;cursor:pointer;font-family:inherit" onclick="catOrder('+v.id+','+isKit+')">＋ Оформити замовлення</button></div></div>';
+    return '<div class="pcard"><div class="pcard-img">'+(photo?'<img src="'+photo+'">':Icon('camera',32))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(v.name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div class="pcard-price">'+v.drop_price+'₴'+(v.discount_amount>0?' <span style="font-size:11px;color:var(--td);text-decoration:line-through;font-weight:400">'+(v.list_drop_price||v.drop_price)+'₴</span>':'')+'</div><div class="stock-row">'+szs.map(function(s){var q=v.stock[s.id]||0;return '<div class="stock-sz '+(q<=0?"zero":"avail")+'"'+(q>0?' style="cursor:pointer" onclick="catPickSize('+v.id+','+s.id+',\''+esc(s.name).replace(/'/g,"\\'")+'\','+isKit+',this)"':'')+'><b>'+esc(s.name)+'</b><br>'+(q<=0?"нема":"є")+'</div>'}).join("")+'</div>'+(v.size_grid_photo?'<button style="width:100%;margin-top:6px;padding:5px;font-size:10px;font-weight:600;background:var(--accbg);color:var(--acc);border:1px solid rgba(124,134,255,.2);border-radius:6px;cursor:pointer;font-family:inherit" onclick="event.stopPropagation();showSizeGrid(\''+v.size_grid_photo+'\')">'+Icon('ruler',11)+' Розмірна сітка</button>':'')+'<button style="width:100%;margin-top:6px;padding:7px;font-size:11px;font-weight:700;background:var(--acc);color:#0a0e17;border:none;border-radius:6px;cursor:pointer;font-family:inherit" onclick="catOrder('+v.id+','+isKit+')">＋ Оформити замовлення</button></div></div>';
   }).join("");
 }
 // Select a size on a catalog card (highlight it) so the whole order can be
@@ -781,8 +782,23 @@ async function loadBalanceBlock(){
     '</div>';
   }catch(e){box.style.display="none"}
 }
+async function loadMyDiscounts(){
+  var box=document.getElementById("pay-discounts-block");
+  try{
+    var r=await api("/api/my-discounts");
+    var list=r.discounts||[];
+    if(!list.length){box.style.display="none";return}
+    box.style.display="";
+    box.innerHTML='<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:14px;margin-bottom:14px">'+
+      '<div style="font-size:13px;font-weight:700;color:var(--th);margin-bottom:8px">'+Icon("tag",14)+' Ваші знижки</div>'+
+      '<div style="font-size:11px;color:var(--td);margin-bottom:8px">Дроп-ціни на ці товари й категорії вже враховують знижку.</div>'+
+      list.map(function(d){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--brd)"><div style="min-width:0"><span style="font-size:9px;text-transform:uppercase;color:var(--td)">'+(d.target_type==="variation"?"товар":"категорія")+'</span><div style="font-size:13px;color:var(--th)">'+esc(d.target_name)+'</div></div><span style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:800;color:var(--green);flex-shrink:0">−'+d.amount+'₴</span></div>'}).join("")+
+    '</div>';
+  }catch(e){box.style.display="none"}
+}
 async function loadPayouts(){
   loadBalanceBlock();
+  loadMyDiscounts();
   try{
     var r=await api("/api/payouts/my");
     var unpaidTotal=r.unpaid.reduce(function(s,o){return s+o.payout_amount},0);

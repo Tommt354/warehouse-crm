@@ -422,6 +422,22 @@ db.exec(`
     FOREIGN KEY (created_by) REFERENCES users(id)
   );
 
+  -- Per-dropshipper fixed-₴ discounts on a drop category OR a single variation.
+  -- Exactly one of category_id / variation_id is set. The discount is subtracted
+  -- (per unit) from the item's drop price everywhere that dropshipper sees prices;
+  -- when both a category and a variation discount match, the larger one applies.
+  CREATE TABLE IF NOT EXISTS dropshipper_discounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dropshipper_id INTEGER NOT NULL,
+    category_id INTEGER,
+    variation_id INTEGER,
+    amount REAL NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (dropshipper_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+    FOREIGN KEY (variation_id) REFERENCES variations(id) ON DELETE CASCADE
+  );
+
   -- A recount session freezes stock_base.quantity (allocated) for whichever
   -- products it covers, so a physical count in progress isn't disturbed by
   -- new orders quietly decrementing the number mid-count. New orders placed

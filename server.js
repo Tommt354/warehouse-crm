@@ -145,6 +145,46 @@ app.post("/api/users/:id/balance", authMiddleware, requireRole("admin"), (req, r
   res.json({ ok: true, balance: newBalance });
 });
 
+// ── Per-dropshipper discounts CRUD ──
+// Resolve human-readable names for a list of discount rows.
+function decorateDiscounts(rows) {
+  return rows.map(r => {
+    let target_name = "", target_type = r.variation_id ? "variation" : "category";
+    if (r.variation_id) target_name = db.prepare("SELECT name FROM variations WHERE id=?").get(r.variation_id)?.name || "Товар #" + r.variation_id;
+    else if (r.category_id) target_name = db.prepare("SELECT name FROM categories WHERE id=?").get(r.category_id)?.name || "Категорія #" + r.category_id;
+    return { ...r, target_type, target_name };
+  });
+}
+app.get("/api/users/:id/discounts", authMiddleware, requireRole("admin"), (req, res) => {
+  const rows = db.prepare("SELECT * FROM dropshipper_discounts WHERE dropshipper_id=? ORDER BY id").all(parseInt(req.params.id));
+  res.json({ discounts: decorateDiscounts(rows) });
+});
+app.post("/api/users/:id/discounts", authMiddleware, requireRole("admin"), (req, res) => {
+  const uid = parseInt(req.params.id);
+  const { category_id, variation_id, amount } = req.body;
+  const amt = parseFloat(amount);
+  if (!category_id && !variation_id) return res.status(400).json({ error: "Оберіть категорію або товар" });
+  if (category_id && variation_id) return res.status(400).json({ error: "Оберіть щось одне — категорію або товар" });
+  if (isNaN(amt) || amt <= 0) return res.status(400).json({ error: "Вкажіть суму знижки" });
+  const u = db.prepare("SELECT role FROM users WHERE id=?").get(uid);
+  if (!u || u.role !== "dropshipper") return res.status(400).json({ error: "Знижки лише для дроперів" });
+  // One row per target — updating the same category/variation overwrites the amount.
+  const existing = db.prepare("SELECT id FROM dropshipper_discounts WHERE dropshipper_id=? AND " + (variation_id ? "variation_id=?" : "category_id=?")).get(uid, variation_id ? parseInt(variation_id) : parseInt(category_id));
+  if (existing) db.prepare("UPDATE dropshipper_discounts SET amount=? WHERE id=?").run(amt, existing.id);
+  else db.prepare("INSERT INTO dropshipper_discounts(dropshipper_id,category_id,variation_id,amount)VALUES(?,?,?,?)").run(uid, category_id ? parseInt(category_id) : null, variation_id ? parseInt(variation_id) : null, amt);
+  const rows = db.prepare("SELECT * FROM dropshipper_discounts WHERE dropshipper_id=? ORDER BY id").all(uid);
+  res.json({ ok: true, discounts: decorateDiscounts(rows) });
+});
+app.delete("/api/discounts/:id", authMiddleware, requireRole("admin"), (req, res) => {
+  db.prepare("DELETE FROM dropshipper_discounts WHERE id=?").run(parseInt(req.params.id));
+  res.json({ ok: true });
+});
+// A dropshipper's own discounts, for their payouts page.
+app.get("/api/my-discounts", authMiddleware, (req, res) => {
+  const rows = db.prepare("SELECT * FROM dropshipper_discounts WHERE dropshipper_id=? ORDER BY id").all(req.user.id);
+  res.json({ discounts: decorateDiscounts(rows) });
+});
+
 // ── SETTINGS ─────────────────────────────────────────────────────
 app.get("/api/settings", authMiddleware, requireRole("admin"), (req, res) => {
   const s={};db.prepare("SELECT key,value FROM settings").all().forEach(r=>s[r.key]=r.value);res.json({settings:s});
@@ -734,6 +774,28 @@ app.put("/api/model-workers/:model_id", authMiddleware, requireRole("admin"), (r
 });
 
 // ── VARIATIONS ───────────────────────────────────────────────────
+// ── Per-dropshipper discounts (fixed ₴ off a category or a variation) ──
+function loadDropDiscounts(dropId) {
+  if (!dropId) return [];
+  return db.prepare("SELECT category_id,variation_id,amount FROM dropshipper_discounts WHERE dropshipper_id=?").all(dropId);
+}
+// Best (largest) ₴ discount that applies to a variation: a variation-level row
+// wins by amount against its category-level row (max of the two, per spec).
+function discountForVariation(discounts, variationId, effCategoryId) {
+  let d = 0;
+  for (const r of discounts) {
+    if (r.variation_id && r.variation_id === variationId) d = Math.max(d, r.amount || 0);
+    else if (r.category_id && effCategoryId && r.category_id === effCategoryId) d = Math.max(d, r.amount || 0);
+  }
+  return d;
+}
+// Category-only discount (for kits, which aren't a single variation).
+function discountForCategory(discounts, effCategoryId) {
+  let d = 0;
+  for (const r of discounts) if (r.category_id && effCategoryId && r.category_id === effCategoryId) d = Math.max(d, r.amount || 0);
+  return d;
+}
+
 app.get("/api/variations", authMiddleware, (req, res) => {
   const cat = req.query.category_id;
   const channel = req.query.channel;
@@ -744,6 +806,10 @@ app.get("/api/variations", authMiddleware, (req, res) => {
   q += " ORDER BY m.name,c.sort_order,p.sort_order";
   const variations = db.prepare(q).all(...params);
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
+  // A dropshipper sees prices already reduced by their own discounts; an admin
+  // may preview a dropshipper's prices via ?dropshipper_id=.
+  const forDrop = req.user.role === "dropshipper" ? req.user.id : (req.query.dropshipper_id ? parseInt(req.query.dropshipper_id) : null);
+  const discounts = forDrop ? loadDropDiscounts(forDrop) : [];
   const modelSizes = {};
   variations.forEach(v => {
     if (!modelSizes[v.model_id]) modelSizes[v.model_id] = db.prepare("SELECT size_id FROM model_sizes WHERE model_id=?").all(v.model_id).map(r=>r.size_id);
@@ -754,7 +820,10 @@ app.get("/api/variations", authMiddleware, (req, res) => {
       v.stock[sid] = v.print_id ? base + ret : base;
       v.total_stock += v.stock[sid];
     }
-    v.drop_price = v.drop_price_override || v.model_drop_price;
+    v.list_drop_price = v.drop_price_override || v.model_drop_price;
+    const d = discounts.length ? discountForVariation(discounts, v.id, v.eff_category_drop_id) : 0;
+    v.discount_amount = d;
+    v.drop_price = Math.max(0, Math.round((v.list_drop_price - d) * 100) / 100);
   });
   res.json({ variations, sizes });
 });
@@ -1020,8 +1089,15 @@ app.get("/api/kits", authMiddleware, (req, res) => {
   q += " ORDER BY k.name";
   const kits = db.prepare(q).all(...params);
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
+  const forDrop = req.user.role === "dropshipper" ? req.user.id : (req.query.dropshipper_id ? parseInt(req.query.dropshipper_id) : null);
+  const discounts = forDrop ? loadDropDiscounts(forDrop) : [];
 
   kits.forEach(k => {
+    // A kit isn't a single variation, so only a category-level discount applies.
+    k.list_drop_price = k.drop_price;
+    const kd = discounts.length ? discountForCategory(discounts, k.category_drop_id) : 0;
+    k.discount_amount = kd;
+    k.drop_price = Math.max(0, Math.round((k.drop_price - kd) * 100) / 100);
     k.items = db.prepare("SELECT ki.*,v.name as var_name,v.photo as var_photo,v.base_product_id,v.print_id,bp.name as base_name,bp.photo as bp_photo,c.name as color_name FROM kit_items ki JOIN variations v ON ki.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id LEFT JOIN colors c ON bp.color_id=c.id WHERE ki.kit_id=?").all(k.id);
     // Per-component stock
     k.items.forEach(item => {
@@ -1139,6 +1215,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
   const dropId = req.user.role === "admin" ? (req.body.dropshipper_id || req.user.id) : req.user.id;
   // Get dropshipper discount + whether they may settle orders from balance.
   const drop = db.prepare("SELECT discount_percent,discount_fixed,balance_enabled FROM users WHERE id=?").get(dropId);
+  const dropDisc = loadDropDiscounts(dropId);
   // Charge the order's drop price to the dropshipper's balance instead of a
   // payment: only balance-enabled dropshippers, only on full-payment / own-TTN
   // orders. When active, no receipt is required.
@@ -1162,6 +1239,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         let kitPrice = kit.drop_price;
         if (drop?.discount_percent) kitPrice = kitPrice * (1 - drop.discount_percent / 100);
         if (drop?.discount_fixed) kitPrice = Math.max(0, kitPrice - drop.discount_fixed);
+        kitPrice = Math.max(0, kitPrice - discountForCategory(dropDisc, kit.category_drop_id));
         kitPrice = Math.round(kitPrice * 100) / 100;
         totalDrop += kitPrice * qty;
         totalWeight += (kit.weight || 0.5) * qty;
@@ -1200,9 +1278,11 @@ app.post("/api/orders", authMiddleware, (req, res) => {
           if (!stock || stock.quantity < qty) throw new Error(v.name + " — недостатньо на складі");
         }
 
+        const vEffCat = db.prepare("SELECT COALESCE(v.category_drop_id,m.category_drop_id) as ec FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(v.id)?.ec;
         let dropPrice = v.drop_price_override || v.bp_drop || v.m_drop || 0;
         if (drop?.discount_percent) dropPrice = dropPrice * (1 - drop.discount_percent / 100);
         if (drop?.discount_fixed) dropPrice = Math.max(0, dropPrice - drop.discount_fixed);
+        dropPrice = Math.max(0, dropPrice - discountForVariation(dropDisc, v.id, vEffCat));
         dropPrice = Math.round(dropPrice * 100) / 100;
         totalDrop += dropPrice * qty;
         totalWeight += (v.m_weight || 0.3) * qty;
@@ -1464,16 +1544,18 @@ app.post("/api/order-items/:id/swap-product", authMiddleware, requireRole("admin
   if (item.kit_id) return res.status(400).json({ error: "Товар у комплекті не можна змінити окремо — редагуйте комплект" });
   if (!["new", "in_progress", "packed"].includes(item.order_status)) return res.status(400).json({ error: "Замовлення вже не можна редагувати" });
 
-  const nv = db.prepare("SELECT v.*,bp.id as new_bp,bp.drop_price as bp_drop,m.drop_price as m_drop FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=? AND v.active=1 AND bp.active=1 AND m.active=1").get(new_variation_id);
+  const nv = db.prepare("SELECT v.*,bp.id as new_bp,bp.drop_price as bp_drop,m.drop_price as m_drop,COALESCE(v.category_drop_id,m.category_drop_id) as eff_cat FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=? AND v.active=1 AND bp.active=1 AND m.active=1").get(new_variation_id);
   if (!nv) return res.status(404).json({ error: "Новий товар не знайдено" });
   const sizeOk = db.prepare("SELECT 1 FROM stock_base WHERE base_product_id=? AND size_id=?").get(nv.new_bp, new_size_id);
   if (!sizeOk) return res.status(400).json({ error: "Розмір недоступний для цього товару" });
 
   // New drop price mirrors order-creation pricing for a regular item.
   const drop = db.prepare("SELECT discount_percent,discount_fixed FROM users WHERE id=?").get(item.dropshipper_id);
+  const dropDisc = loadDropDiscounts(item.dropshipper_id);
   let dropPrice = nv.drop_price_override || nv.bp_drop || nv.m_drop || 0;
   if (drop?.discount_percent) dropPrice = dropPrice * (1 - drop.discount_percent / 100);
   if (drop?.discount_fixed) dropPrice = Math.max(0, dropPrice - drop.discount_fixed);
+  dropPrice = Math.max(0, dropPrice - discountForVariation(dropDisc, new_variation_id, nv.eff_cat));
   dropPrice = Math.round(dropPrice * 100) / 100;
 
   const touchActual = item.order_status !== "new";
