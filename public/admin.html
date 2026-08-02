@@ -1872,7 +1872,7 @@ async function openEditOrder(id){
   openM("eo-modal")}catch(e){}
 }
 function renderEoItems(o){
-  var canSwap=["new","in_progress","packed"].includes(o.status);
+  var canSwap=["new","in_progress","collected","packed"].includes(o.status);
   document.getElementById("eo-items").innerHTML=(o.items||[]).map(function(i){
     return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd)"><div style="min-width:0">'+esc(i.var_name)+' · <b style="color:var(--th)">'+esc(i.size_name)+'</b>'+(i.quantity>1?' ×'+i.quantity:'')+(i.kit_id?' <span style="font-size:10px;color:var(--acc)">'+Icon('gift',10)+' комплект</span>':'')+'</div>'+
       (canSwap?'<div style="display:flex;gap:5px;flex-shrink:0">'+

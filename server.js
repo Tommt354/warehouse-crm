@@ -1696,7 +1696,7 @@ app.post("/api/order-items/:id/swap-product", authMiddleware, requireRole("admin
   const item = db.prepare("SELECT oi.*,v.base_product_id as old_bp,o.status as order_status,o.stock_pulled,o.dropshipper_id,o.cod_amount,o.is_prepaid,o.paid_from_balance,o.total_drop_price FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   if (item.kit_id) return res.status(400).json({ error: "Товар у комплекті не можна змінити окремо — редагуйте комплект" });
-  if (!["new", "in_progress", "packed"].includes(item.order_status)) return res.status(400).json({ error: "Замовлення вже не можна редагувати" });
+  if (!["new", "in_progress", "collected", "packed"].includes(item.order_status)) return res.status(400).json({ error: "Замовлення вже не можна редагувати" });
 
   const nv = db.prepare("SELECT v.*,bp.id as new_bp,bp.drop_price as bp_drop,m.drop_price as m_drop,COALESCE(v.category_drop_id,m.category_drop_id) as eff_cat FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=? AND v.active=1 AND bp.active=1 AND m.active=1").get(new_variation_id);
   if (!nv) return res.status(404).json({ error: "Новий товар не знайдено" });
@@ -3177,7 +3177,7 @@ app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), async (req
   // yet physically shipped/refused/cancelled) and not a dropshipper's own
   // TTN, which our NP account never controlled in the first place.
   const shippingFieldsChanged = o.client_name!==newName || o.client_phone!==newPhone || o.client_city!==newCity || o.client_warehouse!==newWarehouse || o.client_street!==newStreet || o.client_house!==newHouse || o.client_flat!==newFlat;
-  const preShipmentStatuses = ["new","in_progress","packed"];
+  const preShipmentStatuses = ["new","in_progress","collected","packed"];
   let ttnRegenerated = false, ttnRegenError = null;
   if (shippingFieldsChanged && o.ttn && !o.own_ttn && preShipmentStatuses.includes(o.status) && o.delivery_type !== "pickup") {
     const apiKey = getActiveApiKey();
