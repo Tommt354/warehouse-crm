@@ -1881,10 +1881,28 @@ function renderEoItems(o){
       '</div>':'')+
       '</div>';
   }).join("")||'<div style="color:var(--td)">Немає товарів</div>';
+  if(canSwap){
+    document.getElementById("eo-items").innerHTML+='<div style="margin-top:8px"><button class="btn btn-sm btn-a" onclick="eoOpenAddProduct()">'+Icon('package',13)+' + Додати товар</button></div>';
+  }
 }
 var eoProdItemId=null,eoProdCatalog=[],eoProdSizes=[],eoProdChosen=null;
 async function eoOpenSwapProduct(itemId){
+  eoProdMode="swap";
   eoProdItemId=itemId;eoProdChosen=null;
+  document.getElementById("eo-prod-search").value="";
+  document.getElementById("eo-prod-sizes").style.display="none";
+  document.getElementById("eo-prod-list").innerHTML='<div style="color:var(--td);font-size:12px">Завантаження...</div>';
+  openM("eo-prod-modal");
+  try{var r=await api("/api/variations");eoProdCatalog=r.variations||[];eoProdSizes=r.sizes||[];eoRenderProdList("");}
+  catch(e){document.getElementById("eo-prod-list").innerHTML='<div style="color:var(--red);font-size:12px">'+esc(e.message)+'</div>';}
+}
+var eoProdMode="swap";
+// Додавання нової позиції в замовлення користується тим самим пікером, що й
+// заміна товару, — різниця лише в тому, який ендпоінт викликається на виборі
+// розміру (див. eoDoSwapProduct).
+async function eoOpenAddProduct(){
+  eoProdMode="add";
+  eoProdItemId=null;eoProdChosen=null;
   document.getElementById("eo-prod-search").value="";
   document.getElementById("eo-prod-sizes").style.display="none";
   document.getElementById("eo-prod-list").innerHTML='<div style="color:var(--td);font-size:12px">Завантаження...</div>';
@@ -1922,9 +1940,14 @@ function eoPickProd(vid){
 async function eoDoSwapProduct(sizeId,btn){
   btn.disabled=true;
   try{
-    await api("/api/order-items/"+eoProdItemId+"/swap-product",{method:"POST",body:JSON.stringify({new_variation_id:eoProdChosen.id,new_size_id:sizeId})});
+    if(eoProdMode==="add"){
+      await api("/api/orders/"+editOrderId+"/items",{method:"POST",body:JSON.stringify({variation_id:eoProdChosen.id,size_id:sizeId,quantity:1})});
+    }else{
+      await api("/api/order-items/"+eoProdItemId+"/swap-product",{method:"POST",body:JSON.stringify({new_variation_id:eoProdChosen.id,new_size_id:sizeId})});
+    }
     closeM("eo-prod-modal");
     var r=await api("/api/orders/"+editOrderId);renderEoItems(r.order);
+    if(typeof loadAdmOrders==="function"&&document.getElementById("adm-orders"))loadAdmOrders('');
   }catch(e){alert(e.message);btn.disabled=false}
 }
 var eoSwapItemId=null;
