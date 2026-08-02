@@ -384,7 +384,7 @@ function renderOC(o){
     '<div style="font-size:13px;font-weight:700;color:var(--th);margin-top:5px">'+esc(o.client_name)+(o.client_phone?' <span style="color:var(--acc);font-weight:500;font-family:JetBrains Mono,monospace;font-size:11px">'+esc(o.client_phone)+'</span>':'')+'</div>'+
     (o.client_city?'<div style="font-size:11px;color:var(--td);margin-top:1px">'+esc(o.client_city)+(o.client_warehouse?' · '+esc(o.client_warehouse):'')+'</div>':'<div style="font-size:11px;color:var(--td);margin-top:1px">'+(o.created_at?o.created_at.slice(5,16):"")+'</div>')+
     '</div>'+
-    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+money+'₴</div><div style="font-size:12px;color:var(--tt);font-family:JetBrains Mono,monospace">'+o.cod_amount+'₴ нал</div><div style="font-size:12px;color:var(--td);font-family:JetBrains Mono,monospace">дроп '+(o.total_drop_price||0).toFixed(0)+'₴</div></div>'+
+    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+money+'₴</div><div style="font-size:10px;color:'+(isRet?'var(--red)':'var(--acc)')+';margin-top:-2px">'+(isRet?'збиток':'прибуток')+'</div><div style="font-size:12px;color:var(--tt);font-family:JetBrains Mono,monospace">'+o.cod_amount+'₴ нал</div><div style="font-size:12px;color:var(--td);font-family:JetBrains Mono,monospace">дроп '+(o.total_drop_price||0).toFixed(0)+'₴</div></div>'+
   '</div>';
   h+='<div class="oc-items" style="padding:0 14px;max-height:150px;overflow-y:auto;transition:max-height .25s ease">'+ocRows(groups)+'</div>';
   // Full order detail — shown when the card is expanded.
@@ -796,6 +796,31 @@ async function loadMyDiscounts(){
     '</div>';
   }catch(e){box.style.display="none"}
 }
+// Список замовлень усередині виплати — однаковий для активного запиту і для
+// історії, щоб дропер бачив, за що саме подано виплату.
+function payItemsHtml(items){
+  var success=(items||[]).filter(function(i){return !i.is_return});
+  var rets=(items||[]).filter(function(i){return i.is_return});
+  var sSum=success.reduce(function(s,i){return s+i.amount},0);
+  var rSum=rets.reduce(function(s,i){return s+Math.abs(i.amount)},0);
+  return (success.length?'<div style="font-size:10px;font-weight:600;color:var(--acc);margin-bottom:4px">Успішні (+'+sSum.toFixed(0)+'₴):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+(i.ttn?' <span style="color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(i.ttn)+'</span>':'')+'</div><div style="color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">+'+i.amount.toFixed(0)+'₴</div></div>'}).join(""):"")+
+    (rets.length?'<div style="font-size:10px;font-weight:600;color:var(--red);margin:6px 0 4px">Повернення (-'+rSum.toFixed(0)+'₴):</div>'+rets.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+'</div><div style="color:var(--red);font-weight:700;font-family:JetBrains Mono,monospace">'+i.amount.toFixed(0)+'₴</div></div>'}).join(""):"");
+}
+// Відсоток повернень у межах виплати — той самий розрахунок, що в адміна.
+function payRetPct(items){
+  var all=(items||[]).length;var rets=(items||[]).filter(function(i){return i.is_return}).length;
+  return all?(rets/all*100):0;
+}
+function payPctColor(pct){return pct<10?"var(--acc)":(pct<=25?"var(--warn)":"var(--red)")}
+// Список замовлень відкривається і кнопкою «Детальніше», і кліком по шапці —
+// обидва шукають блок у межах своєї картки, тому порядок елементів не важливий.
+function togglePayCard(el){
+  var card=el.closest("[data-payout-card]");
+  var box=card&&card.querySelector(".payout-details");
+  if(!box)return;
+  box.style.display=box.style.display==="none"?"":"none";
+}
+
 async function loadPayouts(){
   loadBalanceBlock();
   loadMyDiscounts();
@@ -818,7 +843,14 @@ async function loadPayouts(){
     document.getElementById("pay-unpaid-c").textContent="0 замовл.";
     // Active request
     if(r.active){
-      document.getElementById("pay-active-block").innerHTML='<div style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:10px;padding:12px;margin-bottom:10px"><div style="font-size:13px;font-weight:600;color:var(--warn);margin-bottom:6px">'+Icon('clipboardList',13)+' Активний запит #'+r.active.id+' · <span style="font-family:JetBrains Mono,monospace">'+r.active.total_amount.toFixed(0)+'₴</span></div><div style="font-size:11px;color:var(--td)">'+r.activeItems.length+' замовлень · Створено: '+(r.active.created_at?.slice(0,16)||"")+'</div>'+(r.active.comment?'<div style="font-size:11px;color:var(--t);margin-top:4px">'+Icon('messageSquare',11)+' '+esc(r.active.comment)+'</div>':'')+'</div>';
+      var aPct=payRetPct(r.activeItems);
+      document.getElementById("pay-active-block").innerHTML='<div data-payout-card style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:10px;padding:12px;margin-bottom:10px">'+
+        '<div style="font-size:13px;font-weight:600;color:var(--warn);margin-bottom:6px">'+Icon('clipboardList',13)+' Активний запит #'+r.active.id+' · <span style="font-family:JetBrains Mono,monospace">'+r.active.total_amount.toFixed(0)+'₴</span></div>'+
+        '<div style="font-size:11px;color:var(--td)">'+r.activeItems.length+' замовлень · Створено: '+(r.active.created_at?.slice(0,16)||"")+' · <span style="color:'+payPctColor(aPct)+';font-weight:700">'+aPct.toFixed(0)+'% повернень</span></div>'+
+        (r.active.comment?'<div style="font-size:11px;color:var(--t);margin-top:4px">'+Icon('messageSquare',11)+' '+esc(r.active.comment)+'</div>':'')+
+        '<div style="margin-top:8px"><button class="btn btn-sm" onclick="togglePayCard(this)">'+Icon('eye',12)+' Детальніше · '+r.activeItems.length+' замовл.</button></div>'+
+        '<div class="payout-details" style="display:none;margin-top:8px;border-top:1px solid var(--brd);padding-top:8px">'+payItemsHtml(r.activeItems)+'</div>'+
+      '</div>';
     }else{document.getElementById("pay-active-block").innerHTML=""}
     // Unpaid orders
     document.getElementById("pay-unpaid").innerHTML=r.unpaid.length?r.unpaid.map(function(o){return '<div class="pay-card"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.ttn||"без ТТН")+'</div></div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(2)+'₴</div></div>'}).join("")+(r.returns.length?'<div style="font-size:12px;font-weight:600;color:var(--red);margin:8px 0 4px">Повернення:</div>'+r.returns.map(function(o){return '<div class="pay-card" style="border-color:rgba(255,107,107,.2)"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--red)">Повернення</div>'+(o.return_ttn?'<div style="font-size:9px;color:var(--red);font-family:JetBrains Mono,monospace">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--red);font-weight:700">-'+(o.return_cost||0).toFixed(2)+'₴</div></div>'}).join(""):''):'<div style="color:var(--td);font-size:11px">Немає замовлень для виплати</div>';
@@ -826,20 +858,17 @@ async function loadPayouts(){
     document.getElementById("pay-history").innerHTML=r.history.length?r.history.map(function(p){
       var success=(p.items||[]).filter(function(i){return !i.is_return});
       var rets=(p.items||[]).filter(function(i){return i.is_return});
-      var sSum=success.reduce(function(s,i){return s+i.amount},0);
-      var rSum=rets.reduce(function(s,i){return s+Math.abs(i.amount)},0);
-      return '<div style="background:var(--card);border:1px solid '+(p.status==="paid"?"rgba(124,134,255,.2)":"rgba(255,107,107,.2)")+';border-radius:12px;margin-bottom:8px;overflow:hidden">'+
-      '<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
+      var hPct=payRetPct(p.items);
+      return '<div data-payout-card style="background:var(--card);border:1px solid '+(p.status==="paid"?"rgba(124,134,255,.2)":"rgba(255,107,107,.2)")+';border-radius:12px;margin-bottom:8px;overflow:hidden">'+
+      '<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="togglePayCard(this)">'+
       '<div><div style="font-size:13px;font-weight:600;color:var(--th)">Запит #'+p.id+'</div>'+
       '<div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+
       (p.comment?'<div style="font-size:10px;color:var(--t)">'+Icon('messageSquare',10)+' '+esc(p.comment)+'</div>':'')+
-      '<div style="font-size:9px;margin-top:2px"><span style="color:var(--acc)">'+Icon('check',9)+success.length+'</span> · <span style="color:var(--red)">'+Icon('x',9)+rets.length+'</span></div>'+
+      '<div style="font-size:9px;margin-top:2px"><span style="color:var(--acc)">'+Icon('check',9)+success.length+'</span> · <span style="color:var(--red)">'+Icon('x',9)+rets.length+'</span> · <span style="color:'+payPctColor(hPct)+';font-weight:700">'+hPct.toFixed(0)+'% поверн.</span></div>'+
       '</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+p.total_amount.toFixed(0)+'₴</div>'+
       '<div style="font-size:10px;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+(p.status==="paid"?Icon('check',10)+" Виплачено":Icon('refreshCw',10)+" Очікує")+'</div></div></div>'+
-      '<div style="display:none;border-top:1px solid var(--brd);padding:8px 12px">'+
-      (success.length?'<div style="font-size:10px;font-weight:600;color:var(--acc);margin-bottom:4px">Успішні (+'+sSum.toFixed(0)+'₴):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+(i.ttn?' <span style="color:var(--warn)">'+esc(i.ttn)+'</span>':'')+'</div><div style="color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">+'+i.amount.toFixed(0)+'₴</div></div>'}).join(""):"")+
-      (rets.length?'<div style="font-size:10px;font-weight:600;color:var(--red);margin:6px 0 4px">Повернення (-'+rSum.toFixed(0)+'₴):</div>'+rets.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+'</div><div style="color:var(--red);font-weight:700;font-family:JetBrains Mono,monospace">'+i.amount.toFixed(0)+'₴</div></div>'}).join(""):"")+
-      '</div></div>'
+      '<div style="padding:0 12px 10px"><button class="btn btn-sm" onclick="event.stopPropagation();togglePayCard(this)">'+Icon('eye',12)+' Детальніше · '+(p.items||[]).length+' замовл.</button></div>'+
+      '<div class="payout-details" style="display:none;border-top:1px solid var(--brd);padding:8px 12px">'+payItemsHtml(p.items)+'</div></div>'
     }).join(""):'<div style="color:var(--td);font-size:11px">Немає історії</div>';
   }catch(e){}
 }

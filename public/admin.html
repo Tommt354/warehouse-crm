@@ -2326,13 +2326,17 @@ function renderPayouts(list){
     var successSum=success.reduce(function(s,i){return s+i.amount},0);
     var returnSum=returns.reduce(function(s,i){return s+Math.abs(i.amount)},0);
     var applied=p.balance_applied||0;var bal=p.balance||0;var finalTotal=p.total_amount+applied;
-    return '<div style="background:var(--card);border:1px solid '+(isPaid?'rgba(124,134,255,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:10px;overflow:hidden">'+
-    '<div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
+    // Відсоток повернень у межах цієї виплати — швидка оцінка якості дропера.
+    var totalCnt=success.length+returns.length;
+    var retPct=totalCnt?(returns.length/totalCnt*100):0;
+    var retColor=retPct<10?"var(--acc)":(retPct<=25?"var(--warn)":"var(--red)");
+    return '<div data-payout-card style="background:var(--card);border:1px solid '+(isPaid?'rgba(124,134,255,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:10px;overflow:hidden">'+
+    '<div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="togglePayoutDetails(this)">'+
     '<div><div style="font-size:15px;font-weight:700;color:var(--th)">'+esc(p.drop_name)+' <span style="font-size:11px;color:var(--td)">#'+p.dropshipper_id+'</span></div>'+
     '<div style="margin-top:4px">'+(p.payment_type==="iban"?'<div style="font-size:10px;color:var(--td)">IBAN:</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:var(--acc);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(p.payment_iban||"")+'\')">'+esc(p.payment_iban||"не вказано")+'</div>'+(p.full_name?'<div style="font-size:10px;color:var(--td);margin-top:2px">'+esc(p.full_name)+'</div>':''):'<div style="font-size:10px;color:var(--td)">Карта:</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:var(--warn);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(p.payment_card||"")+'\')">'+esc(p.payment_card||"не вказано")+'</div>')+'</div>'+
     (p.comment?'<div style="font-size:11px;color:var(--t);margin-top:2px">'+Icon('messageSquare',12)+' '+esc(p.comment)+'</div>':'')+
     '<div style="font-size:10px;color:var(--td);margin-top:2px">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+
-    '<div style="font-size:10px;margin-top:3px"><span style="color:var(--acc)">'+Icon('check',11)+' '+success.length+' успішних (+'+successSum.toFixed(0)+'₴)</span> · <span style="color:var(--red)">'+Icon('x',11)+' '+returns.length+' повернень (-'+returnSum.toFixed(0)+'₴)</span></div>'+
+    '<div style="font-size:10px;margin-top:3px"><span style="color:var(--acc)">'+Icon('check',11)+' '+success.length+' успішних (+'+successSum.toFixed(0)+'₴)</span> · <span style="color:var(--red)">'+Icon('x',11)+' '+returns.length+' повернень (-'+returnSum.toFixed(0)+'₴)</span> · <span style="color:'+retColor+';font-weight:700">'+retPct.toFixed(0)+'% повернень</span></div>'+
     '</div><div style="text-align:right;min-width:150px">'+
       '<div style="font-size:10px;color:var(--td)">Замовлення</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--th)">'+p.total_amount.toFixed(0)+'₴</div>'+
       (p.balance_enabled?(
@@ -2341,7 +2345,11 @@ function renderPayouts(list){
         '<div style="border-top:1px solid var(--brd);margin-top:6px;padding-top:5px"><div style="font-size:10px;color:var(--td)">До виплати</div><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:800;color:'+(finalTotal>=0?'var(--acc)':'var(--red)')+'">'+finalTotal.toFixed(0)+'₴</div></div>'
       ):'<div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(isPaid?'var(--acc)':'var(--red)')+';margin-top:2px">'+p.total_amount.toFixed(0)+'₴</div>')+
     '<div style="margin-top:6px">'+(isPaid?'<span style="color:var(--acc);font-size:12px;font-weight:600">'+Icon('check',13)+' Виплачено</span>':'<button class="btn btn-p" onclick="event.stopPropagation();markPaid('+p.id+')" style="font-size:11px">'+Icon('banknote',12)+' Виплачено</button>')+'</div></div></div>'+
-    '<div style="display:none;border-top:1px solid var(--brd)">'+
+    '<div style="padding:0 14px 10px;display:flex;gap:6px;flex-wrap:wrap">'+
+      '<button class="btn btn-sm" onclick="event.stopPropagation();togglePayoutDetails(this)">'+Icon('eye',13)+' Детальніше · '+totalCnt+' замовл.</button>'+
+      '<button class="btn btn-sm" onclick="event.stopPropagation();viewDropStats('+p.dropshipper_id+',\''+esc(p.drop_name).replace(/'/g,"")+'\')">'+Icon('barChart3',13)+' Картка дропера</button>'+
+    '</div>'+
+    '<div class="payout-details" style="display:none;border-top:1px solid var(--brd)">'+
     (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">'+Icon('check',12)+' Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
     (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">'+Icon('x',12)+' Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
     '</div></div>';
@@ -2357,6 +2365,14 @@ function toggleWhOC(btn){
   var photos=it.querySelectorAll(".oc-photo");
   if(open){it.style.maxHeight="236px";it.style.overflowY="auto";if(more)more.style.display="none";photos.forEach(function(p){p.style.width="96px";p.style.height="96px"});btn.innerHTML="▾ Відкрити";}
   else{it.style.maxHeight="none";it.style.overflowY="visible";if(more)more.style.display="";photos.forEach(function(p){p.style.width="120px";p.style.height="120px"});btn.innerHTML="▴ Звернути";}
+}
+// Список замовлень у виплаті відкривається і кнопкою «Детальніше», і кліком по
+// шапці картки — обидва шукають блок у межах своєї картки.
+function togglePayoutDetails(el){
+  var card=el.closest("[data-payout-card]");
+  var box=card&&card.querySelector(".payout-details");
+  if(!box)return;
+  box.style.display=box.style.display==="none"?"":"none";
 }
 async function markPaid(id){if(!confirm("Підтвердити виплату?"))return;try{await api("/api/payouts/"+id+"/paid",{method:"PUT"});loadAdmPayouts()}catch(e){}}
 async function applyBalance(id){if(!confirm("Перевести баланс дропера у цю виплату? Баланс обнулиться, а сума виплати перерахується."))return;try{await api("/api/payouts/"+id+"/apply-balance",{method:"POST"});loadAdmPayouts()}catch(e){alert(e.message)}}
