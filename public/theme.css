@@ -1253,6 +1253,9 @@ input[type="number"]::-webkit-outer-spin-button {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  /* Ряд вкладок-статусів завжди стоїть над контентом (пошук, список карток) —
+     без цього відступу він прилипав до наступного блоку на всіх сторінках. */
+  margin-bottom: 10px;
 }
 
 .stab {
@@ -1418,6 +1421,12 @@ input[type="number"]::-webkit-outer-spin-button {
   letter-spacing: 0.5px;
   color: var(--text-muted);
   margin-top: 8px;
+}
+
+/* Плитки, де підпис іде першим, а число під ним (сторінка виплат дропера):
+   margin-top вище дістається підпису, і число лишалося прибитим до нього. */
+.sc .sl + .sv {
+  margin-top: 6px;
 }
 
 /* Actions bar — .acts */
