@@ -13,6 +13,25 @@ const PORT = process.env.PORT || 3000;
 // orders directly and only need to see their own salary; everyone else
 // (packer, packer_ready) lands on the operational warehouse page, which
 // switches into a simplified solo-packing mode client-side for packer_ready.
+// Статуси, у яких товар уже фізично знятий з полиці. "В роботі" сюди НЕ
+// входить: пакувальник тільки взяв замовлення, речі ще лежать на полиці.
+// Фактичний залишок зменшується на кроці "Готово" (Зібрано) або далі.
+const PULLED_STATUSES = ["collected", "packed", "shipped", "delivering", "delivered", "done", "refused", "return_transit"];
+
+// Знімає товар замовлення з фактичного залишку рівно один раз, яким би шляхом
+// замовлення не дійшло до "Зібрано" — кнопкою пакувальника, ручною випадачкою
+// статусів чи сканом пакувальниці. Списана кількість тут не чіпається: вона
+// вже зменшилась у момент створення замовлення.
+function pullOrderStockOnce(db, orderId) {
+  const o = db.prepare("SELECT stock_pulled FROM orders WHERE id=?").get(orderId);
+  if (!o || o.stock_pulled) return false;
+  const items = db.prepare("SELECT oi.quantity,v.base_product_id,oi.size_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
+  const dec = db.prepare("UPDATE stock_base SET quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?");
+  items.forEach(i => dec.run(i.quantity, i.base_product_id, i.size_id));
+  db.prepare("UPDATE orders SET stock_pulled=1 WHERE id=?").run(orderId);
+  return true;
+}
+
 function warehouseRedirectFor(workerRole) {
   if (workerRole === "finalizer") return "/finalizer";
   if (workerRole === "seamstress" || workerRole === "printer" || workerRole === "seo") return "/staff";
@@ -1621,7 +1640,7 @@ app.get("/api/orders/:id", authMiddleware, (req, res) => {
 // Swap size in order item
 app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { new_size_id } = req.body;
-  const item = db.prepare("SELECT oi.*,v.base_product_id,o.status as order_status FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id WHERE oi.id=?").get(req.params.id);
+  const item = db.prepare("SELECT oi.*,v.base_product_id,o.status as order_status,o.stock_pulled FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
 
   // Whether this swap is a real physical re-tag or just moving a
@@ -1632,7 +1651,7 @@ app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","
   // actually moved. Only orders already at in_progress/packed/etc — where
   // the old size's unit really did leave the shelf — get both counters
   // updated; a still-'new' order only moves the allocated reservation.
-  const touchActual = item.order_status !== "new";
+  const touchActual = !!item.stock_pulled; // фактичну чіпаємо лише якщо речі вже зняли з полиці
 
   db.transaction(() => {
     if (touchActual) {
@@ -1665,7 +1684,7 @@ app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","
 app.post("/api/order-items/:id/swap-product", authMiddleware, requireRole("admin"), (req, res) => {
   const { new_variation_id, new_size_id } = req.body;
   if (!new_variation_id || !new_size_id) return res.status(400).json({ error: "Оберіть товар і розмір" });
-  const item = db.prepare("SELECT oi.*,v.base_product_id as old_bp,o.status as order_status,o.dropshipper_id,o.cod_amount,o.is_prepaid,o.paid_from_balance,o.total_drop_price FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id WHERE oi.id=?").get(req.params.id);
+  const item = db.prepare("SELECT oi.*,v.base_product_id as old_bp,o.status as order_status,o.stock_pulled,o.dropshipper_id,o.cod_amount,o.is_prepaid,o.paid_from_balance,o.total_drop_price FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   if (item.kit_id) return res.status(400).json({ error: "Товар у комплекті не можна змінити окремо — редагуйте комплект" });
   if (!["new", "in_progress", "packed"].includes(item.order_status)) return res.status(400).json({ error: "Замовлення вже не можна редагувати" });
@@ -1684,7 +1703,7 @@ app.post("/api/order-items/:id/swap-product", authMiddleware, requireRole("admin
   dropPrice = Math.max(0, dropPrice - discountForVariation(dropDisc, new_variation_id, nv.eff_cat));
   dropPrice = Math.round(dropPrice * 100) / 100;
 
-  const touchActual = item.order_status !== "new";
+  const touchActual = !!item.stock_pulled; // фактичну чіпаємо лише якщо речі вже зняли з полиці
   const qty = item.quantity;
 
   const result = db.transaction(() => {
@@ -1788,17 +1807,13 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
   db.transaction(() => {
     db.prepare(`UPDATE orders SET ${updates.join(",")} WHERE id=?`).run(...vals);
 
-    // The order's items only left the shelf for real the moment a packer
-    // actually picked it up — whether that's "взяв у роботу" (in_progress)
-    // for a regular packer, or the single new→packed step packer_ready
-    // uses. This is the one place the physical (actual) count moves for an
-    // order; stock_base.quantity (allocated) was already decremented back
-    // at order creation and stays untouched here.
-    if (existing.status === "new" && status !== "cancelled") {
-      const items = db.prepare("SELECT oi.quantity,v.base_product_id,oi.size_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(req.params.id);
-      const dec = db.prepare("UPDATE stock_base SET quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?");
-      items.forEach(i => dec.run(i.quantity, i.base_product_id, i.size_id));
-    }
+    // Речі йдуть з полиці, коли пакувальник натиснув "Готово" (замовлення
+    // зібране), а не коли він просто взяв його в роботу: у статусі "В роботі"
+    // товар ще фізично лежить на місці. Раніше списувалось на виході зі
+    // статусу "Нове" — через це фактична падала одразу і зрівнювалась зі
+    // списаною. Списана кількість тут не чіпається: вона зменшилась ще при
+    // створенні замовлення.
+    if (PULLED_STATUSES.includes(status)) pullOrderStockOnce(db, req.params.id);
   })();
 
   // Пакувальник готовий товар packs solo start-to-finish — marking the
@@ -1852,8 +1867,11 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
 // only printed goods (база+принт) can be registered as a return.
 //   destination:
 //     "base"     → back onto the base shelf (stock_base). Allocated is always
-//                  restored; the physical count only when the order had left
-//                  "new" (i.e. a packer had already pulled it — leftBase).
+//                  restored; the physical count only if the goods had actually
+//                  been pulled off the shelf (orders.stock_pulled — тобто
+//                  замовлення дійшло до "Зібрано"). Замовлення, яке лише взяли
+//                  в роботу, фактичний залишок не зменшувало, тож і повертати
+//                  туди нічого.
 //     "returns"  → registered as a return (stock_returns, variation+size) for
 //                  printed items; ready no-print items fall back to "base".
 //     "writeoff" → goods lost/scrapped: nothing re-enters stock, just logged.
@@ -1861,7 +1879,7 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
 // skipped so their stock is never counted twice.
 function applyOrderStockRemoval(orderId, status, destination, userId) {
   const items = db.prepare("SELECT oi.*,v.base_product_id,v.print_id,v.name as var_name FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
-  const leftBase = status !== "new"; // physical (actual) count was decremented
+  const leftBase = !!(db.prepare("SELECT stock_pulled FROM orders WHERE id=?").get(orderId)?.stock_pulled);
   items.forEach(i => {
     if (i.returned_to_stock) return;
     const hasPrint = !!i.print_id;
@@ -2796,6 +2814,10 @@ app.post("/api/scan/finalize/:order_id", authMiddleware, (req, res) => {
   // tracking actually reporting the parcel in transit (see trackOneOrder).
   if (!["shipped", "delivering", "delivered", "refused", "return_transit"].includes(o.status)) {
     db.prepare("UPDATE orders SET status='packed',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
+    // Якщо пакувальниця закриває замовлення, яке пакувальник не проводив
+    // через "Готово" (напр. просканувала одразу зі статусу "Нове"), товар
+    // все одно треба зняти з фактичного залишку — рівно один раз.
+    pullOrderStockOnce(db, o.id);
   }
   db.prepare("UPDATE orders SET packed_at=datetime('now','localtime') WHERE id=? AND (packed_at IS NULL OR packed_at='')").run(o.id);
   // Нарахування має падати на зміну тих людей, які реально робили це
