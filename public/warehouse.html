@@ -326,12 +326,17 @@ function renderOrderCard(o){
     ordStatusList.forEach(function(s){html+='<option value="'+s.code+'"'+(o.status===s.code?' selected':'')+'>'+esc(s.name)+'</option>'});
     html+='</select>';
     if(osi&&osi.next){
-      if(osi.next==="packed"&&hasOOS)html+='<button class="btn btn-sm" disabled style="opacity:.4;cursor:not-allowed">'+Icon('alertTriangle',13)+' Замініть розміри</button>';
+      // Крок "речі зібрані" не можна робити, поки якоїсь позиції немає. Умова
+      // навмисно не прибита до одного коду статусу: ланцюжок уже мінявся
+      // (in_progress вів у packed, тепер у collected), і саме через літерал
+      // "packed" гард одного разу мовчки перестав спрацьовувати.
+      var isPickDone=osi.next==="collected"||osi.next==="packed";
+      if(isPickDone&&hasOOS)html+='<button class="btn btn-sm" disabled style="opacity:.4;cursor:not-allowed">'+Icon('alertTriangle',13)+' Замініть розміри</button>';
       else html+='<button class="btn btn-p" onclick="chSt('+o.id+',\''+osi.next+'\',this)">'+osi.nl+'</button>';
     }
   }
-  if(!o.ttn&&o.ttn_pending&&(o.status==="packed"||o.status==="in_progress"))html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default"><div style="display:inline-block;width:11px;height:11px;border:2px solid rgba(255,167,38,.3);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></div>ТТН генерується...</div>';
-  else if(!o.ttn&&(o.status==="packed"||o.status==="in_progress"))html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default">'+Icon('package',13)+' Очікує ТТН від адміністратора</div>';
+  if(!o.ttn&&o.ttn_pending&&(o.status==="packed"||o.status==="collected"||o.status==="in_progress"))html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default"><div style="display:inline-block;width:11px;height:11px;border:2px solid rgba(255,167,38,.3);border-top-color:var(--warn);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></div>ТТН генерується...</div>';
+  else if(!o.ttn&&(o.status==="packed"||o.status==="collected"||o.status==="in_progress"))html+='<div class="btn btn-sm" style="border-color:rgba(255,167,38,.3);color:var(--warn);cursor:default">'+Icon('package',13)+' Очікує ТТН від адміністратора</div>';
   if(o.ttn)html+='<button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="printTTN('+o.id+')">'+Icon('printer',13)+' Друк ТТН</button>';
   html+='</div></div></div>';
   return html;
