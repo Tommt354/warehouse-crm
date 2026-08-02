@@ -1955,15 +1955,21 @@ app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehous
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (o.status === "cancelled") return res.status(400).json({ error: "Вже скасовано" });
-  if (o.status !== "new" && o.status !== "in_progress") {
-    return res.status(400).json({ error: "Скасувати можна тільки нове або в роботі. Для запакованих/відправлених — видаліть замовлення." });
+  // "Зібрано" теж скасовується: речі вже зняли з полиці, тож вони фізично
+  // повертаються на базу — applyOrderStockRemoval поверне і списану, і
+  // фактичну (остання лише якщо товар справді знімали, див. stock_pulled).
+  if (!["new", "in_progress", "collected"].includes(o.status)) {
+    return res.status(400).json({ error: "Скасувати можна нове, в роботі або зібране. Для запакованих/відправлених — видаліть замовлення." });
   }
 
   db.transaction(() => {
     applyOrderStockRemoval(o.id, o.status, "base", req.user.id);
     db.prepare("DELETE FROM payout_items WHERE order_id=?").run(o.id);
     refundOrderBalance(o, req.user.id);
-    db.prepare("UPDATE orders SET status='cancelled',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
+    // Товар повернувся на полицю, тож замовлення знову "не зняте". Інакше,
+    // якщо скасоване замовлення повернути в роботу ручною випадачкою, повторне
+    // "Готово" не списало б залишок — речі пішли б зі складу непоміченими.
+    db.prepare("UPDATE orders SET status='cancelled',stock_pulled=0,updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
   })();
   res.json({ ok: true });
 });
