@@ -2753,8 +2753,18 @@ app.post("/api/scan/finalize/:order_id", authMiddleware, (req, res) => {
     db.prepare("UPDATE orders SET status='packed',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
   }
   db.prepare("UPDATE orders SET packed_at=datetime('now','localtime') WHERE id=? AND (packed_at IS NULL OR packed_at='')").run(o.id);
-  // Find active shift and calc payroll
-  const shift = db.prepare("SELECT s.id FROM shifts s JOIN shift_workers sw ON s.id=sw.shift_id WHERE s.status='open' ORDER BY s.id DESC LIMIT 1").get();
+  // Нарахування має падати на зміну тих людей, які реально робили це
+  // замовлення: пакувальник відкриває зміну і фіксує склад бригади, тож
+  // шукаємо відкриту зміну того, хто замовлення брав і збирав (packed_by).
+  // Раніше бралася просто найновіша відкрита зміна за id — через це виробіток
+  // за замовлення Бази падав на паралельно відкриту зміну Готового товару,
+  // і в Бази на закритті зміни виходив нуль.
+  let shift = o.packed_by
+    ? db.prepare("SELECT id FROM shifts WHERE packer_user_id=? AND status='open' ORDER BY id DESC LIMIT 1").get(o.packed_by)
+    : null;
+  // Відкат на стару поведінку, якщо пакувальник невідомий або його зміна вже
+  // закрита — краще нарахувати на чинну зміну, ніж не нарахувати взагалі.
+  if (!shift) shift = db.prepare("SELECT s.id FROM shifts s JOIN shift_workers sw ON s.id=sw.shift_id WHERE s.status='open' ORDER BY s.id DESC LIMIT 1").get();
   if (shift) calcOrderPayroll(o.id, shift.id);
   res.json({ ok: true });
 });
