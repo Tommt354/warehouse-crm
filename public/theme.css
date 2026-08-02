@@ -818,6 +818,13 @@ input[type="number"]::-webkit-outer-spin-button {
   background: var(--warning-soft);
 }
 
+/* Teal — статус «Зібрано»: окремий від фіолетового «Запаковано», щоб крок
+   пакувальника було видно окремо від кроку пакувальниці */
+.tag-coll {
+  color: #14b8a6;
+  background: rgba(20, 184, 166, .14);
+}
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    COMPONENTS: FORMS (matches .fld, .fld-row)

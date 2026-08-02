@@ -38,6 +38,7 @@
 /* Status tags */
 .tag-new{background:var(--accent-soft);color:var(--accent)}
 .tag-prog{background:var(--info-soft);color:var(--info)}
+.tag-coll{background:rgba(20,184,166,.14);color:#14b8a6}
 .tag-ship{background:var(--warning-soft);color:var(--warning)}
 .tag-done{background:var(--success-soft);color:var(--success)}
 .tag-bad{background:var(--error-soft);color:var(--error)}
@@ -232,7 +233,7 @@ function calcOrderWeight(){
   document.getElementById("no-weight").value=(Math.max(0.1,w)||0.5).toFixed(1);
 }
 var SL={new:"Нове",in_progress:"В роботі",collected:"Зібрано",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
-var SCL={new:"tag-new",in_progress:"tag-prog",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
+var SCL={new:"tag-new",in_progress:"tag-prog",collected:"tag-coll",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роботі"},{k:"packed",l:"Готові"},{k:"shipped",l:"Відправлені"},{k:"delivering",l:"Доставка"},{k:"delivered",l:"Отримані"},{k:"refused",l:"Відмови"},{k:"cancelled",l:"Скасовані"}];
 
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash()}catch(e){location.href="/login"}}
