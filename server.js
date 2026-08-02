@@ -1861,18 +1861,49 @@ app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) =
 // ── RETURNS (повернення) ──────────────────────────────────────────
 
 // List stock returns (for admin view)
+// Склад повернень. search — по назві товару/бази/принта ("футболка" знайде всі
+// футболки); min_days/max_days — скільки днів позиція лежить на полиці
+// (рахується від sr.in_at, див. тригер stock_returns_in_at у db.js).
+// Собівартість береться з базового товару, з відкатом на модель.
 app.get("/api/stock-returns", authMiddleware, (req, res) => {
-  const items = db.prepare(`SELECT sr.*, v.name as var_name, v.photo as var_photo, s.name as size_name, 
-    p.name as print_name, p.photo as print_photo, bp.name as base_name, c.name as color_name, bp.color_id, c.hex_code
-    FROM stock_returns sr 
-    JOIN variations v ON sr.variation_id=v.id 
-    JOIN sizes s ON sr.size_id=s.id 
+  const { search, min_days, max_days } = req.query;
+  const items = db.prepare(`SELECT sr.*, v.name as var_name, v.photo as var_photo, s.name as size_name,
+    p.name as print_name, p.photo as print_photo, bp.name as base_name, bp.photo as bp_photo,
+    c.name as color_name, bp.color_id, c.hex_code, m.name as model_name,
+    COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0) as cost_price,
+    CAST(julianday('now','localtime') - julianday(sr.in_at) AS INTEGER) as days_in_stock
+    FROM stock_returns sr
+    JOIN variations v ON sr.variation_id=v.id
+    JOIN sizes s ON sr.size_id=s.id
     JOIN base_products bp ON v.base_product_id=bp.id
-    LEFT JOIN prints p ON v.print_id=p.id 
+    JOIN models m ON bp.model_id=m.id
+    LEFT JOIN prints p ON v.print_id=p.id
     LEFT JOIN colors c ON bp.color_id=c.id
     WHERE sr.quantity > 0
-    ORDER BY v.name, s.sort_order`).all();
-  res.json({ items });
+    ORDER BY (sr.in_at IS NULL), sr.in_at ASC, v.name, s.sort_order`).all();
+
+  // Пошук навмисно в JS, а не через SQL LIKE: LIKE у SQLite ігнорує регістр
+  // лише для латиниці, тож "футболка" не знаходила б "Футболка".
+  const q = (search || "").trim().toLowerCase();
+  // Позиції без дати — це залишки, що лежали ще до введення обліку дат;
+  // під фільтр давності вони не підпадають, але в списку лишаються.
+  const minD = min_days === undefined || min_days === "" ? null : parseInt(min_days);
+  const maxD = max_days === undefined || max_days === "" ? null : parseInt(max_days);
+  const filtered = items.filter(i => {
+    if (q) {
+      const hay = [i.var_name, i.base_name, i.print_name, i.model_name, i.size_name].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (minD === null && maxD === null) return true;
+    if (i.days_in_stock === null) return false;
+    if (minD !== null && i.days_in_stock < minD) return false;
+    if (maxD !== null && i.days_in_stock > maxD) return false;
+    return true;
+  });
+
+  const totalQty = filtered.reduce((s, i) => s + i.quantity, 0);
+  const totalCost = Math.round(filtered.reduce((s, i) => s + i.quantity * (i.cost_price || 0), 0) * 100) / 100;
+  res.json({ items: filtered, total_qty: totalQty, total_cost: totalCost });
 });
 
 // Find order by TTN

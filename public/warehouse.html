@@ -97,6 +97,8 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div id="ret-result"></div>
   </div>
   <div id="v-stock" style="display:none">
+    <div class="stabs"><button class="stab on" id="wst-base" onclick="showWhStockTab('base')"><i data-icon="package" data-size="13"></i> База</button><button class="stab" id="wst-ret" onclick="showWhStockTab('ret')"><i data-icon="undo2" data-size="13"></i> Повернення</button></div>
+    <div id="wh-stock-base-view">
     <div class="acts" style="margin-bottom:4px"><button class="btn svm-btn" data-mode="alloc" onclick="setStockViewMode('alloc')">Списана</button><button class="btn on svm-btn" data-mode="fact" onclick="setStockViewMode('fact')">Фактична</button></div>
     <div class="acts">
       <button class="btn btn-a" onclick="openWhInc()"><i data-icon="download" data-size="14"></i> Прихід</button>
@@ -107,7 +109,20 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div class="cards" id="wh-stock-cats" style="margin-bottom:10px"></div>
     <div class="pcards" id="wh-stock-list"></div>
     <div class="pagi" id="wh-stock-pagi"></div>
-    <div style="margin-top:16px"><div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:8px"><i data-icon="package" data-size="15"></i> Повернення на складі:</div><div id="wh-ret-stock"></div></div>
+    </div>
+    <div id="wh-stock-ret-view" style="display:none">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <input id="wh-ret-search" placeholder="Пошук: футболка, принт, колір..." style="flex:1;min-width:180px;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="loadWhReturns()">
+      </div>
+      <div class="stabs" id="wh-ret-age">
+        <button class="stab on" data-age="" onclick="setWhRetAge('')">Всі</button>
+        <button class="stab" data-age="7" onclick="setWhRetAge('7')">7+ днів</button>
+        <button class="stab" data-age="30" onclick="setWhRetAge('30')">30+ днів</button>
+        <button class="stab" data-age="60" onclick="setWhRetAge('60')">60+ днів</button>
+      </div>
+      <div id="wh-ret-summary" style="margin-bottom:10px"></div>
+      <div id="wh-ret-stock"></div>
+    </div>
   </div>
   <div id="v-salary" style="display:none">
     <div class="acts" style="margin-bottom:6px;flex-wrap:wrap;gap:6px">
@@ -543,14 +558,61 @@ async function loadWhStock(){
   var d=await api(url);whProducts=d.products;whSizes=d.sizes;
   try{var ac=await api("/api/categories?scope=base");whCats=ac.flat||[]}catch(e){}
   whPage=0;renderWhStockPage();
-  // Returns
+  loadWhReturns();
+}
+// ── СКЛАД ПОВЕРНЕНЬ ───────────────────────────────────────────────
+var whRetAge="";
+function showWhStockTab(t){
+  document.getElementById("wst-base").classList.toggle("on",t==="base");
+  document.getElementById("wst-ret").classList.toggle("on",t==="ret");
+  document.getElementById("wh-stock-base-view").style.display=t==="base"?"":"none";
+  document.getElementById("wh-stock-ret-view").style.display=t==="ret"?"":"none";
+  if(t==="ret")loadWhReturns();
+}
+function setWhRetAge(a){
+  whRetAge=a;
+  document.querySelectorAll("#wh-ret-age .stab").forEach(function(b){b.classList.toggle("on",(b.dataset.age||"")===a)});
+  loadWhReturns();
+}
+// Скільки днів лежить: сервер рахує від дати надходження (stock_returns.in_at).
+// Позиції, що лежали ще до введення обліку дат, приходять з days_in_stock=null.
+function retAgeLabel(d,inAt){
+  if(d===null||d===undefined)return '<span style="color:var(--td)">дата невідома</span>';
+  var color=d>=60?"var(--red)":(d>=30?"var(--warn)":"var(--td)");
+  var word=d===0?"сьогодні":(d===1?"1 день":(d<5?d+" дні":d+" днів"));
+  return '<span style="color:'+color+'">'+(d===0?"прийшло сьогодні":"лежить "+word)+'</span><span style="color:var(--td)"> · з '+esc((inAt||"").slice(0,10))+'</span>';
+}
+async function loadWhReturns(){
+  var el=document.getElementById("wh-ret-stock");if(!el)return;
+  var q=document.getElementById("wh-ret-search").value.trim();
   try{
-    var r=await api("/api/stock-returns");var rel=document.getElementById("wh-ret-stock");
-    if(!r.items.length){rel.innerHTML='<div style="color:var(--td);font-size:12px;padding:10px">Немає повернень</div>';return}
-    var groups={};r.items.forEach(function(i){if(!groups[i.variation_id])groups[i.variation_id]={name:i.var_name,photo:(i.var_photo||i.print_photo||i.bp_photo)||"",print:i.print_name,sizes:[]};groups[i.variation_id].sizes.push({name:i.size_name,qty:i.quantity})});
-    rel.innerHTML='<div class="pcards">'+Object.values(groups).map(function(g){return '<div class="pcard">'+(g.photo?'<div style="width:100%;height:90px;overflow:hidden;border-radius:8px 8px 0 0;margin:-10px -10px 6px -10px;width:calc(100% + 20px)"><img src="'+g.photo+'" style="width:100%;height:100%;object-fit:cover"></div>':'')+'<div class="pcard-name">'+esc(g.name)+'</div>'+(g.print?'<div style="font-size:9px;color:var(--warn)">'+Icon('image',10)+' '+esc(g.print)+'</div>':'')+'<div class="stock-row" style="margin-top:4px">'+g.sizes.map(function(s){return '<div class="stock-sz"><b>'+s.name+'</b><br>'+s.qty+'</div>'}).join("")+'</div></div>'}).join("")+'</div>';
+    var r=await api("/api/stock-returns?"+(q?"search="+encodeURIComponent(q)+"&":"")+(whRetAge?"min_days="+whRetAge:""));
+    document.getElementById("wh-ret-summary").innerHTML=
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<div class="sc" style="flex:1;min-width:110px;padding:12px"><div class="sl">Позицій</div><div class="sv" style="font-size:20px">'+r.items.length+'</div></div>'+
+      '<div class="sc" style="flex:1;min-width:110px;padding:12px"><div class="sl">Всього штук</div><div class="sv" style="font-size:20px">'+r.total_qty+'</div></div>'+
+      '<div class="sc" style="flex:1;min-width:130px;padding:12px"><div class="sl">Собівартість</div><div class="sv" style="font-size:20px;color:var(--warn)">'+r.total_cost.toFixed(0)+'₴</div></div>'+
+      '</div>';
+    if(!r.items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('undo2',30)+'</span>'+(q||whRetAge?"Нічого не знайдено":"Немає повернень")+'</div>';return}
+    el.innerHTML=r.items.map(function(i){
+      var ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
+      return '<div style="display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="width:64px;height:64px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:grid;place-items:center;height:100%;color:var(--td)">'+Icon('camera',20)+'</div>')+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>'+
+          (i.print_name?'<div style="font-size:10px;color:var(--warn)">'+Icon("image",10)+' '+esc(i.print_name)+'</div>':'')+
+          '<div style="font-size:11px;margin-top:3px">'+retAgeLabel(i.days_in_stock,i.in_at)+'</div>'+
+        '</div>'+
+        '<div style="text-align:right;flex-shrink:0">'+
+          '<div style="font-size:18px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div>'+
+          '<div style="font-size:13px;color:var(--th);font-family:JetBrains Mono,monospace">'+i.quantity+' шт</div>'+
+          '<div style="font-size:11px;color:var(--td);font-family:JetBrains Mono,monospace">'+(i.quantity*(i.cost_price||0)).toFixed(0)+'₴</div>'+
+        '</div>'+
+      '</div>';
+    }).join("");
   }catch(e){}
 }
+
 function renderWhStockPage(){
   var el=document.getElementById("wh-stock-list");
   if(!whProducts.length&&!document.getElementById("wh-stock-cats").innerHTML){el.innerHTML='<div class="empty"><span class="ic">'+Icon('package',15)+'</span>Порожньо</div>';return}

@@ -570,6 +570,25 @@ addCol("users","balance","REAL DEFAULT 0");
 addCol("users","balance_enabled","INTEGER DEFAULT 0");
 addCol("orders","paid_from_balance","INTEGER DEFAULT 0");
 addCol("payout_requests","balance_applied","REAL DEFAULT 0");
+// Коли повернення лягло на полицю. Ставиться, щойно позиція з'являється
+// (0 → >0), живе поки лежить, і зникає, коли її розібрали; прийде знову —
+// дата буде нова. Логіка навмисно в тригері, а не в кожному ендпоінті:
+// stock_returns.quantity рухається з п'яти різних місць (повернення
+// замовлення, ручний set адміна, use-return, клон варіації), і будь-яке
+// нове місце автоматично отримає правильну дату.
+addCol("stock_returns","in_at","TEXT DEFAULT NULL");
+db.exec(`
+  DROP TRIGGER IF EXISTS stock_returns_in_at;
+  CREATE TRIGGER stock_returns_in_at AFTER UPDATE OF quantity ON stock_returns
+  FOR EACH ROW WHEN NEW.quantity IS NOT OLD.quantity
+  BEGIN
+    UPDATE stock_returns SET in_at = CASE
+      WHEN NEW.quantity <= 0 THEN NULL
+      WHEN OLD.quantity <= 0 OR OLD.in_at IS NULL THEN datetime('now','localtime')
+      ELSE OLD.in_at
+    END WHERE id = NEW.id;
+  END;
+`);
 addCol("order_items","return_condition","TEXT DEFAULT ''");
 addCol("models","weight","REAL DEFAULT 0.3");
 addCol("kits","weight","REAL DEFAULT 0.5");
