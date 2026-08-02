@@ -1358,6 +1358,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
   // dropshipper, so it's left blank at creation time.
   const ownTtn = !!req.body.own_ttn;
   const dropId = req.user.role === "admin" ? (req.body.dropshipper_id || req.user.id) : req.user.id;
+  const isAdminOrder = req.user.role === "admin";
   // Get dropshipper discount + whether they may settle orders from balance.
   const drop = db.prepare("SELECT discount_percent,discount_fixed,balance_enabled FROM users WHERE id=?").get(dropId);
   const dropDisc = loadDropDiscounts(dropId);
@@ -1417,8 +1418,10 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         const v = db.prepare("SELECT v.*,bp.drop_price as bp_drop,m.drop_price as m_drop,m.weight as m_weight FROM variations v JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE v.id=?").get(item.variation_id);
         if (!v) throw new Error("Варіація не знайдена");
 
-        // Check stock if negative orders not allowed
-        if (!v.allow_negative_order) {
+        // Адмін оформлює замовлення завжди, навіть коли товару на складі вже
+        // немає: він бачить реальний стан і свідомо йде в мінус. Обмеження
+        // allow_negative_order стосується тільки дропера.
+        if (!isAdminOrder && !v.allow_negative_order) {
           const stock = db.prepare("SELECT quantity FROM stock_base WHERE base_product_id=? AND size_id=?").get(v.base_product_id, item.size_id);
           if (!stock || stock.quantity < qty) throw new Error(v.name + " — недостатньо на складі");
         }
