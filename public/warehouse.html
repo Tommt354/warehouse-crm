@@ -87,6 +87,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center"><button class="stab" id="wc-" onclick="whCh='';whOrdPage=0;loadOrders()">Всі</button><button class="stab" id="wc-hot" onclick="whCh='hot';whOrdPage=0;loadOrders()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="stab" id="wc-ads" onclick="whCh='ads';whOrdPage=0;loadOrders()"><i data-icon="megaphone" data-size="13"></i> ADS</button><input type="date" id="wh-df" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="wh-dt" style="padding:5px 8px;font-size:10px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="whOrdPage=0;loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('wh-df').value='';document.getElementById('wh-dt').value='';whOrdPage=0;loadOrders()"><i data-icon="x" data-size="11"></i></button></div>
     <div class="stabs" id="wh-stabs"></div>
     <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center"><input id="wh-ttn" placeholder="Пошук по ТТН..." style="flex:1;padding:6px 10px;font-size:11px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;outline:0" oninput="whOrdPage=0;loadOrders()"><button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="trackAll()"><i data-icon="refreshCw" data-size="13"></i> Оновити статуси НП</button></div>
+    <div id="wh-search-note" style="display:none;font-size:10px;color:var(--warn);margin:-6px 0 8px">Пошук по ТТН шукає в усіх статусах, не лише у вибраній вкладці</div>
     <div style="margin-bottom:8px;font-size:11px;color:var(--td);display:flex;align-items:center;gap:6px">На сторінці: <select id="wh-ord-pagesize" onchange="whOrdPage=0;loadOrders()" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><option value="20">20</option><option value="40">40</option><option value="50" selected>50</option></select></div>
     <div id="wh-orders"></div>
     <div class="pagi" id="wh-ord-pagi"></div>
@@ -255,8 +256,11 @@ function renderStabs(){
   document.getElementById("wh-stabs").innerHTML=WHS.map(s=>'<div class="stab'+(s.key===whStatus?' on':'')+'" onclick="whStatus=\''+s.key+'\';whOrdPage=0;renderStabs();loadOrders()">'+s.label+'</div>').join("");
 }
 function renderOrderCard(o){
-  // Пакувальник Готового товару має власний потік і зібраних не бачить.
-  if(o.status==="collected"&&ME.worker_role!=="packer_ready"&&!whExpanded[o.id])return renderCollectedCard(o);
+  // Зібране замовлення виглядає як звичайна картка, лише приглушена — щоб
+  // пакувальник з першого погляду бачив, що воно вже роздане, але міг
+  // прочитати склад і ТТН без зайвих кліків. Пакувальника Готового товару
+  // це не стосується: у нього власний потік.
+  var dimmed=o.status==="collected"&&ME.worker_role!=="packer_ready";
   var isActive=o.status==="new"||o.status==="in_progress";
   // "Taken into work": show item check boxes and expand the order. Regular
   // packers take an order (new→in_progress) via the footer button; packer_ready
@@ -264,7 +268,7 @@ function renderOrderCard(o){
   var taken=o.status==="in_progress"||ME.worker_role==="packer_ready";
   // Позиції, покриті з повернень, не рахуються відсутніми — річ уже в руках.
   var hasOOS=isActive&&o.items.some(function(i){return i.current_stock<=0&&!i.covered_from_returns});
-  var html='<div class="ocard'+(hasOOS?' out-of-stock':'')+'">';
+  var html='<div class="ocard'+(hasOOS?' out-of-stock':'')+'"'+(dimmed?' style="opacity:.45"':'')+'>';
   html+='<div class="ocard-header"><div>';
   var totalItems=o.items.reduce(function(s,i){return s+i.quantity},0);
   html+='<div class="ocard-id"><span style="font-size:18px">#'+o.id+'</span> <span class="tag '+(SC[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>'+(o.items.length>1?' <span class="tag" style="background:var(--accbg);color:var(--acc)">'+totalItems+' шт</span>':'')+(o.drop_channel==="hot"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(124,134,255,.1);color:#7c86ff">ADS</span>':'')+(hasOOS?' <span class="tag tag-bad">'+Icon('alertTriangle',11)+' Немає</span>':'')+'</div>';
@@ -350,33 +354,21 @@ function whCheck(el){
   else{el.style.background="var(--green)";el.style.borderColor="var(--green)";el.innerHTML='<span style="color:#052018;display:flex">'+Icon("check",20)+'</span>';if(row)row.style.opacity=".5";}
 }
 
-// Зібране замовлення пакувальник бачить згорнутим і приглушеним, щоб не роздати
-// одне й те саме двічі. whExpanded тримає ті, які він сам розгорнув кнопкою
-// «Детальніше» — скидається при перезавантаженні списку.
-var whExpanded={};
-function expandCollected(id){whExpanded[id]=1;refreshOrderCard(id)}
-function renderCollectedCard(o){
-  var totalItems=o.items.reduce(function(s,i){return s+i.quantity},0);
-  return '<div class="ocard" style="opacity:.45">'+
-    '<div class="ocard-header"><div>'+
-    '<div class="ocard-id"><span style="font-size:18px">#'+o.id+'</span> <span class="tag tag-coll">'+Icon('check',11)+' Зібрано</span> <span class="tag" style="background:var(--accbg);color:var(--acc)">'+totalItems+' шт</span></div>'+
-    '<div class="cl-name">'+esc(o.client_name)+'</div>'+
-    '<div class="cl-addr">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>'+
-    (o.ttn?'<div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--warn);margin-top:3px">'+esc(o.ttn)+'</div>':'')+
-    '</div><div class="ocard-meta"><div style="color:var(--blue)">'+esc(o.drop_name)+'</div><div>'+(o.created_at?o.created_at.slice(0,16):"")+'</div></div></div>'+
-    '<div class="ocard-footer" style="justify-content:flex-end"><button class="btn btn-sm" onclick="expandCollected('+o.id+')">'+Icon('eye',13)+' Детальніше</button></div>'+
-  '</div>';
-}
-
 var whLoadedOrders=[];
 async function loadOrders(silent){if(!silent)document.getElementById("wh-orders").innerHTML='<div class="inline-load" style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   renderStabs();
-  whExpanded={};
   document.querySelectorAll("[id^=rf-]").forEach(function(b){b.classList.toggle("on",b.id===("rf-"+(whReady||"all")))});
   document.querySelectorAll("[id^=wc-]").forEach(function(b){b.classList.toggle("on",b.id==="wc-"+whCh)});
   var df=document.getElementById("wh-df").value,dt=document.getElementById("wh-dt").value;
   var whPp=parseInt(document.getElementById("wh-ord-pagesize")?.value)||50;
-  var r;try{r=await api("/api/orders?page="+((whOrdPage||0)+1)+"&page_size="+whPp+(whStatus?"&status="+whStatus:"")+(whReady?"&ready="+whReady:"")+(whCh?"&channel="+whCh:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(document.getElementById("wh-ttn").value?"&ttn_search="+document.getElementById("wh-ttn").value:""))}catch(e){return}
+  // Пошук по ТТН шукає посилку в усіх статусах, а не лише у відкритій вкладці:
+  // коли пакувальник вбиває номер, він хоче знайти саме цю посилку, хай де вона
+  // зараз — інакше ТТН зібраного замовлення "не знаходився" з вкладки "Нові".
+  var ttnQ=document.getElementById("wh-ttn").value.trim();
+  var searching=!!ttnQ;
+  var statusQ=(searching||!whStatus)?"":("&status="+whStatus);
+  var r;try{r=await api("/api/orders?page="+((whOrdPage||0)+1)+"&page_size="+whPp+statusQ+(whReady?"&ready="+whReady:"")+(whCh?"&channel="+whCh:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(searching?"&ttn_search="+encodeURIComponent(ttnQ):""))}catch(e){return}
+  document.getElementById("wh-search-note").style.display=searching&&whStatus?"":"none";
   var orders=r.orders;
   var el=document.getElementById("wh-orders");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('packageOpen',15)+'</span>Немає замовлень</div>';document.getElementById("wh-ord-pagi").innerHTML="";whLoadedOrders=[];return}
