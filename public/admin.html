@@ -357,6 +357,7 @@
   <button class="stab" onclick="slFilter='swap';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="refreshCw" data-size="13"></i> Заміна</button>
   <button class="stab" onclick="slFilter='cut_in';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="scissors" data-size="13"></i> Крій +</button>
   <button class="stab" onclick="slFilter='cut_out';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="scissors" data-size="13"></i> Крій →</button>
+  <button class="stab" onclick="slFilter='defect';loadStockLog();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="alertTriangle" data-size="13"></i> Брак</button>
 </div>
 <div id="stocklog-list"></div>
 </div>
@@ -2547,8 +2548,8 @@ async function loadAccounting(){
 var slFilter='';
 async function loadStockLog(){
   try{const{logs}=await api("/api/stock-log"+(slFilter?"?type="+slFilter:""));
-  var tl={incoming:Icon('download',13)+" Прихід",writeoff:Icon('upload',13)+" Списання",swap:Icon('refreshCw',13)+" Заміна",cut_in:Icon('scissors',13)+" Крій +",cut_out:Icon('scissors',13)+" Крій →",recount:Icon('clipboardList',13)+" Переоблік"};
-  var tc={incoming:"var(--acc)",writeoff:"var(--red)",swap:"var(--warn)",cut_in:"var(--blue)",cut_out:"var(--warn)",recount:"var(--acc)"};
+  var tl={incoming:Icon('download',13)+" Прихід",writeoff:Icon('upload',13)+" Списання",swap:Icon('refreshCw',13)+" Заміна",cut_in:Icon('scissors',13)+" Крій +",cut_out:Icon('scissors',13)+" Крій →",recount:Icon('clipboardList',13)+" Переоблік",defect:Icon('alertTriangle',13)+" Брак"};
+  var tc={incoming:"var(--acc)",writeoff:"var(--red)",swap:"var(--warn)",cut_in:"var(--blue)",cut_out:"var(--warn)",recount:"var(--acc)",defect:"var(--red)"};
   document.getElementById("stocklog-list").innerHTML=logs.length?'<table class="tbl"><tr><th>Дата</th><th>Тип</th><th>Товар</th><th>Розмір</th><th>Кіл.</th><th>Примітка</th><th>Хто</th></tr>'+logs.map(function(l){return '<tr><td style="font-size:10px;color:var(--td);white-space:nowrap">'+(l.created_at?.slice(0,16)||"")+'</td><td style="color:'+( tc[l.type]||"var(--t)")+';font-weight:600;font-size:11px">'+(tl[l.type]||l.type)+'</td><td style="color:var(--th);font-size:11px">'+esc(l.product_name||"—")+'</td><td style="color:var(--acc);font-weight:600">'+esc(l.size_name||"—")+'</td><td style="font-family:JetBrains Mono,monospace;font-weight:700;color:'+(l.type==="writeoff"?"var(--red)":"var(--th)")+'">'+l.quantity+'</td><td style="font-size:10px;color:var(--td)">'+esc(l.note||"")+'</td><td style="font-size:10px;color:var(--blue)">'+esc(l.user_name||"")+'</td></tr>'}).join("")+'</table>':'<div class="empty"><span class="ic">'+Icon('barChart3',40)+'</span>Немає записів</div>'}catch(e){}
 }
 

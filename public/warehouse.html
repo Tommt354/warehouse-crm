@@ -97,13 +97,14 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div id="ret-result"></div>
   </div>
   <div id="v-stock" style="display:none">
-    <div class="stabs"><button class="stab on" id="wst-base" onclick="showWhStockTab('base')"><i data-icon="package" data-size="13"></i> База</button><button class="stab" id="wst-ret" onclick="showWhStockTab('ret')"><i data-icon="undo2" data-size="13"></i> Повернення</button></div>
+    <div class="stabs"><button class="stab on" id="wst-base" onclick="showWhStockTab('base')"><i data-icon="package" data-size="13"></i> База</button><button class="stab" id="wst-ret" onclick="showWhStockTab('ret')"><i data-icon="undo2" data-size="13"></i> Повернення</button><button class="stab" id="wst-def" onclick="showWhStockTab('def')"><i data-icon="alertTriangle" data-size="13"></i> Брак</button></div>
     <div id="wh-stock-base-view">
     <div class="acts" style="margin-bottom:4px"><button class="btn svm-btn" data-mode="alloc" onclick="setStockViewMode('alloc')">Списана</button><button class="btn on svm-btn" data-mode="fact" onclick="setStockViewMode('fact')">Фактична</button></div>
     <div class="acts">
       <button class="btn btn-a" onclick="openWhInc()"><i data-icon="download" data-size="14"></i> Прихід</button>
       <button class="btn btn-d" onclick="openWhWO()"><i data-icon="upload" data-size="14"></i> Списати</button>
       <button class="btn btn-w" onclick="openWhSwap()"><i data-icon="refreshCw" data-size="14"></i> Заміна розміру</button>
+      <button class="btn btn-d" onclick="openWhDefect()"><i data-icon="alertTriangle" data-size="14"></i> Додати брак</button>
     </div>
     <div id="wh-stock-bread" style="margin-bottom:8px"></div>
     <div class="cards" id="wh-stock-cats" style="margin-bottom:10px"></div>
@@ -122,6 +123,11 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
       </div>
       <div id="wh-ret-summary" style="margin-bottom:10px"></div>
       <div id="wh-ret-stock"></div>
+    </div>
+    <div id="wh-stock-def-view" style="display:none">
+      <input id="wh-def-search" placeholder="Пошук по браку..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px" oninput="loadWhDefectStock()">
+      <div id="wh-def-summary" style="margin-bottom:10px"></div>
+      <div id="wh-def-stock"></div>
     </div>
   </div>
   <div id="v-salary" style="display:none">
@@ -165,6 +171,21 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
 <div id="whw-sz"></div>
 <div class="fld"><label>Причина</label><input id="whw-note"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-d" onclick="saveWhWO()"><i data-icon="upload" data-size="14"></i> Списати</button><button class="btn" onclick="clM('wh-wo-modal')">Скасувати</button></div>
+</div></div>
+
+<div class="modal-bg" id="wh-def-modal"><div class="modal"><h3><i data-icon="alertTriangle" data-size="16"></i> Додати брак</h3>
+<div class="stabs"><button class="stab on" id="wdf-src-base" onclick="setDefectSource('base')"><i data-icon="package" data-size="13"></i> З бази</button><button class="stab" id="wdf-src-ret" onclick="setDefectSource('returns')"><i data-icon="undo2" data-size="13"></i> З повернень</button></div>
+<div id="wdf-base-block">
+  <div class="fld"><label>Товар</label><input type="hidden" id="wdf-bp"><button type="button" class="btn" id="wdf-bp-btn" style="width:100%;justify-content:flex-start;text-align:left" onclick="openWhBpPicker(function(p){selectWhBpFor('wdf',p)})">— Оберіть товар —</button></div>
+  <div id="wdf-sz"></div>
+</div>
+<div id="wdf-ret-block" style="display:none">
+  <input id="wdf-ret-search" placeholder="Пошук по поверненнях..." oninput="loadDefectReturns()" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
+  <div id="wdf-ret-list" style="max-height:300px;overflow-y:auto"></div>
+</div>
+<div class="fld"><label>Причина</label><input id="wdf-note" placeholder="напр. дірка, пляма"></div>
+<div id="wdf-msg"></div>
+<div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-d" onclick="saveWhDefect()"><i data-icon="alertTriangle" data-size="14"></i> У брак</button><button class="btn" onclick="clM('wh-def-modal')">Скасувати</button></div>
 </div></div>
 
 <div class="modal-bg" id="wh-swap-modal"><div class="modal"><h3><i data-icon="refreshCw" data-size="16"></i> Заміна розміру</h3>
@@ -563,11 +584,42 @@ async function loadWhStock(){
 // ── СКЛАД ПОВЕРНЕНЬ ───────────────────────────────────────────────
 var whRetAge="";
 function showWhStockTab(t){
-  document.getElementById("wst-base").classList.toggle("on",t==="base");
-  document.getElementById("wst-ret").classList.toggle("on",t==="ret");
-  document.getElementById("wh-stock-base-view").style.display=t==="base"?"":"none";
-  document.getElementById("wh-stock-ret-view").style.display=t==="ret"?"":"none";
+  ["base","ret","def"].forEach(function(k){
+    document.getElementById("wst-"+k).classList.toggle("on",t===k);
+    document.getElementById("wh-stock-"+k+"-view").style.display=t===k?"":"none";
+  });
   if(t==="ret")loadWhReturns();
+  if(t==="def")loadWhDefectStock();
+}
+async function loadWhDefectStock(){
+  var el=document.getElementById("wh-def-stock");if(!el)return;
+  var q=document.getElementById("wh-def-search").value.trim();
+  try{
+    var r=await api("/api/stock-defect"+(q?"?search="+encodeURIComponent(q):""));
+    document.getElementById("wh-def-summary").innerHTML=
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<div class="sc" style="flex:1;min-width:110px;padding:12px"><div class="sl">Позицій</div><div class="sv" style="font-size:20px">'+r.items.length+'</div></div>'+
+      '<div class="sc" style="flex:1;min-width:110px;padding:12px"><div class="sl">Всього штук</div><div class="sv" style="font-size:20px">'+r.total_qty+'</div></div>'+
+      '<div class="sc" style="flex:1;min-width:130px;padding:12px"><div class="sl">Собівартість</div><div class="sv" style="font-size:20px;color:var(--red)">'+r.total_cost.toFixed(0)+'₴</div></div>'+
+      '</div>';
+    if(!r.items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('alertTriangle',30)+'</span>'+(q?"Нічого не знайдено":"Браку немає")+'</div>';return}
+    el.innerHTML=r.items.map(function(i){
+      var ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
+      return '<div style="display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid rgba(239,68,68,.25);border-radius:12px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="width:64px;height:64px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:grid;place-items:center;height:100%;color:var(--td)">'+Icon('camera',20)+'</div>')+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(i.var_name||i.base_name)+'</div>'+
+          (i.print_name?'<div style="font-size:10px;color:var(--warn)">'+Icon("image",10)+' '+esc(i.print_name)+'</div>':'')+
+          '<div style="font-size:11px;color:var(--td);margin-top:3px">'+(i.source==="returns"?"з повернень":"з бази")+' · '+retAgeLabel(i.days_in_stock,i.in_at)+'</div>'+
+        '</div>'+
+        '<div style="text-align:right;flex-shrink:0">'+
+          '<div style="font-size:18px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div>'+
+          '<div style="font-size:13px;color:var(--th);font-family:JetBrains Mono,monospace">'+i.quantity+' шт</div>'+
+          '<div style="font-size:11px;color:var(--red);font-family:JetBrains Mono,monospace">'+(i.quantity*(i.cost_price||0)).toFixed(0)+'₴</div>'+
+        '</div>'+
+      '</div>';
+    }).join("");
+  }catch(e){}
 }
 function setWhRetAge(a){
   whRetAge=a;
@@ -670,6 +722,79 @@ function selectWhBpFor(prefix,p){
   if(prefix==="whi"){whiSelectedP=p;loadWhIncSz()}
   else if(prefix==="whw"){whwSelectedP=p;loadWhWoSz()}
   else if(prefix==="whs"){whsSelectedP=p;loadWhSwSz()}
+  else if(prefix==="wdf"){wdfSelectedP=p;loadWhDefectSz()}
+}
+
+// ── БРАК ──────────────────────────────────────────────────────────
+// Брак не зникає: він знімається з бази або з полиці повернень і лягає на
+// окрему полицю браку (див. POST /api/stock/defect).
+var wdfSelectedP=null,wdfSource="base",wdfRetPick=null;
+function openWhDefect(){
+  wdfSelectedP=null;wdfRetPick=null;
+  document.getElementById("wdf-bp").value="";
+  document.getElementById("wdf-bp-btn").textContent="— Оберіть товар —";
+  document.getElementById("wdf-sz").innerHTML="";
+  document.getElementById("wdf-note").value="";
+  document.getElementById("wdf-msg").innerHTML="";
+  setDefectSource("base");
+  opM("wh-def-modal");
+}
+function setDefectSource(s){
+  wdfSource=s;wdfRetPick=null;
+  document.getElementById("wdf-src-base").classList.toggle("on",s==="base");
+  document.getElementById("wdf-src-ret").classList.toggle("on",s==="returns");
+  document.getElementById("wdf-base-block").style.display=s==="base"?"":"none";
+  document.getElementById("wdf-ret-block").style.display=s==="returns"?"":"none";
+  document.getElementById("wdf-msg").innerHTML="";
+  if(s==="returns")loadDefectReturns();
+}
+function loadWhDefectSz(){
+  var p=wdfSelectedP;if(!p){document.getElementById("wdf-sz").innerHTML="";return}
+  document.getElementById("wdf-sz").innerHTML=whbppSizes.filter(function(s){return p.stock[s.id]!==undefined}).map(function(s){
+    return '<div class="fld-row" style="margin-bottom:4px"><div style="padding:6px 0;font-size:11px">'+s.name+' (на складі '+(p.stock[s.id]||0)+')</div><div><input type="number" data-sid="'+s.id+'" value="0" min="0" max="'+(p.stock[s.id]||0)+'" style="padding:6px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;width:70px"></div></div>';
+  }).join("");
+}
+async function loadDefectReturns(){
+  var q=document.getElementById("wdf-ret-search").value.trim();
+  try{
+    var r=await api("/api/stock-returns"+(q?"?search="+encodeURIComponent(q):""));
+    var el=document.getElementById("wdf-ret-list");
+    if(!r.items.length){el.innerHTML='<div style="color:var(--td);font-size:12px;padding:10px">Нічого не знайдено</div>';return}
+    el.innerHTML=r.items.map(function(i){
+      var sel=wdfRetPick&&wdfRetPick.variation_id===i.variation_id&&wdfRetPick.size_id===i.size_id;
+      return '<div onclick="pickDefectReturn('+i.variation_id+','+i.size_id+','+i.quantity+')" style="display:flex;gap:10px;align-items:center;padding:8px 10px;margin-bottom:6px;border-radius:10px;cursor:pointer;border:1px solid '+(sel?'var(--acc)':'var(--brd)')+';background:'+(sel?'var(--accbg)':'var(--card)')+'">'+
+        '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--th)">'+esc(i.var_name)+'</div>'+(i.print_name?'<div style="font-size:10px;color:var(--warn)">'+esc(i.print_name)+'</div>':'')+'</div>'+
+        '<div style="font-size:15px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div>'+
+        '<div style="font-size:12px;color:var(--td);font-family:JetBrains Mono,monospace">'+i.quantity+' шт</div>'+
+      '</div>';
+    }).join("")+
+    (wdfRetPick?'<div class="fld"><label>Скільки в брак (є '+wdfRetPick.max+')</label><input type="number" id="wdf-ret-qty" value="1" min="1" max="'+wdfRetPick.max+'"></div>':'');
+  }catch(e){}
+}
+function pickDefectReturn(vid,sid,max){
+  wdfRetPick={variation_id:vid,size_id:sid,max:max};
+  loadDefectReturns();
+}
+async function saveWhDefect(){
+  var note=document.getElementById("wdf-note").value.trim();
+  var msg=document.getElementById("wdf-msg");
+  try{
+    if(wdfSource==="returns"){
+      if(!wdfRetPick){msg.innerHTML='<div class="msg msg-err">Оберіть позицію з повернень</div>';return}
+      var q=parseInt(document.getElementById("wdf-ret-qty")?.value)||0;
+      if(q<=0){msg.innerHTML='<div class="msg msg-err">Вкажіть кількість</div>';return}
+      await api("/api/stock/defect",{method:"POST",body:JSON.stringify({source:"returns",variation_id:wdfRetPick.variation_id,size_id:wdfRetPick.size_id,quantity:q,note:note})});
+    }else{
+      var bp=parseInt(document.getElementById("wdf-bp").value)||0;
+      if(!bp){msg.innerHTML='<div class="msg msg-err">Оберіть товар</div>';return}
+      var rows=[].slice.call(document.querySelectorAll("#wdf-sz input[data-sid]")).filter(function(el){return (parseInt(el.value)||0)>0});
+      if(!rows.length){msg.innerHTML='<div class="msg msg-err">Вкажіть кількість хоча б для одного розміру</div>';return}
+      for(var i=0;i<rows.length;i++){
+        await api("/api/stock/defect",{method:"POST",body:JSON.stringify({source:"base",base_product_id:bp,size_id:parseInt(rows[i].dataset.sid),quantity:parseInt(rows[i].value),note:note})});
+      }
+    }
+    clM("wh-def-modal");loadWhStock();
+  }catch(e){msg.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
 }
 
 // Incoming

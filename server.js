@@ -1057,6 +1057,71 @@ app.post("/api/stock/write-off-bulk", authMiddleware, requireRole("admin","wareh
   res.json({ ok: true });
 });
 
+// ── БРАК ──────────────────────────────────────────────────────────
+// Брак не просто списується, а перекладається на окрему полицю (stock_defect),
+// щоб було видно, скільки його накопичилось і на яку собівартість.
+// source: "base" — знімаємо з бази (обидва лічильники, як звичайне списання);
+//         "returns" — знімаємо з полиці повернень (там облік по варіації).
+app.post("/api/stock/defect", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const { source, base_product_id, variation_id, size_id, quantity, note } = req.body;
+  const qty = parseInt(quantity);
+  if (!size_id || !qty || qty <= 0) return res.status(400).json({ error: "Вкажіть розмір і кількість" });
+  const src = source === "returns" ? "returns" : "base";
+
+  let bpId = parseInt(base_product_id) || 0;
+  let varId = parseInt(variation_id) || 0;
+
+  if (src === "returns") {
+    if (!varId) return res.status(400).json({ error: "Не вказано товар" });
+    const ret = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(varId, size_id);
+    if (!ret || ret.quantity < qty) return res.status(400).json({ error: "На складі повернень стільки немає" });
+    const v = db.prepare("SELECT base_product_id FROM variations WHERE id=?").get(varId);
+    if (!v) return res.status(404).json({ error: "Товар не знайдено" });
+    bpId = v.base_product_id;
+  } else {
+    if (!bpId) return res.status(400).json({ error: "Не вказано товар" });
+  }
+
+  db.transaction(() => {
+    if (src === "returns") {
+      db.prepare("UPDATE stock_returns SET quantity=quantity-? WHERE variation_id=? AND size_id=?").run(qty, varId, size_id);
+    } else {
+      db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(qty, qty, bpId, size_id);
+    }
+    db.prepare("INSERT INTO stock_defect(base_product_id,variation_id,size_id,quantity,source)VALUES(?,?,?,?,?) ON CONFLICT(base_product_id,variation_id,size_id) DO UPDATE SET quantity=quantity+excluded.quantity")
+      .run(bpId, varId, size_id, qty, src);
+    db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('defect',?,?,?,?,?,?)")
+      .run(bpId, varId || null, size_id, qty, "Брак" + (src === "returns" ? " (з повернень)" : " (з бази)") + (note ? ": " + note : ""), req.user.id);
+  })();
+  res.json({ ok: true });
+});
+
+// Склад браку — той самий набір даних, що й склад повернень: скільки лежить,
+// на яку собівартість, з пошуком.
+app.get("/api/stock-defect", authMiddleware, (req, res) => {
+  const { search } = req.query;
+  const items = db.prepare(`SELECT sd.*, s.name as size_name, bp.name as base_name, bp.photo as bp_photo,
+    v.name as var_name, v.photo as var_photo, p.name as print_name, p.photo as print_photo, m.name as model_name,
+    COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0) as cost_price,
+    CAST(julianday('now','localtime') - julianday(sd.in_at) AS INTEGER) as days_in_stock
+    FROM stock_defect sd
+    JOIN base_products bp ON sd.base_product_id=bp.id
+    JOIN models m ON bp.model_id=m.id
+    JOIN sizes s ON sd.size_id=s.id
+    LEFT JOIN variations v ON sd.variation_id=v.id
+    LEFT JOIN prints p ON v.print_id=p.id
+    WHERE sd.quantity > 0
+    ORDER BY sd.in_at DESC`).all();
+  const q = (search || "").trim().toLowerCase();
+  const filtered = q ? items.filter(i => [i.var_name, i.base_name, i.print_name, i.model_name, i.size_name]
+    .filter(Boolean).join(" ").toLowerCase().includes(q)) : items;
+  res.json({
+    items: filtered,
+    total_qty: filtered.reduce((s, i) => s + i.quantity, 0),
+    total_cost: Math.round(filtered.reduce((s, i) => s + i.quantity * (i.cost_price || 0), 0) * 100) / 100
+  });
+});
+
 // Swap size (заміна розміру)
 app.post("/api/stock/swap-size", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { base_product_id, from_size_id, to_size_id, quantity } = req.body;

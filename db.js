@@ -256,6 +256,24 @@ db.exec(`
     FOREIGN KEY(order_id) REFERENCES orders(id)
   );
 
+  -- Полиця браку. Товар сюди не "зникає" зі списанням, а лежить окремо, щоб
+  -- було видно скільки браку накопичилось і на яку собівартість.
+  -- variation_id = 0 означає "прийшло з бази" (там облік по базовому товару,
+  -- без варіації); нуль, а не NULL, щоб працював UNIQUE — у SQLite NULL-и в
+  -- унікальному індексі вважаються різними.
+  CREATE TABLE IF NOT EXISTS stock_defect (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    base_product_id INTEGER NOT NULL,
+    variation_id INTEGER NOT NULL DEFAULT 0,
+    size_id INTEGER NOT NULL,
+    quantity INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'base',
+    in_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(base_product_id, variation_id, size_id),
+    FOREIGN KEY (base_product_id) REFERENCES base_products(id) ON DELETE CASCADE,
+    FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS stock_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     type TEXT NOT NULL,
