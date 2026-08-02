@@ -471,6 +471,21 @@ db.exec(`
     finished_at TEXT DEFAULT NULL
   );
 
+  -- Позиції кожного переобліку: що було на полиці, що порахували, різниця.
+  -- Сесія фіксує "коли і хто", а ці рядки — "що саме змінилось", щоб історію
+  -- можна було відкрити й побачити недостачі та перестачі поіменно.
+  CREATE TABLE IF NOT EXISTS recount_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    base_product_id INTEGER NOT NULL,
+    size_id INTEGER NOT NULL,
+    before_qty INTEGER DEFAULT 0,
+    after_qty INTEGER DEFAULT 0,
+    diff INTEGER DEFAULT 0,
+    ordered_during INTEGER DEFAULT 0,
+    FOREIGN KEY (session_id) REFERENCES recount_sessions(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,

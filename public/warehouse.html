@@ -97,7 +97,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div id="ret-result"></div>
   </div>
   <div id="v-stock" style="display:none">
-    <div class="stabs"><button class="stab on" id="wst-base" onclick="showWhStockTab('base')"><i data-icon="package" data-size="13"></i> База</button><button class="stab" id="wst-ret" onclick="showWhStockTab('ret')"><i data-icon="undo2" data-size="13"></i> Повернення</button><button class="stab" id="wst-def" onclick="showWhStockTab('def')"><i data-icon="alertTriangle" data-size="13"></i> Брак</button></div>
+    <div class="stabs"><button class="stab on" id="wst-base" onclick="showWhStockTab('base')"><i data-icon="package" data-size="13"></i> База</button><button class="stab" id="wst-ret" onclick="showWhStockTab('ret')"><i data-icon="undo2" data-size="13"></i> Повернення</button><button class="stab" id="wst-def" onclick="showWhStockTab('def')"><i data-icon="alertTriangle" data-size="13"></i> Брак</button><button class="stab" id="wst-rc" onclick="showWhStockTab('rc')"><i data-icon="clipboardList" data-size="13"></i> Переоблік</button></div>
     <div id="wh-stock-base-view">
     <div class="acts" style="margin-bottom:4px"><button class="btn svm-btn" data-mode="alloc" onclick="setStockViewMode('alloc')">Списана</button><button class="btn on svm-btn" data-mode="fact" onclick="setStockViewMode('fact')">Фактична</button></div>
     <div class="acts">
@@ -123,6 +123,17 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
       </div>
       <div id="wh-ret-summary" style="margin-bottom:10px"></div>
       <div id="wh-ret-stock"></div>
+    </div>
+    <div id="wh-stock-rc-view" style="display:none">
+      <div class="stabs"><button class="stab on" id="wrc-tab-do" onclick="showRcTab('do')"><i data-icon="clipboardList" data-size="13"></i> Проводити</button><button class="stab" id="wrc-tab-hist" onclick="showRcTab('hist')"><i data-icon="fileText" data-size="13"></i> Історія</button></div>
+      <div id="wrc-do">
+        <div id="wrc-session-bar"></div>
+        <div id="wrc-bread" style="margin-bottom:8px"></div>
+        <div class="cards" id="wrc-cats" style="margin-bottom:10px"></div>
+        <div id="wrc-list"></div>
+        <div id="wrc-save-bar"></div>
+      </div>
+      <div id="wrc-hist" style="display:none"><div id="wrc-hist-list"></div></div>
     </div>
     <div id="wh-stock-def-view" style="display:none">
       <input id="wh-def-search" placeholder="Пошук по браку..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px" oninput="loadWhDefectStock()">
@@ -584,12 +595,150 @@ async function loadWhStock(){
 // ── СКЛАД ПОВЕРНЕНЬ ───────────────────────────────────────────────
 var whRetAge="";
 function showWhStockTab(t){
-  ["base","ret","def"].forEach(function(k){
+  ["base","ret","def","rc"].forEach(function(k){
     document.getElementById("wst-"+k).classList.toggle("on",t===k);
     document.getElementById("wh-stock-"+k+"-view").style.display=t===k?"":"none";
   });
   if(t==="ret")loadWhReturns();
   if(t==="def")loadWhDefectStock();
+  if(t==="rc")loadWhRecount();
+}
+
+// ── ПЕРЕОБЛІК ─────────────────────────────────────────────────────
+// Переоблік виправляє фактичний залишок на полиці; списана кількість
+// зсувається на ту саму різницю, щоб не втратити те, що вже зарезервували
+// замовлення. Старт сесії "заморожує" категорію: замовлення під час
+// переобліку не зменшують списану кількість, все зводиться при збереженні.
+var wrcCatP=null,wrcProducts=[],wrcSizes=[],wrcChanges={},wrcSession=null;
+function showRcTab(t){
+  document.getElementById("wrc-tab-do").classList.toggle("on",t==="do");
+  document.getElementById("wrc-tab-hist").classList.toggle("on",t==="hist");
+  document.getElementById("wrc-do").style.display=t==="do"?"":"none";
+  document.getElementById("wrc-hist").style.display=t==="hist"?"":"none";
+  if(t==="hist")loadWhRecountHistory();
+}
+async function loadWhRecount(){
+  var cd=await api("/api/categories?parent_id="+(wrcCatP||"")+"&scope=base");
+  var bc=catBackBtn(cd.breadcrumb,"wrcCatP="+catParentId(cd.breadcrumb)+";loadWhRecount()");
+  bc+='<div class="bread"><a onclick="wrcCatP=null;loadWhRecount()">'+Icon('package',13)+' Всі товари</a>';
+  cd.breadcrumb.forEach(function(b){bc+='<span style="color:var(--td);margin:0 3px">›</span><a onclick="wrcCatP='+b.id+';loadWhRecount()">'+esc(b.name)+'</a>'});
+  bc+='</div>';
+  document.getElementById("wrc-bread").innerHTML=bc;
+  document.getElementById("wrc-cats").innerHTML=cd.categories.map(function(c){
+    return '<div class="crd" onclick="wrcCatP='+c.id+';loadWhRecount()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',26))+'</div><div class="crd-body">'+esc(c.name)+'</div></div>';
+  }).join("");
+  try{var s=await api("/api/recount/active-session?category_id="+(wrcCatP||""));wrcSession=s.session}catch(e){wrcSession=null}
+  renderRcSessionBar();
+  var d=await api("/api/base-products"+(wrcCatP?"?category_id="+wrcCatP:""));
+  wrcProducts=d.products;wrcSizes=d.sizes;
+  renderRcList();
+}
+function renderRcSessionBar(){
+  var el=document.getElementById("wrc-session-bar");
+  if(wrcSession){
+    el.innerHTML='<div class="msg msg-ok" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px"><span>'+Icon('clipboardList',13)+' Переоблік триває з '+esc((wrcSession.started_at||"").slice(0,16))+'</span><button class="btn btn-sm" onclick="cancelWhRecount()">'+Icon('x',12)+' Скасувати</button></div>';
+  }else{
+    el.innerHTML='<div style="margin-bottom:8px"><button class="btn btn-a" onclick="startWhRecount()">'+Icon('clipboardList',14)+' Почати переоблік'+(wrcCatP?' цієї категорії':'')+'</button><div style="font-size:10px;color:var(--td);margin-top:4px">Можна рахувати й без старту — тоді просто збережеться результат. Старт потрібен, якщо під час перерахунку йдуть замовлення.</div></div>';
+  }
+}
+async function startWhRecount(){
+  try{await api("/api/recount/start",{method:"POST",body:JSON.stringify({category_id:wrcCatP})});loadWhRecount()}
+  catch(e){alert(e.message)}
+}
+async function cancelWhRecount(){
+  if(!wrcSession||!confirm("Скасувати переоблік? Кількості не зміняться."))return;
+  try{await api("/api/recount/cancel",{method:"POST",body:JSON.stringify({session_id:wrcSession.id})});wrcChanges={};loadWhRecount()}catch(e){alert(e.message)}
+}
+function renderRcList(){
+  var el=document.getElementById("wrc-list");
+  if(!wrcProducts.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('package',30)+'</span>Немає товарів</div>';renderRcSave();return}
+  el.innerHTML=wrcProducts.map(function(p){
+    var sizes=wrcSizes.filter(function(s){return p.stock[s.id]!==undefined});
+    if(!sizes.length)return "";
+    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;margin-bottom:8px">'+
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">'+
+        '<div style="width:48px;height:48px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(p.photo?'<img src="'+p.photo+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:grid;place-items:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+'</div>'+
+        '<div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+sizes.map(function(s){
+        var cur=p.stock[s.id]||0;var key=p.id+"_"+s.id;
+        var val=wrcChanges[key]!==undefined?wrcChanges[key]:"";
+        return '<div style="text-align:center"><div style="font-size:11px;color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">'+esc(s.name)+'</div>'+
+          '<div style="font-size:10px;color:var(--td)">було '+cur+'</div>'+
+          '<input type="number" min="0" value="'+val+'" placeholder="'+cur+'" data-bp="'+p.id+'" data-sid="'+s.id+'" data-cur="'+cur+'" oninput="onRcInput(this)" style="width:56px;padding:5px;font-size:12px;text-align:center;background:var(--input);border:1px solid '+(val!==""&&parseInt(val)!==cur?'var(--warn)':'var(--brd)')+';border-radius:6px;color:#fff"></div>';
+      }).join("")+'</div>'+
+    '</div>';
+  }).join("");
+  renderRcSave();
+}
+function onRcInput(el){
+  var key=el.dataset.bp+"_"+el.dataset.sid;
+  if(el.value==="")delete wrcChanges[key];else wrcChanges[key]=parseInt(el.value);
+  el.style.borderColor=(el.value!==""&&parseInt(el.value)!==parseInt(el.dataset.cur))?"var(--warn)":"var(--brd)";
+  renderRcSave();
+}
+function renderRcSave(){
+  var keys=Object.keys(wrcChanges);
+  var diffs=keys.filter(function(k){
+    var el=document.querySelector('#wrc-list input[data-bp="'+k.split("_")[0]+'"][data-sid="'+k.split("_")[1]+'"]');
+    return el&&parseInt(el.dataset.cur)!==wrcChanges[k];
+  });
+  document.getElementById("wrc-save-bar").innerHTML=keys.length?
+    '<div style="position:sticky;bottom:0;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+    '<div style="font-size:12px;color:var(--th)">Заповнено: <b>'+keys.length+'</b> · з розбіжністю: <b style="color:var(--warn)">'+diffs.length+'</b></div>'+
+    '<button class="btn btn-p" onclick="saveWhRecount()">'+Icon('save',13)+' Зберегти переоблік</button></div>':"";
+}
+async function saveWhRecount(){
+  var adjustments=Object.keys(wrcChanges).map(function(k){
+    var parts=k.split("_");
+    return {base_product_id:parseInt(parts[0]),size_id:parseInt(parts[1]),actual_quantity:wrcChanges[k]};
+  });
+  if(!adjustments.length)return;
+  try{
+    var r=await api("/api/recount/apply",{method:"POST",body:JSON.stringify({adjustments:adjustments})});
+    wrcChanges={};
+    alert("Переоблік збережено. Змінено позицій: "+r.changed);
+    loadWhRecount();
+  }catch(e){alert(e.message)}
+}
+async function loadWhRecountHistory(){
+  var el=document.getElementById("wrc-hist-list");
+  try{
+    var r=await api("/api/recount/history");
+    if(!r.sessions.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('fileText',30)+'</span>Переобліків ще не було</div>';return}
+    el.innerHTML=r.sessions.map(function(s){
+      return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;overflow:hidden">'+
+        '<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer" onclick="toggleRcHist('+s.id+',this)">'+
+          '<div><div style="font-size:13px;font-weight:600;color:var(--th)">Переоблік #'+s.id+(s.category_name?' · '+esc(s.category_name):' · всі товари')+'</div>'+
+          '<div style="font-size:10px;color:var(--td)">'+esc((s.finished_at||s.started_at||"").slice(0,16))+' · '+esc(s.user_name||"—")+' · позицій: '+s.positions+'</div></div>'+
+          '<div style="text-align:right;flex-shrink:0">'+
+            (s.shortage?'<div style="font-size:12px;color:var(--red);font-family:JetBrains Mono,monospace">недостача −'+s.shortage+'</div>':'')+
+            (s.surplus?'<div style="font-size:12px;color:var(--acc);font-family:JetBrains Mono,monospace">перестача +'+s.surplus+'</div>':'')+
+            (!s.shortage&&!s.surplus?'<div style="font-size:11px;color:var(--td)">без розбіжностей</div>':'')+
+          '</div>'+
+        '</div>'+
+        '<div id="rch-'+s.id+'" style="display:none;border-top:1px solid var(--brd);padding:8px 12px"></div>'+
+      '</div>';
+    }).join("");
+  }catch(e){}
+}
+async function toggleRcHist(id,hdr){
+  var box=document.getElementById("rch-"+id);
+  if(box.style.display!=="none"){box.style.display="none";return}
+  box.style.display="";
+  box.innerHTML='<div style="font-size:11px;color:var(--td)">Завантаження...</div>';
+  try{
+    var r=await api("/api/recount/history/"+id);
+    var items=r.session.items;
+    box.innerHTML=items.length?items.map(function(i){
+      var c=i.diff<0?"var(--red)":(i.diff>0?"var(--acc)":"var(--td)");
+      return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:12px">'+
+        '<div style="color:var(--th)">'+esc(i.product_name)+' <b style="color:var(--acc)">'+esc(i.size_name)+'</b></div>'+
+        '<div style="font-family:JetBrains Mono,monospace;color:'+c+'">'+i.before_qty+' → '+i.after_qty+' ('+(i.diff>0?'+':'')+i.diff+')'+
+        (i.ordered_during?'<span style="color:var(--td)"> · '+i.ordered_during+' замовлено під час</span>':'')+'</div>'+
+      '</div>';
+    }).join(""):'<div style="font-size:11px;color:var(--td)">Розбіжностей не було</div>';
+  }catch(e){box.innerHTML='<div style="font-size:11px;color:var(--red)">Помилка</div>'}
 }
 async function loadWhDefectStock(){
   var el=document.getElementById("wh-def-stock");if(!el)return;

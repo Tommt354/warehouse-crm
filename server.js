@@ -725,6 +725,18 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
   if (!Array.isArray(adjustments) || !adjustments.length) return res.status(400).json({ error: "Немає змін" });
   let changed = 0;
   const touchedSessions = new Set();
+  // Кожне збереження переобліку має лишити слід в історії. Якщо переоблік
+  // робили без попереднього "старту" (тобто рядки не були заморожені сесією),
+  // заводимо сесію тут же — інакше ці зміни ніде б не збереглись.
+  let adhocSessionId = null;
+  const adhocSession = () => {
+    if (!adhocSessionId) {
+      adhocSessionId = db.prepare("INSERT INTO recount_sessions(category_id,status,started_by,finished_at)VALUES(NULL,'saved',?,datetime('now','localtime'))")
+        .run(req.user.id).lastInsertRowid;
+    }
+    return adhocSessionId;
+  };
+  const logItem = db.prepare("INSERT INTO recount_items(session_id,base_product_id,size_id,before_qty,after_qty,diff,ordered_during)VALUES(?,?,?,?,?,?,?)");
   db.transaction(() => {
     adjustments.forEach(a => {
       const bpId = parseInt(a.base_product_id), sizeId = parseInt(a.size_id), actual = parseInt(a.actual_quantity);
@@ -733,7 +745,7 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
       const current = row ? row.quantity_actual : 0;
       let diff = actual - current;
 
-      let deferredNote = "";
+      let deferredNote = "", orderedDuring = 0;
       if (row && row.recount_session_id) {
         const session = db.prepare("SELECT started_at FROM recount_sessions WHERE id=?").get(row.recount_session_id);
         if (session) {
@@ -741,7 +753,7 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
             JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id
             WHERE v.base_product_id=? AND oi.size_id=? AND o.created_at>=? AND o.status!='cancelled'`)
             .get(bpId, sizeId, session.started_at).c;
-          if (demand > 0) { diff -= demand; deferredNote = ` (з них ${demand} замовлено під час переобліку)`; }
+          if (demand > 0) { diff -= demand; orderedDuring = demand; deferredNote = ` (з них ${demand} замовлено під час переобліку)`; }
         }
         touchedSessions.add(row.recount_session_id);
       }
@@ -750,6 +762,7 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
       db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=?,recount_session_id=NULL WHERE base_product_id=? AND size_id=?").run(diff, actual, bpId, sizeId);
       db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)")
         .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual + deferredNote, req.user.id);
+      logItem.run(row && row.recount_session_id ? row.recount_session_id : adhocSession(), bpId, sizeId, current, actual, actual - current, orderedDuring);
       changed++;
     });
     touchedSessions.forEach(id => {
@@ -758,6 +771,38 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
     });
   })();
   res.json({ ok: true, changed });
+});
+
+// Історія переобліків: список сесій із підсумком недостач і перестач.
+// Порожні сесії (нічого не змінилось або скасовані) не ховаємо — видно, що
+// переоблік робився, просто без розбіжностей.
+app.get("/api/recount/history", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const sessions = db.prepare(`SELECT rs.*, u.name as user_name, c.name as category_name,
+    (SELECT COUNT(*) FROM recount_items ri WHERE ri.session_id=rs.id) as positions,
+    (SELECT COALESCE(SUM(CASE WHEN ri.diff<0 THEN -ri.diff ELSE 0 END),0) FROM recount_items ri WHERE ri.session_id=rs.id) as shortage,
+    (SELECT COALESCE(SUM(CASE WHEN ri.diff>0 THEN ri.diff ELSE 0 END),0) FROM recount_items ri WHERE ri.session_id=rs.id) as surplus
+    FROM recount_sessions rs
+    LEFT JOIN users u ON rs.started_by=u.id
+    LEFT JOIN categories c ON rs.category_id=c.id
+    ORDER BY rs.id DESC LIMIT 100`).all();
+  res.json({ sessions });
+});
+
+// Один переоблік у деталях: що на що змінено по кожній позиції.
+app.get("/api/recount/history/:id", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const session = db.prepare(`SELECT rs.*, u.name as user_name, c.name as category_name
+    FROM recount_sessions rs LEFT JOIN users u ON rs.started_by=u.id LEFT JOIN categories c ON rs.category_id=c.id
+    WHERE rs.id=?`).get(req.params.id);
+  if (!session) return res.status(404).json({ error: "Не знайдено" });
+  session.items = db.prepare(`SELECT ri.*, bp.name as product_name, bp.photo as product_photo, s.name as size_name, m.name as model_name
+    FROM recount_items ri
+    JOIN base_products bp ON ri.base_product_id=bp.id
+    JOIN models m ON bp.model_id=m.id
+    JOIN sizes s ON ri.size_id=s.id
+    WHERE ri.session_id=? ORDER BY bp.name, s.sort_order`).all(req.params.id);
+  session.shortage = session.items.reduce((s, i) => s + (i.diff < 0 ? -i.diff : 0), 0);
+  session.surplus = session.items.reduce((s, i) => s + (i.diff > 0 ? i.diff : 0), 0);
+  res.json({ session });
 });
 
 // Update model workers from product context
