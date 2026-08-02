@@ -578,9 +578,11 @@ async function retIt(id,btn,condition){
 // Пакувальник Бази працює з базовим асортиментом, пакувальник Готового
 // товару — з готовим. Різниця лише у фільтрі: та сама таблиця залишків,
 // інші категорії (scope) і is_ready.
-var whPage=0,whStockReady="",whStockCatP=null,whCats=[],whScopeReady=false;
+var whPage=0,whStockReady="0",whStockCatP=null,whCats=[],whScopeReady=false;
 function whScope(){return whScopeReady?"ready":"base"}
-function whReadyParam(){return whScopeReady?"&is_ready=1":""}
+// Кожен пакувальник бачить лише свій асортимент: База — базовий, Готовий
+// товар — готовий. Без цього фільтра База бачила у складі ще й готовий товар.
+function whReadyParam(){return whScopeReady?"&is_ready=1":"&is_ready=0"}
 async function loadWhStock(){
   // Categories
   var cd=await api("/api/categories?parent_id="+(whStockCatP||"")+"&scope="+whScope());
