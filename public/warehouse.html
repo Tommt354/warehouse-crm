@@ -257,8 +257,10 @@ async function init(){
 // ready-product returns just go back to stock as the whole item, no
 // print/variation breakdown, same as everyone else's returns flow.
 function enterPackerReadyMode(){
+  // Склад йому потрібен — просто інший: готовий товар лежить у тому самому
+  // stock_base, але з models.is_ready_product=1 і категоріями scope=ready.
+  whScopeReady=true;whStockReady="1";
   var tabs=document.querySelectorAll(".main-tab");
-  if(tabs[2])tabs[2].style.display="none";
   var rf=document.getElementById("rf-all");if(rf&&rf.parentElement)rf.parentElement.style.display="none";
   var chRow=document.getElementById("wc-hot");if(chRow&&chRow.parentElement)chRow.parentElement.style.display="none";
 }
@@ -573,10 +575,15 @@ async function retIt(id,btn,condition){
 }
 
 // ── STOCK ────────────────────────────────────────────────────────
-var whPage=0,whStockReady="",whStockCatP=null,whCats=[];
+// Пакувальник Бази працює з базовим асортиментом, пакувальник Готового
+// товару — з готовим. Різниця лише у фільтрі: та сама таблиця залишків,
+// інші категорії (scope) і is_ready.
+var whPage=0,whStockReady="",whStockCatP=null,whCats=[],whScopeReady=false;
+function whScope(){return whScopeReady?"ready":"base"}
+function whReadyParam(){return whScopeReady?"&is_ready=1":""}
 async function loadWhStock(){
   // Categories
-  var cd=await api("/api/categories?parent_id="+(whStockCatP||"")+"&scope=base");
+  var cd=await api("/api/categories?parent_id="+(whStockCatP||"")+"&scope="+whScope());
   var bc=catBackBtn(cd.breadcrumb,"whStockCatP="+catParentId(cd.breadcrumb)+";loadWhStock()");
   bc+='<div class="bread"><a onclick="whStockCatP=null;loadWhStock()">'+Icon('package',13)+' Склад</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span style="color:var(--td);margin:0 3px">›</span><a onclick="whStockCatP='+b.id+';loadWhStock()">'+esc(b.name)+'</a>'});
@@ -618,7 +625,7 @@ function showRcTab(t){
   if(t==="hist")loadWhRecountHistory();
 }
 async function loadWhRecount(){
-  var cd=await api("/api/categories?parent_id="+(wrcCatP||"")+"&scope=base");
+  var cd=await api("/api/categories?parent_id="+(wrcCatP||"")+"&scope="+whScope());
   var bc=catBackBtn(cd.breadcrumb,"wrcCatP="+catParentId(cd.breadcrumb)+";loadWhRecount()");
   bc+='<div class="bread"><a onclick="wrcCatP=null;loadWhRecount()">'+Icon('package',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span style="color:var(--td);margin:0 3px">›</span><a onclick="wrcCatP='+b.id+';loadWhRecount()">'+esc(b.name)+'</a>'});
@@ -629,7 +636,7 @@ async function loadWhRecount(){
   }).join("");
   try{var s=await api("/api/recount/active-session?category_id="+(wrcCatP||""));wrcSession=s.session}catch(e){wrcSession=null}
   renderRcSessionBar();
-  var d=await api("/api/base-products"+(wrcCatP?"?category_id="+wrcCatP:""));
+  var d=await api("/api/base-products?"+(wrcCatP?"category_id="+wrcCatP:"")+whReadyParam());
   wrcProducts=d.products;wrcSizes=d.sizes;
   renderRcList();
 }
@@ -843,13 +850,13 @@ function openWhBpPicker(onSelect){
   loadWhBpPicker();opM("wh-bpp-modal");
 }
 async function loadWhBpPicker(){
-  var cd=await api("/api/categories?parent_id="+(whbppCatP||"")+"&scope=base");
+  var cd=await api("/api/categories?parent_id="+(whbppCatP||"")+"&scope="+whScope());
   var bc=catBackBtn(cd.breadcrumb,"whbppCatP="+catParentId(cd.breadcrumb)+";loadWhBpPicker()");
   bc+='<div class="bread"><a onclick="whbppCatP=null;loadWhBpPicker()">'+Icon('package',13)+' Всі товари</a>';
   cd.breadcrumb.forEach(function(b){bc+='<span>›</span><a onclick="whbppCatP='+b.id+';loadWhBpPicker()">'+esc(b.name)+'</a>'});
   bc+="</div>";document.getElementById("whbpp-bread").innerHTML=bc;
   document.getElementById("whbpp-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="whbppCatP='+c.id+';loadWhBpPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
-  var d=await api("/api/base-products"+(whbppCatP?"?category_id="+whbppCatP:""));
+  var d=await api("/api/base-products?"+(whbppCatP?"category_id="+whbppCatP:"")+whReadyParam());
   whbppSizes=d.sizes;
   whbppProducts=d.products.filter(function(p){return p.main_warehouse==="base"});
   renderWhBpPickerList();
