@@ -25,9 +25,15 @@ const PULLED_STATUSES = ["collected", "packed", "shipped", "delivering", "delive
 function pullOrderStockOnce(db, orderId) {
   const o = db.prepare("SELECT stock_pulled FROM orders WHERE id=?").get(orderId);
   if (!o || o.stock_pulled) return false;
-  const items = db.prepare("SELECT oi.quantity,v.base_product_id,oi.size_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
+  const items = db.prepare("SELECT oi.quantity,oi.from_returns,v.base_product_id,oi.size_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
   const dec = db.prepare("UPDATE stock_base SET quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?");
-  items.forEach(i => dec.run(i.quantity, i.base_product_id, i.size_id));
+  items.forEach(i => {
+    // Те, що взяли з полиці повернень, фізично не сходило з бази — база
+    // отримала назад лише списану кількість (див. use-return). Знімаємо з
+    // фактичного залишку тільки ту частину, яку реально брали з бази.
+    const fromBase = Math.max(0, i.quantity - (i.from_returns || 0));
+    if (fromBase > 0) dec.run(fromBase, i.base_product_id, i.size_id);
+  });
   db.prepare("UPDATE orders SET stock_pulled=1 WHERE id=?").run(orderId);
   return true;
 }
@@ -1750,7 +1756,7 @@ app.get("/api/order-items/:id/available-sizes", authMiddleware, (req, res) => {
 
 // Use return instead of base for an order item
 app.post("/api/order-items/:id/use-return", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
-  const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?").get(req.params.id);
+  const item = db.prepare("SELECT oi.*,v.print_id,v.base_product_id,o.stock_pulled FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id WHERE oi.id=?").get(req.params.id);
   if (!item) return res.status(404).json({ error: "Не знайдено" });
   if (!item.print_id) return res.status(400).json({ error: "Готовий товар не має повернень" });
   if (item.from_returns >= item.quantity) return res.status(400).json({ error: "Вже списано з повернень" });
@@ -1766,6 +1772,12 @@ app.post("/api/order-items/:id/use-return", authMiddleware, requireRole("admin",
     db.prepare("UPDATE stock_returns SET quantity=quantity-? WHERE variation_id=? AND size_id=?").run(qty, item.variation_id, item.size_id);
     // Return to base (since we took from base at order creation)
     db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty, item.base_product_id, item.size_id);
+    // Якщо замовлення вже зібрали, фактичний залишок бази встиг зменшитись на
+    // цю позицію — але річ узяли з полиці повернень, з бази вона не сходила.
+    // Повертаємо фактичну на місце, інакше вона просяде нижче списаної.
+    if (item.stock_pulled) {
+      db.prepare("UPDATE stock_base SET quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(qty, item.base_product_id, item.size_id);
+    }
     // Mark item
     db.prepare("UPDATE order_items SET from_returns=from_returns+? WHERE id=?").run(qty, item.id);
   })();
@@ -2753,7 +2765,7 @@ app.post("/api/shifts/close", authMiddleware, (req, res) => {
 
 // Calculate payroll when order is finalized (called from scan/finalize)
 function calcOrderPayroll(orderId, shiftId) {
-  const items = db.prepare(`SELECT oi.*,v.base_product_id,bp.model_id,oi.from_returns FROM order_items oi 
+  const items = db.prepare(`SELECT oi.*,v.base_product_id,v.print_id,bp.model_id,oi.from_returns FROM order_items oi 
     JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id WHERE oi.order_id=?`).all(orderId);
   if (!shiftId) return;
   const shiftWorkers = db.prepare("SELECT sw.worker_id,w.role,w.per_item_rate,w.per_return_item_rate FROM shift_workers sw JOIN workers w ON sw.worker_id=w.id WHERE sw.shift_id=?").all(shiftId);
@@ -2762,18 +2774,27 @@ function calcOrderPayroll(orderId, shiftId) {
   for (const item of items) {
     const qty = item.quantity;
     const isReturn = item.from_returns > 0;
-    // Printer/seamstress ops now live on the prints & patches themselves — sum
-    // each op-type across every print and patch linked to this item's model.
-    const pr = db.prepare("SELECT COALESCE(SUM(p.printer_ops),0) po, COALESCE(SUM(p.seamstress_ops),0) so FROM model_prints mp JOIN prints p ON mp.print_id=p.id WHERE mp.model_id=?").get(item.model_id);
+    // Операції рахуються за тим принтом, який реально стоїть на цій варіації,
+    // а не за всіма принтами моделі. Раніше сумувались усі принти, прив'язані
+    // до моделі, — тобто за одну футболку платили так, ніби на неї надрукували
+    // всі дизайни моделі одразу. Нашивки лишаються на рівні моделі: вони
+    // пришиваються на кожен виріб цієї моделі.
+    const pr = item.print_id
+      ? db.prepare("SELECT COALESCE(printer_ops,0) po, COALESCE(seamstress_ops,0) so FROM prints WHERE id=?").get(item.print_id) || { po: 0, so: 0 }
+      : { po: 0, so: 0 };
     const pa = db.prepare("SELECT COALESCE(SUM(p.printer_ops),0) po, COALESCE(SUM(p.seamstress_ops),0) so FROM model_patches mp JOIN patches p ON mp.patch_id=p.id WHERE mp.model_id=?").get(item.model_id);
     const totalPrinter = (pr.po || 0) + (pa.po || 0);
     const totalSeamstress = (pr.so || 0) + (pa.so || 0);
-    if (totalPrinter > 0) shiftWorkers.filter(w => w.role === "printer").forEach(w => {
-      const amount = w.per_item_rate * totalPrinter * qty;
+    // Річ із полиці повернень уже пошита й надрукована — за неї швея й
+    // принтувальник не отримують нічого, бо роботи не було. Платимо лише за
+    // ті штуки, які реально пішли новим виробітком (не з повернень).
+    const newUnits = Math.max(0, qty - (item.from_returns || 0));
+    if (totalPrinter > 0 && newUnits > 0) shiftWorkers.filter(w => w.role === "printer").forEach(w => {
+      const amount = w.per_item_rate * totalPrinter * newUnits;
       if (amount > 0) ins.run(w.worker_id, shiftId, orderId, amount, "ops", "Принтувальник ×" + totalPrinter);
     });
-    if (totalSeamstress > 0) shiftWorkers.filter(w => w.role === "seamstress").forEach(w => {
-      const amount = w.per_item_rate * totalSeamstress * qty;
+    if (totalSeamstress > 0 && newUnits > 0) shiftWorkers.filter(w => w.role === "seamstress").forEach(w => {
+      const amount = w.per_item_rate * totalSeamstress * newUnits;
       if (amount > 0) ins.run(w.worker_id, shiftId, orderId, amount, "ops", "Швея ×" + totalSeamstress);
     });
     // Packer (per item)
