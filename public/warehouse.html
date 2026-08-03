@@ -877,10 +877,10 @@ function renderRcList(){
       '</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+sizes.map(function(s){
         var cur=p.stock[s.id]||0;var key=p.id+"_"+s.id;
-        var val=wrcChanges[key]!==undefined?wrcChanges[key]:"";
+        var val=wrcChanges[key]!==undefined?wrcChanges[key].qty:"";
         return '<div style="text-align:center"><div style="font-size:11px;color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">'+esc(s.name)+'</div>'+
           '<div style="font-size:10px;color:var(--td)">було '+cur+'</div>'+
-          '<input type="number" min="0" value="'+val+'" placeholder="'+cur+'" data-bp="'+p.id+'" data-sid="'+s.id+'" data-cur="'+cur+'" oninput="onRcInput(this)" style="width:56px;padding:5px;font-size:12px;text-align:center;background:var(--input);border:1px solid '+(val!==""&&parseInt(val)!==cur?'var(--warn)':'var(--brd)')+';border-radius:6px;color:#fff"></div>';
+          '<input type="number" min="0" value="'+val+'" placeholder="'+cur+'" data-bp="'+p.id+'" data-sid="'+s.id+'" data-cur="'+cur+'" data-label="'+esc(p.name)+' '+esc(s.name)+'" oninput="onRcInput(this)" style="width:56px;padding:5px;font-size:12px;text-align:center;background:var(--input);border:1px solid '+(val!==""&&parseInt(val)!==cur?'var(--warn)':'var(--brd)')+';border-radius:6px;color:#fff"></div>';
       }).join("")+'</div>'+
     '</div>';
   }).join("");
@@ -888,25 +888,40 @@ function renderRcList(){
 }
 function onRcInput(el){
   var key=el.dataset.bp+"_"+el.dataset.sid;
-  if(el.value==="")delete wrcChanges[key];else wrcChanges[key]=parseInt(el.value);
+  if(el.value==="")delete wrcChanges[key];
+  else wrcChanges[key]={qty:parseInt(el.value),cur:parseInt(el.dataset.cur),label:el.dataset.label||""};
   el.style.borderColor=(el.value!==""&&parseInt(el.value)!==parseInt(el.dataset.cur))?"var(--warn)":"var(--brd)";
   renderRcSave();
 }
+// Набране лишається у списку, навіть коли перейшов в іншу категорію — там
+// його видно, можна виправити або прибрати, і збережеться воно все разом.
 function renderRcSave(){
   var keys=Object.keys(wrcChanges);
-  var diffs=keys.filter(function(k){
-    var el=document.querySelector('#wrc-list input[data-bp="'+k.split("_")[0]+'"][data-sid="'+k.split("_")[1]+'"]');
-    return el&&parseInt(el.dataset.cur)!==wrcChanges[k];
-  });
-  document.getElementById("wrc-save-bar").innerHTML=keys.length?
-    '<div style="position:sticky;bottom:0;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">'+
-    '<div style="font-size:12px;color:var(--th)">Заповнено: <b>'+keys.length+'</b> · з розбіжністю: <b style="color:var(--warn)">'+diffs.length+'</b></div>'+
-    '<button class="btn btn-p" onclick="saveWhRecount()">'+Icon('save',13)+' Зберегти переоблік</button></div>':"";
+  var el=document.getElementById("wrc-save-bar");
+  if(!keys.length){el.innerHTML='<div style="font-size:11px;color:var(--td);margin-top:8px">Вводьте кількості — вони лишаться у списку, навіть якщо перейдете в іншу категорію</div>';return}
+  var diffs=keys.filter(function(k){return wrcChanges[k].qty!==wrcChanges[k].cur});
+  el.innerHTML='<div style="position:sticky;bottom:0;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;margin-top:8px">'+
+    '<div style="font-size:12px;color:var(--th);margin-bottom:6px">Набрано: <b>'+keys.length+'</b> поз. · з розбіжністю: <b style="color:var(--warn)">'+diffs.length+'</b></div>'+
+    '<div style="max-height:150px;overflow-y:auto;margin-bottom:8px">'+keys.map(function(k){
+      var c=wrcChanges[k],d=c.qty-c.cur;
+      return '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px">'+
+        '<div style="flex:1;min-width:0;color:var(--th)">'+esc(c.label||k)+'</div>'+
+        '<div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+c.cur+' → <b style="color:'+(d<0?'var(--red)':(d>0?'var(--acc)':'var(--td)'))+'">'+c.qty+'</b></div>'+
+        '<button class="btn btn-sm" style="padding:2px 6px" onclick="rcDropChange(\''+k+'\')">'+Icon('x',11)+'</button></div>';
+    }).join("")+'</div>'+
+    '<button class="btn btn-p" style="width:100%;justify-content:center" onclick="saveWhRecount()">'+Icon('save',13)+' Зберегти переоблік ('+keys.length+' поз.)</button></div>';
+}
+function rcDropChange(key){
+  delete wrcChanges[key];
+  var parts=key.split("_");
+  var inp=document.querySelector('#wrc-list input[data-bp="'+parts[0]+'"][data-sid="'+parts[1]+'"]');
+  if(inp){inp.value="";inp.style.borderColor="var(--brd)"}
+  renderRcSave();
 }
 async function saveWhRecount(){
   var adjustments=Object.keys(wrcChanges).map(function(k){
     var parts=k.split("_");
-    return {base_product_id:parseInt(parts[0]),size_id:parseInt(parts[1]),actual_quantity:wrcChanges[k]};
+    return {base_product_id:parseInt(parts[0]),size_id:parseInt(parts[1]),actual_quantity:wrcChanges[k].qty};
   });
   if(!adjustments.length)return;
   try{

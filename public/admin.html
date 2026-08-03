@@ -2808,7 +2808,9 @@ async function loadStockLog(){
 // ── Переоблік (recount) ──────────────────────────────────────────
 let rcProducts=[],rcSizes=[],rcCatP=null,rcChanges={},rcSession=null;
 async function loadRecount(){
-  rcChanges={};renderRcChanges();
+  // Навігація по категоріях НЕ скидає введене: людина ходить каталогом і
+  // набирає позиції, як у кошику замовлення, а зберігає все одним разом.
+  renderRcChanges();
   const cd=await api(`/api/categories?parent_id=${rcCatP||""}&scope=base`);
   let bc=catBackBtn(cd.breadcrumb,`rcCatP=${catParentId(cd.breadcrumb)};loadRecount()`);
   bc+='<div class="bread"><a onclick="rcCatP=null;loadRecount()">'+Icon('package',13)+' Всі товари</a>';
@@ -2855,21 +2857,46 @@ function renderRecount(products){
       '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+szs.map(function(s){
         const q=p.stock[s.id]||0;
-        return '<div style="text-align:center"><div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(s.name)+'</div><input type="number" value="'+q+'" data-bp="'+p.id+'" data-size="'+s.id+'" data-orig="'+q+'" style="width:56px;padding:5px;font-size:12px;text-align:center;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff" onchange="rcMarkChange(this)"></div>';
+        return '<div style="text-align:center"><div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(s.name)+'</div><input type="number" value="'+q+'" data-bp="'+p.id+'" data-size="'+s.id+'" data-orig="'+q+'" data-key="'+p.id+'_'+s.id+'" data-label="'+esc(p.name)+' '+esc(s.name)+'" style="width:56px;padding:5px;font-size:12px;text-align:center;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff" onchange="rcMarkChange(this)"></div>';
       }).join("")+'</div></div></div>';
   }).join("");
+  rcRestoreInputs();
+}
+// Повертаючись у категорію, показуємо те, що вже набрано — інакше виглядає,
+// ніби введене пропало.
+function rcRestoreInputs(){
+  document.querySelectorAll('#rc-list input[data-key]').forEach(function(inp){
+    const c=rcChanges[inp.dataset.key];
+    if(c){inp.value=c.actual_quantity;inp.style.borderColor="var(--warn)";inp.style.color="var(--warn)"}
+  });
 }
 function searchRecount(q){if(!q){renderRecount(rcProducts);return}renderRecount(rcProducts.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())))}
 function rcMarkChange(input){
   const bp=input.dataset.bp,size=input.dataset.size,orig=parseInt(input.dataset.orig),val=parseInt(input.value)||0;
   const key=bp+"_"+size;
   if(val===orig){delete rcChanges[key];input.style.borderColor="var(--brd)";input.style.color="#fff"}
-  else{rcChanges[key]={base_product_id:parseInt(bp),size_id:parseInt(size),actual_quantity:val,orig:orig};input.style.borderColor="var(--warn)";input.style.color="var(--warn)"}
+  else{rcChanges[key]={base_product_id:parseInt(bp),size_id:parseInt(size),actual_quantity:val,orig:orig,label:input.dataset.label||""};input.style.borderColor="var(--warn)";input.style.color="var(--warn)"}
   renderRcChanges();
 }
 function renderRcChanges(){
-  const n=Object.keys(rcChanges).length;
-  document.getElementById("rc-changes").innerHTML=n?'<span style="color:var(--warn);font-weight:600">'+n+' зміна(-и) не збережено</span>':'Немає змін';
+  const keys=Object.keys(rcChanges);
+  const el=document.getElementById("rc-changes");
+  if(!keys.length){el.innerHTML='<span style="color:var(--td)">Немає змін — вводьте кількості, вони збережуться у списку навіть коли перейдете в іншу категорію</span>';return}
+  el.innerHTML='<div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:6px">Набрано '+keys.length+' поз. (не збережено)</div>'+
+    '<div style="max-height:180px;overflow-y:auto">'+keys.map(function(k){
+      const c=rcChanges[k];
+      const diff=c.actual_quantity-c.orig;
+      return '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px">'+
+        '<div style="flex:1;min-width:0;color:var(--th)">'+esc(c.label||("#"+c.base_product_id))+'</div>'+
+        '<div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+c.orig+' → <b style="color:'+(diff<0?'var(--red)':(diff>0?'var(--acc)':'var(--td)'))+'">'+c.actual_quantity+'</b></div>'+
+        '<button class="btn btn-sm" style="padding:2px 6px" onclick="rcRemoveChange(\''+k+'\')">'+Icon('x',11)+'</button></div>';
+    }).join("")+'</div>';
+}
+function rcRemoveChange(key){
+  delete rcChanges[key];
+  renderRcChanges();
+  const inp=document.querySelector('#rc-list input[data-key="'+key+'"]');
+  if(inp){inp.value="";inp.style.borderColor="var(--brd)";inp.style.color="#fff"}
 }
 async function applyRecount(){
   const adjustments=Object.values(rcChanges).map(function(c){return{base_product_id:c.base_product_id,size_id:c.size_id,actual_quantity:c.actual_quantity}});
