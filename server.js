@@ -3249,10 +3249,19 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
   else if (period === "month") dateFilter = "AND created_at>=datetime('now','localtime','-30 days')";
 
   if (req.user.role === "admin") {
-    const threshold = parseInt(db.prepare("SELECT value FROM settings WHERE key='stock_warning_threshold'").get()?.value) || 3;
-    const lowStock = db.prepare(`SELECT bp.id as base_product_id, bp.name, bp.photo, m.name as model_name, s.name as size_name, sb.quantity_actual as quantity
-      FROM stock_base sb JOIN base_products bp ON sb.base_product_id=bp.id JOIN models m ON bp.model_id=m.id JOIN sizes s ON sb.size_id=s.id
-      WHERE bp.active=1 AND sb.quantity_actual<? ORDER BY sb.quantity_actual ASC LIMIT 40`).all(threshold);
+    // Дашборд рахує залишки або за фактичною кількістю (що лежить на полиці),
+    // або за списаною (що вже зарезервовано замовленнями) — перемикач у UI.
+    const stockCol = req.query.stock_view === "alloc" ? "sb.quantity" : "sb.quantity_actual";
+    // "Закінчуються" — ще є, але мало (1 і менше, але більше нуля).
+    // "Закінчились" — нуль і мінус: 0, -1, -2 ...
+    const threshold = parseInt(db.prepare("SELECT value FROM settings WHERE key='stock_warning_threshold'").get()?.value) || 1;
+    const stockRow = `bp.id as base_product_id, bp.name, bp.photo, m.name as model_name, s.name as size_name,
+      ${stockCol} as quantity, sb.quantity as quantity_alloc, sb.quantity_actual as quantity_fact`;
+    const stockFrom = `FROM stock_base sb JOIN base_products bp ON sb.base_product_id=bp.id JOIN models m ON bp.model_id=m.id JOIN sizes s ON sb.size_id=s.id WHERE bp.active=1`;
+    const lowStock = db.prepare(`SELECT ${stockRow} ${stockFrom} AND ${stockCol} > 0 AND ${stockCol} <= ?
+      ORDER BY ${stockCol} ASC, bp.name LIMIT 60`).all(threshold);
+    const outStock = db.prepare(`SELECT ${stockRow} ${stockFrom} AND ${stockCol} <= 0
+      ORDER BY ${stockCol} ASC, bp.name LIMIT 60`).all();
     res.json({
       dropshippers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='dropshipper' AND active=1").get().c,
       warehouse_workers: db.prepare("SELECT COUNT(*) as c FROM users WHERE role='warehouse' AND active=1").get().c,
@@ -3262,7 +3271,10 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
       orders_today: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime')").get().c,
       orders_yesterday: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime','-1 day')").get().c,
       orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='new'").get().c,
-      low_stock: lowStock
+      low_stock: lowStock,
+      out_stock: outStock,
+      stock_view: req.query.stock_view === "alloc" ? "alloc" : "fact",
+      low_threshold: threshold
     });
   } else if (req.user.role === "dropshipper") {
     const uid = req.user.id;

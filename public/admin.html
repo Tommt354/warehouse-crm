@@ -66,9 +66,19 @@
 <div class="pt"><i data-icon="layoutDashboard" data-size="17"></i> Дашборд</div>
 <div class="sg" id="dash-s"></div>
 
-<div id="dash-lowstock-sec" style="margin-top:8px;display:none">
-  <div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px;display:flex;align-items:center;gap:8px"><i data-icon="alertTriangle" data-size="15" style="color:var(--warn)"></i> Товари, що закінчуються</div>
-  <div class="cards" id="dash-lowstock"></div>
+<div id="dash-stock-sec" style="margin-top:8px;display:none">
+  <div class="stabs" style="margin-bottom:10px">
+    <button class="stab on" id="dsv-fact" onclick="setDashStockView('fact')">Фактична</button>
+    <button class="stab" id="dsv-alloc" onclick="setDashStockView('alloc')">Списана</button>
+  </div>
+  <div id="dash-lowstock-sec" style="display:none;margin-bottom:14px">
+    <div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px;display:flex;align-items:center;gap:8px"><i data-icon="alertTriangle" data-size="15" style="color:var(--warn)"></i> Товари, що закінчуються <span id="dash-low-count" style="font-size:11px;color:var(--td);font-weight:400"></span></div>
+    <div class="cards" id="dash-lowstock"></div>
+  </div>
+  <div id="dash-outstock-sec" style="display:none">
+    <div style="font-size:14px;font-weight:600;color:var(--th);margin-bottom:10px;display:flex;align-items:center;gap:8px"><i data-icon="x" data-size="15" style="color:var(--red)"></i> Товари, що закінчились <span id="dash-out-count" style="font-size:11px;color:var(--td);font-weight:400"></span></div>
+    <div class="cards" id="dash-outstock"></div>
+  </div>
 </div>
 
 <div style="margin-top:24px">
@@ -810,18 +820,44 @@ async function refreshCC(){const[a,b,c,d,e,f,g]=await Promise.all([api("/api/col
 
 // ── Dashboard ────────────────────────────────────────────────────
 async function loadDash(){
-  const d=await api("/api/dashboard");
+  const d=await api("/api/dashboard?stock_view="+dashStockView);
   document.getElementById("dash-s").innerHTML=`<div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div><div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div><div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div><div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div><div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_today||0}</div><div class="sl">замовлень сьогодні</div></div><div class="sc"><div class="sv" style="color:var(--td)">${d.orders_yesterday||0}</div><div class="sl">замовлень вчора</div></div>`;
-  const lowSec=document.getElementById("dash-lowstock-sec");
-  if(d.low_stock&&d.low_stock.length){
-    lowSec.style.display="block";
-    document.getElementById("dash-lowstock").innerHTML=d.low_stock.map(function(p){
-      return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.model_name)+' · '+esc(p.name)+'</div><div class="pcard-sub">Розмір '+esc(p.size_name)+'</div><div class="stock-row"><div class="stock-sz '+(p.quantity<=0?"zero":"low")+'"><b>'+p.quantity+'</b><br>шт</div></div></div></div>';
-    }).join("");
-  } else { lowSec.style.display="none"; }
+  renderDashStock(d);
   loadDashCharts();
   loadDashPopularity();
 }
+// Дашборд: два окремі списки — де залишок ще є, але малий, і де його вже
+// немає взагалі (нуль і мінус). Перемикач обирає, за яким лічильником
+// рахувати: фактична — що лежить на полиці, списана — з урахуванням резервів.
+var dashStockView="fact";
+function setDashStockView(v){
+  dashStockView=v;
+  document.getElementById("dsv-fact").classList.toggle("on",v==="fact");
+  document.getElementById("dsv-alloc").classList.toggle("on",v==="alloc");
+  loadDash();
+}
+function dashStockCard(p,danger){
+  var q=p.quantity;
+  var color=q<0?"var(--red)":(q===0?"var(--red)":"var(--warn)");
+  return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div>'+
+    '<div class="pcard-body"><div class="pcard-name">'+esc(p.model_name)+' · '+esc(p.name)+'</div>'+
+    '<div class="pcard-sub">розмір <b style="color:var(--acc)">'+esc(p.size_name)+'</b></div>'+
+    '<div style="margin-top:6px;font-family:JetBrains Mono,monospace;font-size:18px;font-weight:800;color:'+color+'">'+q+' шт</div>'+
+    '<div style="font-size:10px;color:var(--td);margin-top:2px">факт '+p.quantity_fact+' · списана '+p.quantity_alloc+'</div>'+
+    '</div></div>';
+}
+function renderDashStock(d){
+  var sec=document.getElementById("dash-stock-sec");
+  var low=d.low_stock||[],out=d.out_stock||[];
+  sec.style.display=(low.length||out.length)?"block":"none";
+  document.getElementById("dash-lowstock-sec").style.display=low.length?"block":"none";
+  document.getElementById("dash-outstock-sec").style.display=out.length?"block":"none";
+  document.getElementById("dash-low-count").textContent=low.length?"("+low.length+", до "+(d.low_threshold||1)+" шт)":"";
+  document.getElementById("dash-out-count").textContent=out.length?"("+out.length+")":"";
+  document.getElementById("dash-lowstock").innerHTML=low.map(function(p){return dashStockCard(p,false)}).join("");
+  document.getElementById("dash-outstock").innerHTML=out.map(function(p){return dashStockCard(p,true)}).join("");
+}
+
 async function loadDashCharts(){
   try{
     var r=await api("/api/scan/stats");
