@@ -68,7 +68,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 </head>
 <body>
 <div class="wrap">
-<div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:15px;margin-top:2px"><i data-icon="shoppingCart" data-size="16"></i> Кабінет</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
+<div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:15px;margin-top:2px"><i data-icon="shoppingCart" data-size="16"></i> Кабінет</h1><small id="u-info">—</small></div><div style="display:flex;align-items:center;gap:8px"><button class="btn-out" id="nt-bell" title="Сповіщення" onclick="goNav('notifs')" style="position:relative;padding:8px 11px"><i data-icon="bell" data-size="16"></i><span id="nt-badge" style="display:none;position:absolute;top:-7px;right:-7px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:10px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.4)">0</span></button><button class="btn-out" onclick="logout()">Вийти</button></div></div>
 <div class="nav">
   <a class="on" data-p="dash"><i data-icon="barChart3" data-size="15"></i> Статистика</a>
   <a data-p="orders"><i data-icon="clipboardList" data-size="15"></i> Замовлення</a>
@@ -133,6 +133,18 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div id="pay-unpaid"></div>
 <div style="font-size:13px;font-weight:600;color:var(--th);margin:12px 0 8px">Історія виплат:</div>
 <div id="pay-history"></div>
+</div>
+
+<div class="page" id="pg-notifs">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+  <div>
+    <div style="font-size:19px;font-weight:700;color:var(--th)">Сповіщення</div>
+    <div style="font-size:12px;color:var(--td);margin-top:2px">Важливі події по ваших замовленнях і виплатах</div>
+  </div>
+  <button class="btn btn-sm" onclick="markAllNotifsRead()" style="font-size:11px"><i data-icon="checkCheck" data-size="12"></i> Позначити всі прочитаними</button>
+</div>
+<div id="nt-list" style="margin-top:12px"></div>
+<div id="nt-more-wrap" style="display:none;margin-top:10px"><button class="btn" style="width:100%;font-size:12px" onclick="loadMoreNotifs()">▾ Завантажити попередні</button></div>
 </div>
 
 <div class="page" id="pg-settings">
@@ -236,7 +248,7 @@ var SL={new:"Нове",in_progress:"В роботі",collected:"Зібрано",
 var SCL={new:"tag-new",in_progress:"tag-prog",collected:"tag-coll",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
 var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роботі"},{k:"packed",l:"Готові"},{k:"shipped",l:"Відправлені"},{k:"delivering",l:"Доставка"},{k:"delivered",l:"Отримані"},{k:"refused",l:"Відмови"},{k:"cancelled",l:"Скасовані"}];
 
-async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash()}catch(e){location.href="/login"}}
+async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash();refreshNotifBadge();setInterval(refreshNotifBadge,60000)}catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function ttnColor(o){if(o.own_ttn)return'#c17f4e';var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.innerHTML=Icon('check',12)+" "+esc(t)+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
@@ -253,7 +265,7 @@ function goNav(p){
   document.querySelectorAll(".nav a").forEach(function(x){x.classList.toggle("on",x.dataset.p===p)});
   document.querySelectorAll(".page").forEach(function(x){x.classList.remove("on")});
   document.getElementById("pg-"+p).classList.add("on");location.hash=p;
-  if(p==="dash")loadDash();if(p==="orders")loadOrders();if(p==="catalog"){catP=null;loadCatalog()}if(p==="payouts")loadPayouts();if(p==="settings")loadSettings();
+  if(p==="dash")loadDash();if(p==="orders")loadOrders();if(p==="catalog"){catP=null;loadCatalog()}if(p==="payouts")loadPayouts();if(p==="settings")loadSettings();if(p==="notifs")loadNotifs();
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────
@@ -875,6 +887,64 @@ async function loadPayouts(){
 }
 async function submitPayoutRequest(){
   try{var r=await api("/api/payouts/request",{method:"POST",body:JSON.stringify({comment:document.getElementById("pay-comment").value})});document.getElementById("pay-comment").value="";loadPayouts()}catch(e){}
+}
+
+// ── СПОВІЩЕННЯ ───────────────────────────────────────────────────
+// Бейдж праворуч у рядку — тип події; він же задає колір.
+var NTB={status:{l:"Статус",c:"#7c86ff",bg:"rgba(124,134,255,.14)"},ttn:{l:"ТТН",c:"#ffa726",bg:"rgba(255,167,38,.14)"},payout:{l:"Виплата",c:"#35d29a",bg:"rgba(53,210,154,.14)"}};
+var ntItems=[],ntHasMore=false,ntLoading=false;
+function ntTime(s){if(!s)return"";return s.slice(11,16)+" "+s.slice(8,10)+"."+s.slice(5,7)}
+function setNotifBadge(n){var b=document.getElementById("nt-badge");if(!b)return;b.style.display=n>0?"":"none";b.textContent=n>99?"99+":n}
+// Лічильник опитується у фоні, тож іде повз api(): інакше кожну хвилину сама
+// собою блимала б смужка завантаження і крутилка на порожній сторінці.
+async function refreshNotifBadge(){
+  try{
+    var f=window.rawFetch||window.fetch;
+    var r=await f("/api/notifications/unread-count",{headers:{"Content-Type":"application/json"}});
+    if(!r.ok)return;var d=await r.json();setNotifBadge(d.unread||0);
+  }catch(e){}
+}
+async function loadNotifs(){
+  document.getElementById("nt-list").innerHTML='<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div></div>';
+  try{
+    var r=await api("/api/notifications?limit=20");
+    ntItems=r.notifications||[];ntHasMore=!!r.has_more;setNotifBadge(r.unread||0);renderNotifs();
+  }catch(e){document.getElementById("nt-list").innerHTML='<div style="color:var(--red);font-size:12px">Не вдалося завантажити сповіщення</div>'}
+}
+// Гортання вглиб іде від id останнього показаного, а не по offset — нові
+// сповіщення, що прилетіли між кліками, не зсувають сторінку.
+async function loadMoreNotifs(){
+  if(ntLoading||!ntItems.length)return;ntLoading=true;
+  try{
+    var r=await api("/api/notifications?limit=20&before_id="+ntItems[ntItems.length-1].id);
+    ntItems=ntItems.concat(r.notifications||[]);ntHasMore=!!r.has_more;renderNotifs();
+  }catch(e){}
+  ntLoading=false;
+}
+function renderNotifs(){
+  var el=document.getElementById("nt-list");
+  if(!ntItems.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('bell',26)+'</span>Немає сповіщень</div>';document.getElementById("nt-more-wrap").style.display="none";return}
+  el.innerHTML=ntItems.map(function(n,i){
+    var b=NTB[n.type]||NTB.status;var unread=!n.is_read;
+    return '<div onclick="openNotif('+i+')" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:'+(unread?"var(--accbg)":"var(--card)")+';border:1px solid '+(unread?"rgba(124,134,255,.25)":"var(--brd)")+';border-left:3px solid '+(unread?b.c:"transparent")+';border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer">'+
+      '<div style="min-width:0;flex:1">'+
+        '<div style="font-size:13px;font-weight:'+(unread?"700":"500")+';color:var(--th);line-height:1.35">'+esc(n.title)+'</div>'+
+        (n.body?'<div style="font-size:11px;color:var(--td);margin-top:2px">'+esc(n.body)+'</div>':'')+
+        '<div style="font-size:10px;color:var(--td);margin-top:3px">'+ntTime(n.created_at)+(n.order_id?' · <span style="color:var(--acc)">Відкрити замовлення</span>':(n.payout_id?' · <span style="color:var(--acc)">Відкрити виплати</span>':''))+'</div>'+
+      '</div>'+
+      '<span style="flex-shrink:0;font-size:10px;font-weight:700;padding:3px 9px;border-radius:6px;background:'+b.bg+';color:'+b.c+'">'+b.l+'</span>'+
+    '</div>';
+  }).join("");
+  document.getElementById("nt-more-wrap").style.display=ntHasMore?"":"none";
+}
+function openNotif(i){
+  var n=ntItems[i];if(!n)return;
+  if(!n.is_read){n.is_read=1;renderNotifs();api("/api/notifications/"+n.id+"/read",{method:"POST"}).then(refreshNotifBadge).catch(function(){})}
+  if(n.order_id)viewOrder(n.order_id);
+  else if(n.payout_id)goNav("payouts");
+}
+async function markAllNotifsRead(){
+  try{await api("/api/notifications/read-all",{method:"POST"});ntItems.forEach(function(n){n.is_read=1});setNotifBadge(0);renderNotifs()}catch(e){}
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────────

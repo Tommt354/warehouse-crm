@@ -38,6 +38,34 @@ function pullOrderStockOnce(db, orderId) {
   return true;
 }
 
+// ── СПОВІЩЕННЯ ────────────────────────────────────────────────────
+// Стрічка подій у кабінеті дропера. Пишеться на user_id, тому той самий
+// механізм вмикається на адміна/склад без змін — просто інший отримувач.
+// Сповіщення ніколи не має ламати основну дію (зміну статусу, трекінг НП,
+// виплату), тож усе загорнуте в try.
+function notify(userId, type, title, extra = {}) {
+  if (!userId || !title) return;
+  try {
+    db.prepare("INSERT INTO notifications(user_id,type,title,body,order_id,payout_id)VALUES(?,?,?,?,?,?)")
+      .run(userId, type, title, extra.body || "", extra.order_id || null, extra.payout_id || null);
+  } catch (e) { console.log("notify error:", e.message); }
+}
+// Отримувача шукаємо самі за замовленням: у трекінгу НП і в сканах
+// dropshipper_id під рукою немає, а тягати його через усі виклики — зайвий шанс
+// передати не того.
+function notifyOrder(orderId, type, title, body = "") {
+  try {
+    const o = db.prepare("SELECT dropshipper_id FROM orders WHERE id=?").get(orderId);
+    if (o) notify(o.dropshipper_id, type, title, { body, order_id: orderId });
+  } catch (e) { console.log("notifyOrder error:", e.message); }
+}
+// Назва статусу — з order_statuses, а не з хардкоду: кастомні статуси адміна
+// мають читатись у сповіщенні так само, як у списку замовлень.
+function statusName(code) {
+  try { return db.prepare("SELECT name FROM order_statuses WHERE code=?").get(code)?.name || code; }
+  catch (e) { return code; }
+}
+
 function warehouseRedirectFor(workerRole) {
   if (workerRole === "finalizer") return "/finalizer";
   if (workerRole === "seamstress" || workerRole === "printer" || workerRole === "seo") return "/staff";
@@ -208,6 +236,36 @@ app.delete("/api/discounts/:id", authMiddleware, requireRole("admin"), (req, res
 app.get("/api/my-discounts", authMiddleware, (req, res) => {
   const rows = db.prepare("SELECT * FROM dropshipper_discounts WHERE dropshipper_id=? ORDER BY id").all(req.user.id);
   res.json({ discounts: decorateDiscounts(rows) });
+});
+
+// ── СПОВІЩЕННЯ: API ──────────────────────────────────────────────
+// Кожен бачить лише свої — user_id береться з токена, а не з запиту.
+app.get("/api/notifications", authMiddleware, (req, res) => {
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const beforeId = parseInt(req.query.before_id) || 0;
+  // Гортання «Завантажити попередні» йде по id, а не по offset: нові
+  // сповіщення, що прилетіли між кліками, не зсувають сторінку.
+  let q = "SELECT * FROM notifications WHERE user_id=?";
+  const p = [req.user.id];
+  if (beforeId) { q += " AND id<?"; p.push(beforeId); }
+  q += " ORDER BY id DESC LIMIT ?"; p.push(limit + 1);
+  const rows = db.prepare(q).all(...p);
+  const has_more = rows.length > limit;
+  const unread = db.prepare("SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND is_read=0").get(req.user.id).c;
+  res.json({ notifications: rows.slice(0, limit), unread, has_more });
+});
+// Окремо і дешево — цим живиться лічильник на дзвіночку, який опитується
+// за таймером.
+app.get("/api/notifications/unread-count", authMiddleware, (req, res) => {
+  res.json({ unread: db.prepare("SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND is_read=0").get(req.user.id).c });
+});
+app.post("/api/notifications/read-all", authMiddleware, (req, res) => {
+  db.prepare("UPDATE notifications SET is_read=1 WHERE user_id=? AND is_read=0").run(req.user.id);
+  res.json({ ok: true });
+});
+app.post("/api/notifications/:id/read", authMiddleware, (req, res) => {
+  db.prepare("UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?").run(parseInt(req.params.id), req.user.id);
+  res.json({ ok: true });
 });
 
 // ── SETTINGS ─────────────────────────────────────────────────────
@@ -1615,6 +1673,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
             }
             if (r2.success && r2.data?.[0]) {
               db.prepare("UPDATE orders SET ttn=?,np_ref=?,updated_at=datetime('now','localtime') WHERE id=?").run(r2.data[0].IntDocNumber, r2.data[0].Ref, o2.id);
+              notifyOrder(o2.id, "ttn", "Замовлення #" + o2.id + " — ТТН створено: " + r2.data[0].IntDocNumber);
               console.log("Auto-TTN SUCCESS:", r2.data[0].IntDocNumber);
             } else {
               console.log("Auto-TTN NP error:", JSON.stringify(r2.errors||r2.warnings||[]));
@@ -1928,7 +1987,11 @@ app.post("/api/order-items/:id/use-return", authMiddleware, requireRole("admin",
 // Manually set TTN
 app.put("/api/orders/:id/ttn", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const { ttn } = req.body;
+  const prev = db.prepare("SELECT ttn FROM orders WHERE id=?").get(req.params.id)?.ttn || "";
   db.prepare("UPDATE orders SET ttn=?,updated_at=datetime('now','localtime') WHERE id=?").run(ttn||"", req.params.id);
+  // Головний випадок — менеджер вносить ТТН дропера, який той відправив сам:
+  // дропер чекає саме на це і має побачити номер у себе, без питань у Telegram.
+  if (ttn && ttn !== prev) notifyOrder(req.params.id, "ttn", "Замовлення #" + req.params.id + " — ТТН " + ttn);
   res.json({ ok: true });
 });
 
@@ -1967,6 +2030,12 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
     // створенні замовлення.
     if (PULLED_STATUSES.includes(status)) pullOrderStockOnce(db, req.params.id);
   })();
+
+  // Дропер бачить у себе в сповіщеннях кожну реальну зміну статусу свого
+  // замовлення. Повторний запис того самого статусу нічого не шле.
+  if (status !== existing.status) {
+    notifyOrder(req.params.id, "status", "Замовлення #" + req.params.id + " — статус «" + statusName(status) + "»");
+  }
 
   // Пакувальник готовий товар packs solo start-to-finish — marking the
   // order "packed" IS his finalize step, so credit his own open shift right
@@ -2111,6 +2180,7 @@ app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehous
     // "Готово" не списало б залишок — речі пішли б зі складу непоміченими.
     db.prepare("UPDATE orders SET status='cancelled',stock_pulled=0,updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
   })();
+  notify(o.dropshipper_id, "status", "Замовлення #" + o.id + " скасовано", { order_id: o.id });
   res.json({ ok: true });
 });
 
@@ -2693,6 +2763,9 @@ async function trackOneOrder(apiKey, o) {
   const r = await npApi(apiKey, "TrackingDocument", "getStatusDocuments", { Documents: [{ DocumentNumber: o.ttn }] });
   const st = r.data?.[0];
   if (!st) return false;
+  // Попередній текст статусу НП потрібен, щоб сповіщення падало тільки на
+  // реальну зміну: трекінг ходить кожні 15 хв і здебільшого бачить те саме.
+  const prevNpText = db.prepare("SELECT np_status_text FROM orders WHERE id=?").get(o.id)?.np_status_text || "";
   db.prepare("UPDATE orders SET np_status_text=? WHERE id=?").run(st.Status || "", o.id);
   const code = parseInt(st.StatusCode);
   let ns = null;
@@ -2710,6 +2783,15 @@ async function trackOneOrder(apiKey, o) {
     db.prepare("UPDATE orders SET status=?,updated_at=datetime('now','localtime') WHERE id=?").run(ns, o.id);
     statusChanged = true;
   }
+  // Одна подія на один прохід трекінгу: якщо змінився статус замовлення —
+  // шлемо його (текст НП іде в тіло), якщо тільки текст НП — шлемо текст.
+  // Інакше дропер отримував би дві майже однакові строчки підряд.
+  if (statusChanged) {
+    notifyOrder(o.id, "status", "Замовлення #" + o.id + " — статус «" + statusName(ns) + "»",
+      st.Status ? "Нова Пошта: " + st.Status : "");
+  } else if (st.Status && st.Status !== prevNpText) {
+    notifyOrder(o.id, "ttn", "ТТН " + o.ttn + " — " + st.Status);
+  }
   if (ns === "shipped") {
     db.prepare("UPDATE orders SET shipped_at=datetime('now','localtime') WHERE id=? AND (shipped_at IS NULL OR shipped_at='')").run(o.id);
   }
@@ -2717,7 +2799,10 @@ async function trackOneOrder(apiKey, o) {
     db.prepare("UPDATE orders SET return_flagged_at=datetime('now','localtime') WHERE id=? AND (return_flagged_at IS NULL OR return_flagged_at='')").run(o.id);
     if (st.LastCreatedOnTheBasisNumber) {
       const retTtn = st.LastCreatedOnTheBasisNumber;
-      db.prepare("UPDATE orders SET return_ttn=? WHERE id=? AND (return_ttn IS NULL OR return_ttn='')").run(retTtn, o.id);
+      const setRet = db.prepare("UPDATE orders SET return_ttn=? WHERE id=? AND (return_ttn IS NULL OR return_ttn='')").run(retTtn, o.id);
+      // Зворотня ТТН з'явилась уперше — дропер має знати номер, за яким
+      // повернення їде назад.
+      if (setRet.changes) notifyOrder(o.id, "ttn", "Замовлення #" + o.id + " — зворотня ТТН " + retTtn);
       const existingCost = db.prepare("SELECT return_cost FROM orders WHERE id=?").get(o.id);
       if (!existingCost?.return_cost || existingCost.return_cost === 0) {
         const cost = parseFloat(st.DocumentCost) || parseFloat(st.RedeliverySum) || 0;
@@ -3099,6 +3184,9 @@ app.post("/api/scan/finalize/:order_id", authMiddleware, (req, res) => {
   // tracking actually reporting the parcel in transit (see trackOneOrder).
   if (!["shipped", "delivering", "delivered", "refused", "return_transit"].includes(o.status)) {
     db.prepare("UPDATE orders SET status='packed',updated_at=datetime('now','localtime') WHERE id=?").run(o.id);
+    // Скан пакувальниці — це теж зміна статусу, дропер має її бачити нарівні
+    // зі змінами з випадачки статусів.
+    if (o.status !== "packed") notify(o.dropshipper_id, "status", "Замовлення #" + o.id + " — статус «" + statusName("packed") + "»", { order_id: o.id });
     // Якщо пакувальниця закриває замовлення, яке пакувальник не проводив
     // через "Готово" (напр. просканувала одразу зі статусу "Нове"), товар
     // все одно треба зняти з фактичного залишку — рівно один раз.
@@ -3290,6 +3378,11 @@ app.post("/api/payouts/request", authMiddleware, (req, res) => {
   // Recalc total
   const total = db.prepare("SELECT SUM(amount) as s FROM payout_items WHERE payout_request_id=?").get(pr.id).s || 0;
   db.prepare("UPDATE payout_requests SET total_amount=? WHERE id=?").run(total, pr.id);
+  // Сповіщаємо лише коли запит сформував хтось інший (адмін за дропера) —
+  // на власне натискання кнопки сповіщення собі ж було б шумом.
+  if (uid !== req.user.id) {
+    notify(uid, "payout", "Сформовано запит на виплату #" + pr.id + " · " + total.toFixed(0) + "₴", { payout_id: pr.id });
+  }
   res.json({ ok: true, request_id: pr.id, total });
 });
 
@@ -3319,12 +3412,22 @@ app.post("/api/payouts/:id/apply-balance", authMiddleware, requireRole("admin"),
     db.prepare("UPDATE users SET balance=balance-? WHERE id=?").run(bal, pr.dropshipper_id);
   })();
   const applied = db.prepare("SELECT balance_applied FROM payout_requests WHERE id=?").get(pr.id).balance_applied;
+  notify(pr.dropshipper_id, "payout",
+    (bal >= 0 ? "Баланс +" : "Борг ") + bal.toFixed(0) + "₴ зараховано у виплату #" + pr.id,
+    { body: "До виплати: " + ((pr.total_amount || 0) + applied).toFixed(0) + "₴", payout_id: pr.id });
   res.json({ ok: true, balance_applied: applied, final_total: (pr.total_amount || 0) + applied });
 });
 
 // Admin: mark payout as paid
 app.put("/api/payouts/:id/paid", authMiddleware, requireRole("admin"), (req, res) => {
+  const pr = db.prepare("SELECT * FROM payout_requests WHERE id=?").get(req.params.id);
   db.prepare("UPDATE payout_requests SET status='paid',paid_at=datetime('now','localtime') WHERE id=?").run(req.params.id);
+  // Головна подія для дропера: гроші пішли. Сума — разом із заліком балансу,
+  // тобто рівно те, що він отримає на реквізити.
+  if (pr && pr.status !== "paid") {
+    const sum = (pr.total_amount || 0) + (pr.balance_applied || 0);
+    notify(pr.dropshipper_id, "payout", "Виплату #" + pr.id + " проведено · " + sum.toFixed(0) + "₴", { payout_id: pr.id });
+  }
   res.json({ ok: true });
 });
 app.get("/api/dashboard", authMiddleware, (req, res) => {

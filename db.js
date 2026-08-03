@@ -519,6 +519,25 @@ db.exec(`
     FOREIGN KEY (packed_by) REFERENCES users(id)
   );
 
+  -- Стрічка сповіщень користувача. Зараз пишеться тільки дроперу (статуси його
+  -- замовлень, ТТН/Нова Пошта, виплати), але прив'язка йде до user_id, тож той
+  -- самий механізм вмикається на адміна чи склад без зміни схеми.
+  -- type — категорія для бейджа в UI: status | ttn | payout.
+  CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL DEFAULT 'status',
+    title TEXT NOT NULL,
+    body TEXT DEFAULT '',
+    order_id INTEGER,
+    payout_id INTEGER,
+    is_read INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id,id DESC);
+  CREATE INDEX IF NOT EXISTS idx_notif_unread ON notifications(user_id,is_read);
   CREATE INDEX IF NOT EXISTS idx_fparcels_digits ON foreign_parcels(phone_digits);
   CREATE INDEX IF NOT EXISTS idx_orders_drop ON orders(dropshipper_id);
   CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
