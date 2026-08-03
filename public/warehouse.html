@@ -196,7 +196,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
 <div class="modal-bg" id="wh-ret-modal"><div class="modal" style="max-width:560px;display:flex;flex-direction:column;overflow:hidden">
 <h3><i data-icon="undo2" data-size="16"></i> <span id="wh-ret-title">Додати повернення</span></h3>
 <div id="wh-ret-pick-wrap" style="flex:1;overflow-y:auto;min-height:0;max-height:55vh">
-  <input id="wh-ret-psearch" placeholder="Пошук товару..." oninput="renderRetPickList()" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
+  <input id="wh-ret-psearch" placeholder="Пошук..." oninput="renderRetPickList()" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
   <div id="wh-ret-bread"></div>
   <div id="wh-ret-cats" class="cards" style="margin-bottom:8px"></div>
   <div id="wh-ret-plist"></div>
@@ -639,6 +639,9 @@ function openRetPicker(title){
   loadRetPicker();
 }
 async function loadRetPicker(){
+  // Списувати можна лише те, що реально лежить на полиці, тож у цьому режимі
+  // каталог не показуємо взагалі — тільки наявні позиції.
+  if(retMode==="wo")return loadRetShelfPicker();
   var cd=await api("/api/categories?parent_id="+(retCatP||"")+"&scope=drop");
   var bc=catBackBtn(cd.breadcrumb,"retCatP="+catParentId(cd.breadcrumb)+";loadRetPicker()");
   bc+='<div class="bread"><a onclick="retCatP=null;loadRetPicker()">'+Icon('package',13)+' Каталог</a>';
@@ -652,7 +655,35 @@ async function loadRetPicker(){
   retSizes=r.sizes||[];
   renderRetPickList();
 }
+async function loadRetShelfPicker(){
+  document.getElementById("wh-ret-bread").innerHTML="";
+  document.getElementById("wh-ret-cats").innerHTML="";
+  try{
+    var r=await api("/api/stock-returns");
+    retShelfItems=r.items||[];
+    retShelf={};retShelfItems.forEach(function(i){retShelf[i.variation_id+"_"+i.size_id]=i.quantity});
+  }catch(e){retShelfItems=[]}
+  renderRetShelfList();
+}
+function renderRetShelfList(){
+  var q=(document.getElementById("wh-ret-psearch").value||"").toLowerCase().trim();
+  var list=retShelfItems.filter(function(i){
+    return !q||((i.var_name||"")+" "+(i.print_name||"")+" "+(i.size_name||"")).toLowerCase().includes(q);
+  });
+  document.getElementById("wh-ret-plist").innerHTML=list.length?list.map(function(i){
+    var key=i.variation_id+"_"+i.size_id;
+    var inCart=retCart[key]?retCart[key].quantity:0;
+    var ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
+    return '<div onclick="addRetCart('+i.variation_id+','+i.size_id+')" style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid '+(inCart?'var(--acc)':'var(--brd)')+';border-radius:9px;margin-bottom:6px;cursor:pointer;background:'+(inCart?'var(--accbg)':'var(--card)')+'">'+
+      '<div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'')+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--th);font-weight:600">'+esc(i.var_name)+'</div><div style="font-size:10px;color:var(--td)">'+retAgeLabel(i.days_in_stock,i.in_at)+'</div></div>'+
+      '<div style="text-align:right;flex-shrink:0"><div style="font-size:15px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div>'+
+      '<div style="font-size:11px;color:var(--td)">лежить '+i.quantity+(inCart?' · <b style="color:var(--acc)">−'+inCart+'</b>':'')+'</div></div>'+
+    '</div>';
+  }).join(""):'<div style="color:var(--td);font-size:12px;padding:10px">'+(q?"Нічого не знайдено":"Полиця повернень порожня")+'</div>';
+}
 function renderRetPickList(){
+  if(retMode==="wo")return renderRetShelfList();
   var q=(document.getElementById("wh-ret-psearch").value||"").toLowerCase().trim();
   var list=retVars;
   if(q)list=list.filter(function(v){return ((v.name||"")+" "+(v.base_name||"")+" "+(v.model_name||"")).toLowerCase().includes(q)});
@@ -671,7 +702,7 @@ function renderRetPickList(){
 }
 // Кошик: ходиш каталогом скільки треба, накидаєш позиції, і одним натиском
 // уся партія заходить на полицю (сервер приймає її однією транзакцією).
-var retCart={},retOpenVar=null,retShelf={};
+var retCart={},retOpenVar=null,retShelf={},retShelfItems=[];
 async function pickRetVar(vid){
   retOpenVar=(retOpenVar===vid)?null:vid;
   if(retOpenVar){
@@ -692,9 +723,12 @@ function retSizeChips(v){
   }).join("")+'</div>';
 }
 function addRetCart(vid,sid){
-  var v=retVars.find(function(x){return x.id===vid});if(!v)return;
   var key=vid+"_"+sid;
-  var sn=(retSizes.find(function(s){return s.id==sid})||{}).name||sid;
+  var v=retVars.find(function(x){return x.id===vid});
+  var shelfIt=retShelfItems.find(function(i){return i.variation_id===vid&&i.size_id===sid});
+  if(!v&&!shelfIt)return;
+  var sn=shelfIt?shelfIt.size_name:((retSizes.find(function(s){return s.id==sid})||{}).name||sid);
+  if(!v)v={id:vid,name:shelfIt.var_name,base_name:shelfIt.var_name};
   if(retCart[key])retCart[key].quantity++;
   else retCart[key]={variation_id:vid,size_id:parseInt(sid),quantity:1,name:v.name||v.base_name,size_name:sn};
   // при списанні не даємо набрати більше, ніж лежить на полиці
@@ -921,6 +955,18 @@ async function toggleRcHist(id,hdr){
     }).join(""):'<div style="font-size:11px;color:var(--td)">Розбіжностей не було</div>';
   }catch(e){box.innerHTML='<div style="font-size:11px;color:var(--red)">Помилка</div>'}
 }
+// Швидке списання прямо зі списку повернень — без пошуку по каталогу.
+async function quickRetWo(vid,sid,max,label){
+  var v=prompt("Скільки списати?\n"+label+"\nНа полиці: "+max,"1");
+  if(v===null)return;
+  var qty=parseInt(v)||0;
+  if(qty<=0)return;
+  if(qty>max){alert("На полиці лише "+max+" шт");return}
+  try{
+    await api("/api/stock-returns/write-off",{method:"POST",body:JSON.stringify({variation_id:vid,size_id:sid,quantity:qty})});
+    loadWhReturns();
+  }catch(e){alert(e.message)}
+}
 async function loadWhDefectStock(){
   var el=document.getElementById("wh-def-stock");if(!el)return;
   var q=document.getElementById("wh-def-search").value.trim();
@@ -989,6 +1035,7 @@ async function loadWhReturns(){
           '<div style="font-size:18px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div>'+
           '<div style="font-size:13px;color:var(--th);font-family:JetBrains Mono,monospace">'+i.quantity+' шт</div>'+
           '<div style="font-size:11px;color:var(--td);font-family:JetBrains Mono,monospace">'+(i.quantity*(i.cost_price||0)).toFixed(0)+'₴</div>'+
+          (ME.worker_role==="packer"?'<button class="btn btn-sm btn-d" style="margin-top:5px;font-size:10px;padding:3px 8px" onclick="quickRetWo('+i.variation_id+','+i.size_id+','+i.quantity+',\''+esc(i.var_name).replace(/'/g,"")+' '+esc(i.size_name)+'\')">'+Icon('upload',11)+' Списати</button>':'')+
         '</div>'+
       '</div>';
     }).join("");

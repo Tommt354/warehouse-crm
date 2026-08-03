@@ -1930,6 +1930,8 @@ function admOpenRet(mode){
   openM("adm-ret-modal");admRenderRetCart();admLoadRetPicker();
 }
 async function admLoadRetPicker(){
+  // Списувати можна лише те, що лежить на полиці — каталог тут не потрібен.
+  if(admRetMode==="wo")return admLoadRetShelf();
   const cd=await api("/api/categories?parent_id="+(admRetCatP||"")+"&scope=drop");
   let bc=catBackBtn(cd.breadcrumb,"admRetCatP="+catParentId(cd.breadcrumb)+";admLoadRetPicker()");
   bc+='<div class="bread"><a onclick="admRetCatP=null;admLoadRetPicker()">'+Icon('package',13)+' Каталог</a>';
@@ -1940,7 +1942,31 @@ async function admLoadRetPicker(){
   admRetVars=(r.variations||[]).filter(v=>v.print_id);admRetSizes=r.sizes||[];
   admRenderRetList();
 }
+async function admLoadRetShelf(){
+  document.getElementById("adm-ret-bread").innerHTML="";
+  document.getElementById("adm-ret-cats").innerHTML="";
+  try{
+    const r=await api("/api/stock-returns");
+    admRetShelfItems=r.items||[];
+    admRetShelf={};admRetShelfItems.forEach(i=>{admRetShelf[i.variation_id+"_"+i.size_id]=i.quantity});
+  }catch(e){admRetShelfItems=[]}
+  admRenderRetShelf();
+}
+function admRenderRetShelf(){
+  const q=(document.getElementById("adm-ret-search").value||"").toLowerCase().trim();
+  const list=admRetShelfItems.filter(i=>!q||((i.var_name||"")+" "+(i.print_name||"")+" "+(i.size_name||"")).toLowerCase().includes(q));
+  document.getElementById("adm-ret-list").innerHTML=list.length?list.map(i=>{
+    const key=i.variation_id+"_"+i.size_id,inCart=admRetCart[key]?admRetCart[key].quantity:0;
+    const ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
+    return '<div onclick="admAddRetCart('+i.variation_id+','+i.size_id+')" style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid '+(inCart?'var(--acc)':'var(--brd)')+';border-radius:9px;margin-bottom:6px;cursor:pointer;background:'+(inCart?'var(--accbg)':'var(--card)')+'">'+
+      '<div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'')+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--th);font-weight:600">'+esc(i.var_name)+'</div></div>'+
+      '<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div>'+
+      '<div style="font-size:11px;color:var(--td)">лежить '+i.quantity+(inCart?' · <b style="color:var(--acc)">−'+inCart+'</b>':'')+'</div></div></div>';
+  }).join(""):'<div style="color:var(--td);font-size:12px;padding:10px">'+(q?"Нічого не знайдено":"Полиця порожня")+'</div>';
+}
 function admRenderRetList(){
+  if(admRetMode==="wo")return admRenderRetShelf();
   const q=(document.getElementById("adm-ret-search").value||"").toLowerCase().trim();
   let list=admRetVars;
   if(q)list=list.filter(v=>((v.name||"")+" "+(v.base_name||"")+" "+(v.model_name||"")).toLowerCase().includes(q));
@@ -1957,7 +1983,7 @@ function admRenderRetList(){
 }
 // Кошик: ходиш каталогом, накидаєш позиції, і вся партія заходить одним
 // натиском — сервер приймає її однією транзакцією.
-var admRetCart={},admRetOpen=null,admRetShelf={};
+var admRetCart={},admRetOpen=null,admRetShelf={},admRetShelfItems=[];
 async function admPickRetVar(vid){
   admRetOpen=(admRetOpen===vid)?null:vid;
   if(admRetOpen){
@@ -1975,8 +2001,12 @@ function admRetChips(v){
   }).join("")+'</div>';
 }
 function admAddRetCart(vid,sid){
-  const v=admRetVars.find(x=>x.id===vid);if(!v)return;
-  const key=vid+"_"+sid,sn=(admRetSizes.find(s=>s.id==sid)||{}).name||sid;
+  const key=vid+"_"+sid;
+  let v=admRetVars.find(x=>x.id===vid);
+  const shelfIt=admRetShelfItems.find(i=>i.variation_id===vid&&i.size_id===sid);
+  if(!v&&!shelfIt)return;
+  const sn=shelfIt?shelfIt.size_name:((admRetSizes.find(s=>s.id==sid)||{}).name||sid);
+  if(!v)v={id:vid,name:shelfIt.var_name,base_name:shelfIt.var_name};
   if(admRetCart[key])admRetCart[key].quantity++;
   else admRetCart[key]={variation_id:vid,size_id:parseInt(sid),quantity:1,name:v.name||v.base_name,size_name:sn};
   if(admRetMode==="wo"){
