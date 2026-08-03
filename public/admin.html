@@ -2948,6 +2948,9 @@ async function applyRecount(){
   if(!adjustments.length){alert("Немає змін для збереження");return}
   try{
     const r=await api("/api/recount/apply",{method:"POST",body:JSON.stringify({adjustments:adjustments})});
+    // Набране треба очистити явно: навігація по категоріях його більше не
+    // скидає, тож після збереження воно лишалось би висіти у списку.
+    rcChanges={};renderRcChanges();
     alert("Збережено: "+r.changed+" змін(и)");
     rcSession=null;
     loadRecount();
