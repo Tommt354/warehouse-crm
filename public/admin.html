@@ -687,7 +687,7 @@
 <div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn" id="anoc-hot" onclick="anoChannel='hot';anoCatP=null;loadAnoCatalog()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="btn on" id="anoc-ads" onclick="anoChannel='ads';anoCatP=null;loadAnoCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS</button></div>
 <div style="margin-bottom:8px"><input id="ano-cat-search" placeholder="Пошук товару за назвою..." oninput="filterAnoCatalog(this.value)" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"></div>
 <div id="ano-summary" style="display:none;background:var(--accbg);border:1px solid rgba(124,134,255,.25);border-radius:10px;padding:8px 10px;margin-bottom:8px"><div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:5px">🛒 У замовленні: <span id="ano-sum-count">0</span> · <span id="ano-sum-total">0</span>₴</div><div id="ano-sum-list" style="max-height:104px;overflow-y:auto;display:flex;flex-direction:column;gap:3px"></div></div>
-<div style="flex:1;overflow-y:auto;min-height:0;margin:0 -4px;padding:0 4px">
+<div style="flex:1;overflow-y:auto;min-height:0;max-height:60vh;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px">
 <div id="anocp-bread"></div>
 <div id="anocp-cats" class="cards" style="margin-bottom:8px"></div>
 <div id="ano-cat-list"></div>
@@ -699,7 +699,7 @@
 <h3 style="display:flex;align-items:center"><i data-icon="tag" data-size="16"></i> Оберіть категорію або товар <button onclick="closeM('disc-cat-modal')" style="margin-left:auto;background:none;border:none;color:var(--td);cursor:pointer;font-size:22px;line-height:1;padding:0 4px">✕</button></h3>
 <div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn" id="discc-hot" onclick="discChannel='hot';discCatP=null;loadDiscCatalog()"><i data-icon="flame" data-size="13"></i> HOT</button><button class="btn on" id="discc-ads" onclick="discChannel='ads';discCatP=null;loadDiscCatalog()"><i data-icon="megaphone" data-size="13"></i> ADS</button></div>
 <div style="margin-bottom:8px"><input id="disc-cat-search" placeholder="Пошук товару за назвою..." oninput="filterDiscCatalog(this.value)" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"></div>
-<div style="flex:1;overflow-y:auto;min-height:0;margin:0 -4px;padding:0 4px">
+<div style="flex:1;overflow-y:auto;min-height:0;max-height:60vh;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px">
 <div id="discp-bread"></div>
 <div id="discp-catpick" style="margin-bottom:8px"></div>
 <div id="discp-cats" class="cards" style="margin-bottom:8px"></div>
@@ -2143,7 +2143,9 @@ function filterAnoCatalog(q){
   var list=q?anoCatalog.filter(function(v){return (v.name||"").toLowerCase().includes(q)||(v.base_name||"").toLowerCase().includes(q)||(v.model_name||"").toLowerCase().includes(q)}):(anoCatP?anoCatalog.filter(function(v){return v.eff_category_drop_id==anoCatP}):anoCatalog);
   document.getElementById("ano-cat-list").innerHTML=list.length?list.map(function(v){
     var ph=v.photo||v.print_photo||v.bp_photo||"";var price=v.is_kit?(v.drop_price||0):(v.drop_price_override||v.drop_price||v.model_drop_price||0);
-    var stockArr=Object.entries(v.stock||{}).filter(function(e){return e[1]>0});
+    // Показуємо всі розміри моделі, а не лише ті, що є в наявності: адмін
+    // оформлює замовлення й на те, чого зараз немає (піде в мінус).
+    var stockArr=Object.entries(v.stock||{});
     var head='<div style="display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--brd);align-items:flex-start">'+(ph?'<img src="'+ph+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover">':'<div style="width:60px;height:60px;background:var(--bg);border-radius:8px"></div>')+
     '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(v.name||v.base_name)+(v.is_kit?' '+Icon('gift',12):'')+'</div><div style="font-size:11px;color:var(--td)">'+esc(v.model_name||"")+'</div><div style="font-size:13px;font-weight:700;color:var(--acc);margin-top:2px">'+price+'₴</div>';
     if(v.is_kit){
@@ -2152,7 +2154,7 @@ function filterAnoCatalog(q){
       return head+'<div style="margin:4px 0">'+comps+'</div>'+sizeRow+'<button class="btn btn-sm" style="font-size:10px;padding:4px 8px;margin-top:6px;color:var(--acc)" onclick="openAnoKitPick('+v.id+')">'+Icon('ruler',11)+' Різні розміри комплектуючих</button></div></div>';
     }
     return head+
-    (stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(function(e){var sid=e[0],qty=e[1];var sn=anoSzName(sid);return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px" onclick="addAnoItem('+v.id+','+sid+',\''+esc(sn)+'\',\''+esc(v.name||v.base_name)+'\','+price+',\''+esc(ph)+'\','+(v.model_weight||0.3)+')">'+esc(sn)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>')+
+    (stockArr.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+stockArr.map(function(e){var sid=e[0],qty=e[1];var sn=anoSzName(sid);return '<button class="btn btn-sm" style="font-size:10px;padding:4px 8px'+(qty>0?'':';border-color:rgba(255,167,38,.45);color:var(--warn)')+'" title="'+(qty>0?'':'Немає на складі — замовлення піде в мінус')+'" onclick="addAnoItem('+v.id+','+sid+',\''+esc(sn)+'\',\''+esc(v.name||v.base_name)+'\','+price+',\''+esc(ph)+'\','+(v.model_weight||0.3)+')">'+esc(sn)+' ('+qty+')</button>'}).join("")+'</div>':'<div style="font-size:10px;color:var(--red);margin-top:4px">Немає в наявності</div>')+
     '</div></div>'
   }).join(""):'<div style="padding:20px;text-align:center;color:var(--td)">Не знайдено</div>';
 }
