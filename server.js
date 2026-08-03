@@ -727,15 +727,49 @@ app.get("/api/recount/active-session", authMiddleware, (req, res) => {
 // unfreezes the rows it covered. Needed so a recount someone starts and
 // never saves doesn't leave those products permanently frozen (new orders
 // would then never decrement their allocated count again).
+// Поки триває переоблік, замовлення на заморожені позиції навмисно НЕ
+// зменшують списану кількість — усе зводиться в кінці, одним махом. Але
+// звести треба кожну заморожену позицію, а не лише ті, у які людина ввела
+// число: інакше замовлення на невведений товар зникає безслідно, і списана
+// лишається завищеною. Те саме стосується скасування переобліку.
+// skipKeys — позиції, які вже враховані у /apply (там demand віднімається
+// разом із введеною кількістю).
+function settleFrozenSession(sessionId, userId, skipKeys) {
+  const session = db.prepare("SELECT started_at FROM recount_sessions WHERE id=?").get(sessionId);
+  if (!session) return 0;
+  const rows = db.prepare("SELECT base_product_id,size_id,quantity,quantity_actual FROM stock_base WHERE recount_session_id=?").all(sessionId);
+  const demandQ = db.prepare(`SELECT COALESCE(SUM(oi.quantity),0) as c FROM order_items oi
+    JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id
+    WHERE v.base_product_id=? AND oi.size_id=? AND o.created_at>=? AND o.status!='cancelled'`);
+  const dec = db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?");
+  const log = db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)");
+  const histItem = db.prepare("INSERT INTO recount_items(session_id,base_product_id,variation_id,size_id,before_qty,after_qty,diff,ordered_during)VALUES(?,?,0,?,?,?,0,?)");
+  let settled = 0;
+  rows.forEach(r => {
+    if (skipKeys && skipKeys.has(r.base_product_id + "_" + r.size_id)) return;
+    const demand = demandQ.get(r.base_product_id, r.size_id, session.started_at).c;
+    if (demand <= 0) return;
+    dec.run(demand, r.base_product_id, r.size_id);
+    log.run(r.base_product_id, r.size_id, -demand, "Переоблік: замовлено під час переобліку — " + demand + " шт", userId);
+    histItem.run(sessionId, r.base_product_id, r.size_id, r.quantity_actual, r.quantity_actual, demand);
+    settled++;
+  });
+  return settled;
+}
+
 app.post("/api/recount/cancel", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
   const sessionId = parseInt(req.body.session_id);
   const session = db.prepare("SELECT * FROM recount_sessions WHERE id=? AND status='active'").get(sessionId);
   if (!session) return res.status(404).json({ error: "Сесію переобліку не знайдено" });
+  let settled = 0;
   db.transaction(() => {
+    // Скасування не скасовує замовлень: те, що замовили під час переобліку,
+    // однаково має зменшити списану кількість, інакше вона лишиться завищеною.
+    settled = settleFrozenSession(sessionId, req.user.id, null);
     db.prepare("UPDATE stock_base SET recount_session_id=NULL WHERE recount_session_id=?").run(sessionId);
     db.prepare("UPDATE recount_sessions SET status='cancelled',finished_at=datetime('now','localtime') WHERE id=?").run(sessionId);
   })();
-  res.json({ ok: true });
+  res.json({ ok: true, settled });
 });
 
 // Apply a batch of physically-counted quantities. A recount corrects the
@@ -762,6 +796,7 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
     return adhocSessionId;
   };
   const logItem = db.prepare("INSERT INTO recount_items(session_id,base_product_id,size_id,before_qty,after_qty,diff,ordered_during)VALUES(?,?,?,?,?,?,?)");
+  const handledKeys = new Set();
   db.transaction(() => {
     adjustments.forEach(a => {
       const bpId = parseInt(a.base_product_id), sizeId = parseInt(a.size_id), actual = parseInt(a.actual_quantity);
@@ -788,9 +823,13 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
       db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)")
         .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual + deferredNote, req.user.id);
       logItem.run(row && row.recount_session_id ? row.recount_session_id : adhocSession(), bpId, sizeId, current, actual, actual - current, orderedDuring);
+      handledKeys.add(bpId + "_" + sizeId);
       changed++;
     });
     touchedSessions.forEach(id => {
+      // Позиції, у які не вводили число, теж мають прийняти замовлення,
+      // зроблені під час переобліку — інакше вони зникнуть із обліку.
+      settleFrozenSession(id, req.user.id, handledKeys);
       db.prepare("UPDATE stock_base SET recount_session_id=NULL WHERE recount_session_id=?").run(id);
       db.prepare("UPDATE recount_sessions SET status='saved',finished_at=datetime('now','localtime') WHERE id=?").run(id);
     });
