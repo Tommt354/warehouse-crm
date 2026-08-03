@@ -81,7 +81,10 @@ const PAYOUT_STATUSES = [
 function payoutStatusFor(o) {
   if (o.payout_req_status === "paid") return "paid";
   if (o.payout_req_status) return "requested";
-  if (o.is_prepaid) return "none";
+  // Повна оплата — «без виплати» лише поки замовлення не повернулось: за саме
+  // повернення дропер платить незалежно від типу оплати.
+  const isReturn = o.status === "refused" || o.status === "return_transit";
+  if (o.is_prepaid && !isReturn) return "none";
   return "unpaid";
 }
 // ── РОЗРАХУНОК ВИПЛАТ ─────────────────────────────────────────────
@@ -90,9 +93,13 @@ function payoutStatusFor(o) {
 // умови були переписані в чотирьох місцях і встигли розійтися.
 //
 // Правила:
-//  • у виплату йдуть тільки замовлення без повної оплати (is_prepaid=0);
-//  • «забрав» (delivered) — плюс на payout_amount, «не забрав»
-//    (refused/return_transit) — мінус на return_cost;
+//  • плюс за «забрав» (delivered) — тільки на замовленнях без повної оплати:
+//    за повністю оплачене замовлення дроперу платити нічого;
+//  • мінус за «не забрав» (refused/return_transit) — на будь-якому
+//    замовленні, і на повній оплаті теж: доставку повернення платить дропер,
+//    а не склад (рішення користувача 2026-08-03);
+//  • повернення без відомої вартості (return_cost=0) у виплату не беремо —
+//    інакше воно закриється нулем ще до того, як НП порахує доставку;
 //  • замовлення, за яке гроші вже фактично виплачені, більше не чіпаємо
 //    автоматично: обміни й повернення після отримання проводяться вручну
 //    через баланс (рішення користувача 2026-08-03);
@@ -104,7 +111,8 @@ function payoutCandidates(uid) {
       AND o.id NOT IN (${PAID_LINE_SQL})
       AND o.id NOT IN (SELECT order_id FROM payout_items WHERE is_return=0)`).all(uid);
   const returns = db.prepare(`SELECT o.* FROM orders o
-    WHERE o.dropshipper_id=? AND o.status IN ('refused','return_transit') AND o.is_prepaid=0
+    WHERE o.dropshipper_id=? AND o.status IN ('refused','return_transit')
+      AND COALESCE(o.return_cost,0)>0
       AND o.id NOT IN (${PAID_LINE_SQL})
       AND o.id NOT IN (SELECT order_id FROM payout_items WHERE is_return=1)`).all(uid);
   return { success, returns };
@@ -128,8 +136,9 @@ function syncPendingPayout(prId) {
     const isSuccess = i.ord_status === "delivered";
     const isReturn = i.ord_status === "refused" || i.ord_status === "return_transit";
     // Позиція більше не відповідає стану замовлення — прибираємо; потрібну
-    // додасть addPayoutLines нижче вже з правильним знаком.
-    if (i.is_prepaid || (i.is_return ? !isReturn : !isSuccess)) { del.run(i.id); return; }
+    // додасть addPayoutLines нижче вже з правильним знаком. Повна оплата не
+    // дає плюса, але мінус за повернення дає нарівні з рештою.
+    if (i.is_return ? !isReturn : (!isSuccess || i.is_prepaid)) { del.run(i.id); return; }
     const amt = i.is_return ? -round2(i.return_cost || 0) : round2(i.payout_amount || 0);
     if (round2(i.amount) !== amt) upd.run(amt, i.id);
   });
