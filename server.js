@@ -843,6 +843,12 @@ app.get("/api/base-products", authMiddleware, (req, res) => {
   q += " ORDER BY m.name,c.sort_order";
   const products = db.prepare(q).all(...params);
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
+  // Щоденний переоблік не зданий — товари віддаємо без жодної кількості, щоб
+  // не було чого підглянути перед сліпим рахунком (див. cycleCountPending).
+  if (cycleCountPending(req.user)) {
+    products.forEach(p => { p.stock = {}; p.stockAlloc = {}; p.total_stock = 0; });
+    return res.json({ products, sizes, cycle_blocked: true });
+  }
   products.forEach(p => {
     // .stock is the physical (actual) count, .stockAlloc is the allocated
     // ("списана") count — shown as the primary number in the product-card
@@ -857,7 +863,8 @@ app.get("/api/base-products", authMiddleware, (req, res) => {
 app.get("/api/base-products/:id", authMiddleware, (req, res) => {
   const p = db.prepare("SELECT bp.*,m.name as model_name,m.cost_price as model_cost_price,m.drop_price as model_drop_price,m.is_ready_product,m.id as mid,c.name as color_name,c.hex_code FROM base_products bp JOIN models m ON bp.model_id=m.id LEFT JOIN colors c ON bp.color_id=c.id WHERE bp.id=?").get(req.params.id);
   if (!p) return res.status(404).json({ error: "Не знайдено" });
-  p.stock = db.prepare("SELECT sb.*,s.name as size_name FROM stock_base sb JOIN sizes s ON sb.size_id=s.id WHERE sb.base_product_id=? ORDER BY s.sort_order").all(p.id);
+  p.stock = cycleCountPending(req.user) ? []
+    : db.prepare("SELECT sb.*,s.name as size_name FROM stock_base sb JOIN sizes s ON sb.size_id=s.id WHERE sb.base_product_id=? ORDER BY s.sort_order").all(p.id);
   p.variations = db.prepare("SELECT v.*,pr.name as print_name FROM variations v LEFT JOIN prints pr ON v.print_id=pr.id WHERE v.base_product_id=?").all(p.id);
   p.workers = db.prepare("SELECT mw.*,u.name as worker_name FROM model_workers mw JOIN users u ON mw.user_id=u.id WHERE mw.model_id=?").all(p.mid);
   p.all_colors = db.prepare("SELECT * FROM colors ORDER BY sort_order").all();
@@ -1105,7 +1112,16 @@ app.get("/api/recount/history/:id", authMiddleware, requireRole("admin","warehou
 // пакувальник не порахував свої позиції, зміна не відкривається. Сенс саме в
 // довжині петлі: розбіжність знаходиться назавтра, коли ще пам'ятають, що
 // вчора відбувалось, а не через 30 днів, коли вже нічого не з'ясувати.
-const CYCLE_POSITIONS = { base: 3, molod: 1 };
+// Скільки позицій видавати на день — окремо на кожен склад, бо навантаження
+// різне: бувають дні під зав'язку, бувають порожні. Редагується адміном у
+// Налаштуваннях; 0 вимикає щоденний переоблік для цього складу.
+const CYCLE_POSITIONS_DEFAULT = { base: 3, molod: 1 };
+function cyclePositionsFor(warehouse) {
+  const key = warehouse === "molod" ? "cycle_positions_ready" : "cycle_positions_base";
+  const row = db.prepare("SELECT value FROM settings WHERE key=?").get(key);
+  const n = row === undefined || row === null ? NaN : parseInt(row.value);
+  return isNaN(n) || n < 0 ? CYCLE_POSITIONS_DEFAULT[warehouse] : n;
+}
 const CYCLE_TURNOVER_DAYS = 30; // за який період міряємо оборот (ABC)
 const CYCLE_COOLDOWN_DAYS = 14; // скільки днів товар не повторюється у завданнях
 
@@ -1121,6 +1137,18 @@ function cycleWarehouseFor(user) {
 
 function todayLocal() {
   return db.prepare("SELECT date('now','localtime') d").get().d;
+}
+
+// Поки завдання дня не здане, залишки свого складу пакувальник бачити не має:
+// інакше рахунок перестає бути сліпим — досить зайти у вкладку «Склад»,
+// подивитись число й переписати його, і розбіжність назавжди нуль. Перевірка
+// на сервері, бо ховати цифри лише в інтерфейсі — це ховати їх від чесного.
+// Завдання тут не видаємо: функція має лишатись безсторонньою для читання.
+function cycleCountPending(user) {
+  const warehouse = cycleWarehouseFor(user);
+  if (!warehouse) return false;
+  const task = db.prepare("SELECT status FROM cycle_tasks WHERE warehouse=? AND task_date=?").get(warehouse, todayLocal());
+  return !!task && task.status !== "done";
 }
 
 // Підбір позицій на день: у першу чергу найходовіший товар (оборот за
@@ -1169,7 +1197,9 @@ function ensureCycleTask(warehouse, userId) {
     });
   let task = db.prepare("SELECT * FROM cycle_tasks WHERE warehouse=? AND task_date=?").get(warehouse, today);
   if (task) return task;
-  const picks = pickCycleProducts(warehouse, CYCLE_POSITIONS[warehouse] || 1);
+  const limit = cyclePositionsFor(warehouse);
+  if (!limit) return null; // 0 позицій — щоденний переоблік для цього складу вимкнено
+  const picks = pickCycleProducts(warehouse, limit);
   if (!picks.length) return null;
   db.transaction(() => {
     const sessionId = db.prepare("INSERT INTO recount_sessions(category_id,status,scope,started_by)VALUES(NULL,'active','cycle',?)").run(userId).lastInsertRowid;
@@ -2383,6 +2413,14 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
 
   const existing = db.prepare("SELECT status FROM orders WHERE id=?").get(req.params.id);
   if (!existing) return res.status(404).json({ error: "Не знайдено" });
+
+  // Пакувати можна тільки на відкритій зміні: зміна — це і облік виробітку, і
+  // точка, де перед роботою зданий щоденний переоблік. Без неї взяти замовлення
+  // в роботу чи закрити його не можна (перевірка на сервері, не лише кнопкою).
+  if (["packer", "packer_ready"].includes(req.user.worker_role) && ["in_progress", "collected", "packed"].includes(status)) {
+    const openShift = db.prepare("SELECT id FROM shifts WHERE packer_user_id=? AND status='open'").get(req.user.id);
+    if (!openShift) return res.status(400).json({ error: "Спочатку відкрийте зміну", shift_required: true });
+  }
 
   const updates = ["status=?","updated_at=datetime('now','localtime')"];
   const vals = [status];

@@ -89,6 +89,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center"><input id="wh-ttn" placeholder="Пошук по ТТН..." style="flex:1;padding:6px 10px;font-size:11px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;outline:0" oninput="whOrdPage=0;loadOrders()"><button class="btn btn-sm" style="border-color:rgba(66,165,245,.3);color:var(--blue)" onclick="trackAll()"><i data-icon="refreshCw" data-size="13"></i> Оновити статуси НП</button></div>
     <div id="wh-search-note" style="display:none;font-size:10px;color:var(--warn);margin:-6px 0 8px">Пошук по ТТН шукає в усіх статусах, не лише у вибраній вкладці</div>
     <div style="margin-bottom:8px;font-size:11px;color:var(--td);display:flex;align-items:center;gap:6px">На сторінці: <select id="wh-ord-pagesize" onchange="whOrdPage=0;loadOrders()" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><option value="20">20</option><option value="40">40</option><option value="50" selected>50</option></select></div>
+    <div id="wh-ord-count" style="font-size:11px;color:var(--td);margin-bottom:6px"></div>
     <div id="wh-orders"></div>
     <div class="pagi" id="wh-ord-pagi"></div>
   </div>
@@ -97,6 +98,12 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
     <div id="ret-result"></div>
   </div>
   <div id="v-stock" style="display:none">
+    <div id="wh-cycle-gate" style="display:none;background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.2);border-radius:12px;padding:18px;text-align:center">
+      <div style="font-size:14px;font-weight:600;color:var(--warn);margin-bottom:6px"><i data-icon="lock" data-size="15"></i> Склад закритий до переобліку</div>
+      <div style="font-size:12px;color:var(--td);margin-bottom:10px">Спершу порахуйте видані позиції на полиці — залишки відкриються одразу після здачі.</div>
+      <button class="btn btn-p" onclick="openShiftModal()"><i data-icon="clipboard" data-size="14"></i> Порахувати</button>
+    </div>
+    <div id="wh-stock-body">
     <div class="stabs"><button class="stab on" id="wst-base" onclick="showWhStockTab('base')"><i data-icon="package" data-size="13"></i> База</button><button class="stab" id="wst-ret" onclick="showWhStockTab('ret')"><i data-icon="undo2" data-size="13"></i> Повернення</button><button class="stab" id="wst-def" onclick="showWhStockTab('def')"><i data-icon="alertTriangle" data-size="13"></i> Брак</button><button class="stab" id="wst-rc" onclick="showWhStockTab('rc')"><i data-icon="clipboardList" data-size="13"></i> Переоблік</button></div>
     <div id="wh-stock-base-view">
     <div class="acts" style="margin-bottom:4px"><button class="btn svm-btn" data-mode="alloc" onclick="setStockViewMode('alloc')">Списана</button><button class="btn on svm-btn" data-mode="fact" onclick="setStockViewMode('fact')">Фактична</button></div>
@@ -148,6 +155,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
       <input id="wh-def-search" placeholder="Пошук по браку..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px" oninput="loadWhDefectStock()">
       <div id="wh-def-summary" style="margin-bottom:10px"></div>
       <div id="wh-def-stock"></div>
+    </div>
     </div>
   </div>
   <div id="v-salary" style="display:none">
@@ -450,6 +458,7 @@ async function loadOrders(silent){if(!silent)document.getElementById("wh-orders"
   document.getElementById("wh-search-note").style.display=searching&&whStatus?"":"none";
   var orders=r.orders;
   var el=document.getElementById("wh-orders");
+  document.getElementById("wh-ord-count").textContent="На сторінці: "+orders.length+" · Всього: "+(r.total||0);
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('packageOpen',15)+'</span>Немає замовлень</div>';document.getElementById("wh-ord-pagi").innerHTML="";whLoadedOrders=[];return}
   var html="",fulls=[];
   for(var oi=0;oi<orders.length;oi++){
@@ -492,7 +501,13 @@ async function refreshOrderCard(id){
 }
 function btnSpin(btn){if(!btn)return;btn._oldHtml=btn.innerHTML;btn.innerHTML='<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .6s linear infinite"></span>';btn.disabled=true}
 function btnDone(btn){if(!btn)return;btn.innerHTML=btn._oldHtml;btn.disabled=false}
-async function chSt(id,st,btn){btnSpin(btn);try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})})}catch(e){}refreshOrderCard(id)}
+async function chSt(id,st,btn){
+  // Пакувати без відкритої зміни не можна — ведемо людину відкрити її (а там
+  // спершу щоденний переоблік), замість глухої помилки з сервера.
+  if(!currentShift&&["in_progress","collected","packed"].indexOf(st)>=0&&ME.role==="warehouse"){
+    openShiftModal();return;
+  }
+  btnSpin(btn);try{await api("/api/orders/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st})})}catch(e){}refreshOrderCard(id)}
 async function canOrd(id,btn){if(!confirm("Скасувати?"))return;btnSpin(btn);try{await api("/api/orders/"+id+"/cancel",{method:"POST"})}catch(e){}refreshOrderCard(id)}
 async function useRet(id,orderId,btn){btnSpin(btn);try{await api("/api/order-items/"+id+"/use-return",{method:"POST",body:JSON.stringify({})})}catch(e){}refreshOrderCard(orderId)}
 
@@ -663,6 +678,13 @@ function whScope(){return whScopeReady?"ready":"base"}
 // товар — готовий. Без цього фільтра База бачила у складі ще й готовий товар.
 function whReadyParam(){return whScopeReady?"&is_ready=1":"&is_ready=0"}
 async function loadWhStock(){
+  // Поки щоденний переоблік не зданий, склад закритий — інакше сліпий рахунок
+  // не сліпий: досить зайти сюди, подивитись число й переписати його.
+  var blocked=false;
+  try{blocked=(await api("/api/cycle-count/current")).required===true}catch(e){}
+  document.getElementById("wh-cycle-gate").style.display=blocked?"":"none";
+  document.getElementById("wh-stock-body").style.display=blocked?"none":"";
+  if(blocked)return;
   // Categories
   var cd=await api("/api/categories?parent_id="+(whStockCatP||"")+"&scope="+whScope());
   var bc=catBackBtn(cd.breadcrumb,"whStockCatP="+catParentId(cd.breadcrumb)+";loadWhStock()");

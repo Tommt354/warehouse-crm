@@ -202,6 +202,7 @@
   <button id="adm-track-btn" class="btn btn-sm" onclick="admTrackNP()" style="border-color:rgba(66,165,245,.3);color:var(--blue);font-size:11px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button>
 </div>
 <div id="adm-foreign"></div>
+<div id="adm-ord-count" style="font-size:11px;color:var(--td);margin-bottom:6px"></div>
 <div id="adm-orders"></div>
 <div class="pagi" id="adm-ord-pagi"></div>
 </div>
@@ -430,6 +431,10 @@
 <div style="max-width:420px">
   <div class="fld"><label>Назва компанії</label><input id="s-company_name"></div>
   <div class="fld"><label>Поріг залишку</label><input id="s-stock_warning_threshold" type="number"></div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)"><div class="pt" style="font-size:14px"><i data-icon="clipboard" data-size="15"></i> Щоденний переоблік</div></div>
+  <div style="font-size:11px;color:var(--td);margin-bottom:8px">Скільки товарів пакувальник рахує перед відкриттям зміни. У завантажені дні можна зменшити, у спокійні — додати. 0 вимикає переоблік для складу.</div>
+  <div class="fld"><label>Позицій на день — Склад База</label><input id="s-cycle_positions_base" type="number" min="0" placeholder="3"></div>
+  <div class="fld"><label>Позицій на день — Готовий товар</label><input id="s-cycle_positions_ready" type="number" min="0" placeholder="1"></div>
   <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)"><div class="pt" style="font-size:14px"><i data-icon="truck" data-size="15"></i> Нова Пошта</div></div>
   <div class="fld"><label>API Ключ (запасний)</label><input id="s-np_api_key" placeholder="Використовується, якщо у контрагента немає свого ключа"></div>
   <div style="margin-top:10px;font-size:13px;font-weight:600;color:var(--th);margin-bottom:8px">Контрагенти (відправники):</div>
@@ -1913,6 +1918,7 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
   loadAdmForeign(ttn.trim());
   const r=await api(url);const orders=r.orders;
   const el=document.getElementById("adm-orders");
+  document.getElementById("adm-ord-count").textContent="На сторінці: "+orders.length+" · Всього: "+(r.total||0);
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('clipboardList',40)+'</span>Немає замовлень</div>';document.getElementById("adm-ord-pagi").innerHTML="";return}
   let html="";
   for(const o of orders){
@@ -3567,7 +3573,7 @@ async function addOrderStatus(){
   try{await api("/api/order-statuses",{method:"POST",body:JSON.stringify({code,name,color})});document.getElementById("st-add-code").value="";document.getElementById("st-add-name").value="";document.getElementById("st-add-color").value="#888888";msg.innerHTML='<span style="color:var(--acc)">'+Icon('check',13)+' Додано</span>';loadOrderStatuses()}catch(e){msg.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>'}
 }
 async function deleteOrderStatus(id){if(!confirm("Видалити статус?"))return;try{await api("/api/order-statuses/"+id,{method:"DELETE"});loadOrderStatuses()}catch(e){alert(e.message)}}
-async function saveSets(){const ks=["company_name","stock_warning_threshold","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];const d={};ks.forEach(k=>{const el=document.getElementById("s-"+k);if(el)d[k]=el.value});try{await api("/api/settings",{method:"PUT",body:JSON.stringify(d)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">'+Icon('check',13)+'</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2e3)}catch(e){}}
+async function saveSets(){const ks=["company_name","stock_warning_threshold","cycle_positions_base","cycle_positions_ready","np_api_key","sender_city","sender_warehouse","sender_phone","sender_name"];const d={};ks.forEach(k=>{const el=document.getElementById("s-"+k);if(el)d[k]=el.value});try{await api("/api/settings",{method:"PUT",body:JSON.stringify(d)});document.getElementById("set-msg").innerHTML='<div class="msg msg-ok">'+Icon('check',13)+'</div>';setTimeout(()=>document.getElementById("set-msg").innerHTML="",2e3)}catch(e){}}
 
 RangePicker.init("adm-df", "adm-dt", {presets:[7,15,30], onApply:function(){admOrdPage=0;loadAdmOrders(admOrdFilter)}});
 RangePicker.init("ds-from", "ds-to", {presets:[7,15,30], onApply:function(){loadDropStats()}});

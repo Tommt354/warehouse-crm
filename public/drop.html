@@ -112,6 +112,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
   <div style="font-size:11px;color:var(--td);display:flex;align-items:center;gap:6px">На сторінці: <select id="ord-pagesize" onchange="ordPage=0;loadOrders()" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><option value="20">20</option><option value="40">40</option><option value="50" selected>50</option></select></div>
   <button id="np-track-btn" class="btn" onclick="trackNP()" style="font-size:11px;padding:6px 12px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button>
 </div>
+<div id="ord-count" style="font-size:11px;color:var(--text-secondary);margin-bottom:6px"></div>
 <div id="ord-list"></div>
 <div class="pagi" id="ord-pagi"></div>
 </div>
@@ -385,6 +386,7 @@ async function loadOrders(){document.getElementById("ord-list").innerHTML='<div 
   var url="/api/orders?page="+(ordPage+1)+"&page_size="+pp+(ordStatus?"&status="+ordStatus:"")+(ordNp?"&np_status="+ordNp:"")+(ordPay?"&payout_status="+ordPay:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(ttn?"&ttn_search="+ttn:"");
   var r=await api(url);var orders=r.orders;
   var el=document.getElementById("ord-list");
+  document.getElementById("ord-count").textContent="На сторінці: "+orders.length+" · Всього: "+(r.total||0);
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('clipboardList',13)+'</span>Немає замовлень</div>';document.getElementById("ord-pagi").innerHTML="";return}
   var pages=Math.max(1,Math.ceil(r.total/pp));ordPage=Math.min(ordPage,pages-1);
   var html="";
