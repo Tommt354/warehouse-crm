@@ -654,7 +654,7 @@
 <!-- Admin new order modal -->
 <div class="modal-bg" id="ano-modal"><div class="modal" style="max-width:560px">
 <h3><i data-icon="plus" data-size="16"></i> Нове замовлення</h3>
-<div class="fld"><label>Дропшипер</label><select id="ano-drop" onchange="anoCalc();updateAnoBalanceUI()"></select></div>
+<div class="fld"><label>Дропшипер</label><select id="ano-drop" onchange="onAnoDropChange()"></select></div>
 <div class="fld"><label>Товари в замовленні</label><div id="ano-items"><div style="color:var(--td);font-size:11px">Натисніть "Додати товар" щоб обрати</div></div></div>
 <button class="btn" onclick="openAnoCatPicker()" style="width:100%;margin-bottom:10px;border-color:rgba(124,134,255,.2);color:var(--acc)"><i data-icon="package" data-size="13"></i> Додати товар з каталогу</button>
 <div class="fld"><label>ПІБ клієнта</label><input id="ano-name"></div>
@@ -2060,6 +2060,18 @@ function toggleAnoOwnTtn(el){
   updateAnoBalanceUI();
 }
 // The selected dropshipper (for the "списати з балансу" option).
+// Ціни залежать від того, за кого оформлюють замовлення: у кожного дропера свої
+// знижки. Тому зміна дропера перезавантажує каталог і скидає вже додані позиції
+// — інакше в замовленні лишились би ціни попереднього дропера.
+function onAnoDropChange(){
+  anoCalc();updateAnoBalanceUI();
+  if(anoItems.length){
+    if(confirm("У цього дропера інші знижки. Товари в замовленні буде очищено, щоб ціни не лишились від попереднього. Продовжити?")){
+      anoItems=[];renderAnoItems();calcAnoWeight();anoCalc();
+    }else{return}
+  }
+  anoCatalog=[];
+}
 function anoSelDrop(){var id=parseInt(document.getElementById("ano-drop").value);return anoDrops.find(function(u){return u.id===id})}
 function updateAnoBalanceUI(){
   var d=anoSelDrop();
@@ -2135,7 +2147,8 @@ async function loadAnoCatalog(){
   bc+='</div>';document.getElementById("anocp-bread").innerHTML=bc;
   document.getElementById("anocp-cats").innerHTML=cd.categories.map(function(c){return '<div class="crd" onclick="anoCatP='+c.id+';loadAnoCatalog()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',28))+'</div><div class="crd-body"><div class="crd-name">'+esc(c.name)+'</div></div></div>'}).join("");
   document.getElementById("ano-cat-list").innerHTML='<div style="text-align:center;padding:20px;color:var(--td)">Завантаження...</div>';
-  try{var r=await api("/api/variations?channel="+anoChannel);anoCatalog=r.variations;anoSizes=r.sizes||[];try{var kd=await api("/api/kits?channel="+anoChannel);(kd.kits||[]).forEach(function(k){k.is_kit=true;k.eff_category_drop_id=k.category_drop_id;anoCatalog.push(k)})}catch(e){}filterAnoCatalog(document.getElementById("ano-cat-search").value||"")}catch(e){}
+  var _forDrop=(parseInt(document.getElementById("ano-drop").value)||0);var _dq=_forDrop?"&dropshipper_id="+_forDrop:"";
+  try{var r=await api("/api/variations?channel="+anoChannel+_dq);anoCatalog=r.variations;anoSizes=r.sizes||[];try{var kd=await api("/api/kits?channel="+anoChannel+_dq);(kd.kits||[]).forEach(function(k){k.is_kit=true;k.eff_category_drop_id=k.category_drop_id;anoCatalog.push(k)})}catch(e){}filterAnoCatalog(document.getElementById("ano-cat-search").value||"")}catch(e){}
   updateAnoCount();
 }
 function filterAnoCatalog(q){

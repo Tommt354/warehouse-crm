@@ -869,6 +869,23 @@ function discountForVariation(discounts, variationId, effCategoryId) {
   return d;
 }
 // Category-only discount (for kits, which aren't a single variation).
+// Глобальна знижка дропера (відсоток, потім фіксована сума) — той самий
+// порядок, що й при створенні замовлення. Каталог має показувати рівно ту
+// ціну, за якою замовлення реально збережеться, інакше адмін і дропер бачать
+// одне, а в замовленні виходить інше.
+function applyGlobalDropDiscount(price, dropId, cache) {
+  if (!dropId) return price;
+  const u = cache && cache.user !== undefined
+    ? cache.user
+    : db.prepare("SELECT discount_percent,discount_fixed FROM users WHERE id=?").get(dropId);
+  if (cache) cache.user = u;
+  if (!u) return price;
+  let p = price;
+  if (u.discount_percent) p = p * (1 - u.discount_percent / 100);
+  if (u.discount_fixed) p = Math.max(0, p - u.discount_fixed);
+  return p;
+}
+
 function discountForCategory(discounts, effCategoryId) {
   const cats = effCategoryId ? categoryAncestors(effCategoryId) : [];
   let d = 0;
@@ -890,6 +907,7 @@ app.get("/api/variations", authMiddleware, (req, res) => {
   // may preview a dropshipper's prices via ?dropshipper_id=.
   const forDrop = req.user.role === "dropshipper" ? req.user.id : (req.query.dropshipper_id ? parseInt(req.query.dropshipper_id) : null);
   const discounts = forDrop ? loadDropDiscounts(forDrop) : [];
+  const globalCache = {};
   const modelSizes = {};
   variations.forEach(v => {
     if (!modelSizes[v.model_id]) modelSizes[v.model_id] = db.prepare("SELECT size_id FROM model_sizes WHERE model_id=?").all(v.model_id).map(r=>r.size_id);
@@ -902,8 +920,9 @@ app.get("/api/variations", authMiddleware, (req, res) => {
     }
     v.list_drop_price = v.drop_price_override || v.model_drop_price;
     const d = discounts.length ? discountForVariation(discounts, v.id, v.eff_category_drop_id) : 0;
-    v.discount_amount = d;
-    v.drop_price = Math.max(0, Math.round((v.list_drop_price - d) * 100) / 100);
+    const afterGlobal = applyGlobalDropDiscount(v.list_drop_price, forDrop, globalCache);
+    v.discount_amount = Math.round((v.list_drop_price - afterGlobal + d) * 100) / 100;
+    v.drop_price = Math.max(0, Math.round((afterGlobal - d) * 100) / 100);
   });
   res.json({ variations, sizes });
 });
@@ -1236,13 +1255,14 @@ app.get("/api/kits", authMiddleware, (req, res) => {
   const sizes = db.prepare("SELECT * FROM sizes ORDER BY sort_order").all();
   const forDrop = req.user.role === "dropshipper" ? req.user.id : (req.query.dropshipper_id ? parseInt(req.query.dropshipper_id) : null);
   const discounts = forDrop ? loadDropDiscounts(forDrop) : [];
+  const globalCacheK = {};
 
   kits.forEach(k => {
     // A kit isn't a single variation, so only a category-level discount applies.
     k.list_drop_price = k.drop_price;
     const kd = discounts.length ? discountForCategory(discounts, k.category_drop_id) : 0;
-    k.discount_amount = kd;
-    k.drop_price = Math.max(0, Math.round((k.drop_price - kd) * 100) / 100);
+    k.discount_amount = Math.round((k.list_drop_price - applyGlobalDropDiscount(k.list_drop_price, forDrop, globalCacheK) + kd) * 100) / 100;
+    k.drop_price = Math.max(0, Math.round((applyGlobalDropDiscount(k.list_drop_price, forDrop, globalCacheK) - kd) * 100) / 100);
     k.items = db.prepare("SELECT ki.*,v.name as var_name,v.photo as var_photo,v.base_product_id,v.print_id,bp.name as base_name,bp.photo as bp_photo,c.name as color_name FROM kit_items ki JOIN variations v ON ki.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id LEFT JOIN colors c ON bp.color_id=c.id WHERE ki.kit_id=?").all(k.id);
     // Per-component stock
     k.items.forEach(item => {
