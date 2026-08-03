@@ -47,6 +47,7 @@
     <a data-p="cuts"><i data-icon="scissors" data-size="15"></i> Крій</a>
     <a data-p="orders"><i data-icon="clipboardList" data-size="15"></i> Замовлення</a>
     <a data-p="returns"><i data-icon="packageOpen" data-size="15"></i> Повернення</a>
+    <a data-p="defect"><i data-icon="alertTriangle" data-size="15"></i> Брак</a>
     <div class="nav-g">Користувачі</div>
     <a data-p="drops"><i data-icon="users" data-size="15"></i> Дропшипери</a>
     <a data-p="workers"><i data-icon="hardHat" data-size="15"></i> Працівники</a>
@@ -209,10 +210,25 @@
 <div class="pagi" id="adm-ord-pagi"></div>
 </div>
 
+<div class="page" id="pg-defect"><div class="pt"><i data-icon="alertTriangle" data-size="17"></i> Склад браку</div>
+<div style="font-size:11px;color:var(--td);margin-bottom:10px">Товар, знятий з бази або з повернень як брак. Поповнюється пакувальником через «Додати брак».</div>
+<input id="adm-def-search" class="search-bar" placeholder="Пошук по назві, принту, розміру..." style="max-width:100%;margin-bottom:10px" oninput="loadAdmDefect()">
+<div id="adm-def-summary" style="margin-bottom:12px"></div>
+<div id="adm-def-list"></div>
+</div>
+
 <div class="page" id="pg-returns"><div class="pt"><i data-icon="packageOpen" data-size="17"></i> Склад повернень</div>
 <div style="margin-bottom:14px"><input class="search-bar" id="ret-scan" placeholder="Скануйте ТТН для реєстрації повернення..." style="max-width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace"></div>
 <div id="ret-scan-result" style="margin-bottom:14px"></div>
 <div class="pt" style="font-size:14px;margin-top:10px">Наявні повернення:</div>
+<input id="adm-ret-fsearch" class="search-bar" placeholder="Пошук: футболка, принт, розмір..." style="max-width:100%;margin-bottom:8px" oninput="loadReturns()">
+<div class="stabs" id="adm-ret-age">
+  <button class="stab on" data-age="" onclick="setAdmRetAge('')">Всі</button>
+  <button class="stab" data-age="7" onclick="setAdmRetAge('7')">7+ днів</button>
+  <button class="stab" data-age="30" onclick="setAdmRetAge('30')">30+ днів</button>
+  <button class="stab" data-age="60" onclick="setAdmRetAge('60')">60+ днів</button>
+</div>
+<div id="adm-ret-summary" style="margin-bottom:10px"></div>
 <div class="acts" style="margin-bottom:8px">
   <button class="btn btn-a" onclick="admOpenRet('add')"><i data-icon="download" data-size="14"></i> Додати повернення</button>
   <button class="btn btn-d" onclick="admOpenRet('wo')"><i data-icon="upload" data-size="14"></i> Списати повернення</button>
@@ -810,7 +826,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,defect:loadAdmDefect,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -2841,11 +2857,14 @@ async function startRecount(){
     const r=await api("/api/recount/start",{method:"POST",body:JSON.stringify({category_id:rcCatP})});
     rcSession={id:r.session_id,started_at:new Date().toISOString().replace("T"," ")};
     renderRcSessionBar();
+    // Поля вводу заблоковані, поки немає сесії, — після старту список треба
+    // перемалювати, інакше вони лишаться заблокованими до перезаходу.
+    renderRecount(rcProducts);
   }catch(e){alert(e.message)}
 }
 async function cancelRecount(){
   if(!confirm("Скасувати переоблік? Нові замовлення знову почнуть списувати наявність цих товарів."))return;
-  try{await api("/api/recount/cancel",{method:"POST",body:JSON.stringify({session_id:rcSession.id})});rcSession=null;renderRcSessionBar()}catch(e){alert(e.message)}
+  try{await api("/api/recount/cancel",{method:"POST",body:JSON.stringify({session_id:rcSession.id})});rcSession=null;renderRcSessionBar();renderRecount(rcProducts)}catch(e){alert(e.message)}
 }
 function renderRecount(products){
   const el=document.getElementById("rc-list");
@@ -2857,7 +2876,7 @@ function renderRecount(products){
       '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+szs.map(function(s){
         const q=p.stock[s.id]||0;
-        return '<div style="text-align:center"><div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(s.name)+'</div><input type="number" value="'+q+'" data-bp="'+p.id+'" data-size="'+s.id+'" data-orig="'+q+'" data-key="'+p.id+'_'+s.id+'" data-label="'+esc(p.name)+' '+esc(s.name)+'" style="width:56px;padding:5px;font-size:12px;text-align:center;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff" onchange="rcMarkChange(this)"></div>';
+        return '<div style="text-align:center"><div style="font-size:9px;color:var(--td);margin-bottom:2px">'+esc(s.name)+'</div><input type="number"'+(rcSession?'':' disabled title="Спершу натисніть «Почати переоблік»"')+' value="'+q+'" data-bp="'+p.id+'" data-size="'+s.id+'" data-orig="'+q+'" data-key="'+p.id+'_'+s.id+'" data-label="'+esc(p.name)+' '+esc(s.name)+'" style="width:56px;padding:5px;font-size:12px;text-align:center;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff" onchange="rcMarkChange(this)"></div>';
       }).join("")+'</div></div></div>';
   }).join("");
   rcRestoreInputs();
@@ -2920,6 +2939,55 @@ async function admCreateTTN(id,btn){
 }
 
 // ── Returns (склад повернень) ────────────────────────────────────
+// Склад браку: те саме, що бачить пакувальник, тільки для адміна — скільки
+// накопичилось і на яку собівартість.
+var admRetAge="";
+function setAdmRetAge(a){
+  admRetAge=a;
+  document.querySelectorAll("#adm-ret-age .stab").forEach(b=>b.classList.toggle("on",(b.dataset.age||"")===a));
+  loadReturns();
+}
+// Скільки днів позиція лежить — рахує сервер від дати надходження.
+function admRetAgeLabel(d,inAt){
+  if(d===null||d===undefined)return '<span style="color:var(--td)">дата невідома</span>';
+  const color=d>=60?"var(--red)":(d>=30?"var(--warn)":"var(--td)");
+  const word=d===0?"прийшло сьогодні":("лежить "+(d===1?"1 день":(d<5?d+" дні":d+" днів")));
+  return '<span style="color:'+color+'">'+word+'</span><span style="color:var(--td)"> · з '+esc((inAt||"").slice(0,10))+'</span>';
+}
+async function admQuickRetWo(vid,sid,max,label){
+  const v=prompt("Скільки списати?\n"+label+"\nНа полиці: "+max,"1");
+  if(v===null)return;
+  const qty=parseInt(v)||0;
+  if(qty<=0)return;
+  if(qty>max){alert("На полиці лише "+max+" шт");return}
+  try{await api("/api/stock-returns/write-off",{method:"POST",body:JSON.stringify({variation_id:vid,size_id:sid,quantity:qty})});loadReturns()}
+  catch(e){alert(e.message)}
+}
+
+async function loadAdmDefect(){
+  const q=(document.getElementById("adm-def-search").value||"").trim();
+  try{
+    const r=await api("/api/stock-defect"+(q?"?search="+encodeURIComponent(q):""));
+    document.getElementById("adm-def-summary").innerHTML=
+      '<div class="sg"><div class="sc"><div class="sv">'+r.items.length+'</div><div class="sl">позицій</div></div>'+
+      '<div class="sc"><div class="sv">'+r.total_qty+'</div><div class="sl">всього штук</div></div>'+
+      '<div class="sc"><div class="sv" style="color:var(--red)">'+r.total_cost.toFixed(0)+'₴</div><div class="sl">собівартість</div></div></div>';
+    const el=document.getElementById("adm-def-list");
+    if(!r.items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('alertTriangle',40)+'</span>'+(q?"Нічого не знайдено":"Браку немає")+'</div>';return}
+    el.innerHTML='<table class="tbl"><tr><th></th><th>Товар</th><th>Розмір</th><th>Звідки</th><th>Лежить</th><th>Шт</th><th>Собівартість</th></tr>'+
+      r.items.map(i=>{
+        const ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
+        return '<tr><td style="width:46px">'+(ph?'<img src="'+ph+'" style="width:40px;height:40px;border-radius:7px;object-fit:cover">':'')+'</td>'+
+          '<td>'+esc(i.var_name||i.base_name)+(i.print_name?'<div style="font-size:10px;color:var(--warn)">'+esc(i.print_name)+'</div>':'')+'</td>'+
+          '<td style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">'+esc(i.size_name)+'</td>'+
+          '<td style="font-size:11px;color:var(--td)">'+(i.source==="returns"?"з повернень":"з бази")+'</td>'+
+          '<td style="font-size:11px;color:var(--td)">'+(i.days_in_stock===null||i.days_in_stock===undefined?"—":i.days_in_stock+" дн.")+'</td>'+
+          '<td style="font-family:JetBrains Mono,monospace">'+i.quantity+'</td>'+
+          '<td style="font-family:JetBrains Mono,monospace;color:var(--red)">'+(i.quantity*(i.cost_price||0)).toFixed(0)+'₴</td></tr>';
+      }).join("")+'</table>';
+  }catch(e){}
+}
+
 async function loadReturns(){
   // Scanner
   const scanEl=document.getElementById("ret-scan");
@@ -2928,12 +2996,31 @@ async function loadReturns(){
   document.getElementById("ret-scan-result").innerHTML="";
   // Load existing returns
   try{
-    const{items}=await api("/api/stock-returns");
+    const q=(document.getElementById("adm-ret-fsearch")?.value||"").trim();
+    const r=await api("/api/stock-returns?"+(q?"search="+encodeURIComponent(q)+"&":"")+(admRetAge?"min_days="+admRetAge:""));
+    const items=r.items;
+    document.getElementById("adm-ret-summary").innerHTML=
+      '<div class="sg"><div class="sc"><div class="sv">'+items.length+'</div><div class="sl">позицій</div></div>'+
+      '<div class="sc"><div class="sv">'+r.total_qty+'</div><div class="sl">всього штук</div></div>'+
+      '<div class="sc"><div class="sv" style="color:var(--warn)">'+r.total_cost.toFixed(0)+'₴</div><div class="sl">собівартість</div></div></div>';
     const el=document.getElementById("ret-stock-list");
-    if(!items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('package',40)+'</span>Немає повернень на складі</div>';return}
-    // Group by variation
-    const groups={};items.forEach(i=>{if(!groups[i.variation_id])groups[i.variation_id]={name:i.var_name,photo:(i.var_photo||i.print_photo||i.bp_photo)||i.print_photo||"",print:i.print_name,color:i.color_name,sizes:[]};groups[i.variation_id].sizes.push({name:i.size_name,qty:i.quantity})});
-    el.innerHTML='<div class="cards">'+Object.values(groups).map(g=>'<div class="pcard">'+(g.photo?'<div class="pcard-img"><img src="'+g.photo+'"></div>':'')+'<div class="pcard-body"><div class="pcard-name">'+esc(g.name)+'</div>'+(g.print?'<div class="pcard-sub">'+Icon('image',11)+' '+esc(g.print)+'</div>':'')+(g.color?'<div class="pcard-sub">'+esc(g.color)+'</div>':'')+'<div class="stock-row" style="margin-top:4px">'+g.sizes.map(s=>'<div class="stock-sz"><b>'+s.name+'</b><br>'+s.qty+'</div>').join("")+'</div></div></div>').join("")+'</div>';
+    if(!items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('package',40)+'</span>'+((q||admRetAge)?"Нічого не знайдено":"Немає повернень на складі")+'</div>';return}
+    el.innerHTML=items.map(i=>{
+      const ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
+      return '<div style="display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="width:64px;height:64px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'')+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(i.var_name)+'</div>'+
+          (i.print_name?'<div style="font-size:10px;color:var(--warn)">'+Icon("image",10)+' '+esc(i.print_name)+'</div>':'')+
+          '<div style="font-size:11px;margin-top:3px">'+admRetAgeLabel(i.days_in_stock,i.in_at)+'</div>'+
+        '</div>'+
+        '<div style="text-align:right;flex-shrink:0">'+
+          '<div style="font-size:18px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div>'+
+          '<div style="font-size:13px;color:var(--th);font-family:JetBrains Mono,monospace">'+i.quantity+' шт</div>'+
+          '<div style="font-size:11px;color:var(--td);font-family:JetBrains Mono,monospace">'+(i.quantity*(i.cost_price||0)).toFixed(0)+'₴</div>'+
+          '<button class="btn btn-sm btn-d" style="margin-top:5px;font-size:10px;padding:3px 8px" onclick="admQuickRetWo('+i.variation_id+','+i.size_id+','+i.quantity+',\''+esc(i.var_name).replace(/'/g,"")+' '+esc(i.size_name)+'\')">'+Icon('upload',11)+' Списати</button>'+
+        '</div></div>';
+    }).join("");
   }catch(e){}
 }
 async function scanRetTTN(){

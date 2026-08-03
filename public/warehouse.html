@@ -853,7 +853,9 @@ function renderRcSessionBar(){
   if(wrcSession){
     el.innerHTML='<div class="msg msg-ok" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px"><span>'+Icon('clipboardList',13)+' Переоблік триває з '+esc((wrcSession.started_at||"").slice(0,16))+'</span><button class="btn btn-sm" onclick="cancelWhRecount()">'+Icon('x',12)+' Скасувати</button></div>';
   }else{
-    el.innerHTML='<div style="margin-bottom:8px"><button class="btn btn-a" onclick="startWhRecount()">'+Icon('clipboardList',14)+' Почати переоблік'+(wrcCatP?' цієї категорії':'')+'</button><div style="font-size:10px;color:var(--td);margin-top:4px">Можна рахувати й без старту — тоді просто збережеться результат. Старт потрібен, якщо під час перерахунку йдуть замовлення.</div></div>';
+    el.innerHTML='<div class="msg msg-err" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<span style="font-size:12px">'+Icon('lock',13)+' Щоб вводити кількості, спершу почніть переоблік — інакше замовлення, зроблені під час перерахунку, зіб\'ють цифри.</span>'+
+      '<button class="btn btn-a" onclick="startWhRecount()">'+Icon('clipboardList',14)+' Почати переоблік'+(wrcCatP?' категорії':'')+'</button></div>';
   }
 }
 async function startWhRecount(){
@@ -880,7 +882,7 @@ function renderRcList(){
         var val=wrcChanges[key]!==undefined?wrcChanges[key].qty:"";
         return '<div style="text-align:center"><div style="font-size:11px;color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">'+esc(s.name)+'</div>'+
           '<div style="font-size:10px;color:var(--td)">було '+cur+'</div>'+
-          '<input type="number" min="0" value="'+val+'" placeholder="'+cur+'" data-bp="'+p.id+'" data-sid="'+s.id+'" data-cur="'+cur+'" data-label="'+esc(p.name)+' '+esc(s.name)+'" oninput="onRcInput(this)" style="width:56px;padding:5px;font-size:12px;text-align:center;background:var(--input);border:1px solid '+(val!==""&&parseInt(val)!==cur?'var(--warn)':'var(--brd)')+';border-radius:6px;color:#fff"></div>';
+          '<input type="number" min="0" value="'+val+'" placeholder="'+cur+'"'+(wrcSession?'':' disabled title="Спершу натисніть «Почати переоблік»"')+' data-bp="'+p.id+'" data-sid="'+s.id+'" data-cur="'+cur+'" data-label="'+esc(p.name)+' '+esc(s.name)+'" oninput="onRcInput(this)" style="width:56px;padding:5px;font-size:12px;text-align:center;background:var(--input);border:1px solid '+(val!==""&&parseInt(val)!==cur?'var(--warn)':'var(--brd)')+';border-radius:6px;color:#fff'+(wrcSession?'':';opacity:.45;cursor:not-allowed')+'"></div>';
       }).join("")+'</div>'+
     '</div>';
   }).join("");
