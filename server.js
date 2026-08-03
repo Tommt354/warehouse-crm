@@ -212,6 +212,11 @@ function statusName(code) {
   catch (e) { return code; }
 }
 
+// Яка сесія переобліку зараз тримає цю позицію (якщо тримає).
+function frozenSessionFor(bpId, sizeId) {
+  return db.prepare("SELECT recount_session_id FROM stock_base WHERE base_product_id=? AND size_id=?").get(bpId, sizeId)?.recount_session_id || null;
+}
+
 function warehouseRedirectFor(workerRole) {
   if (workerRole === "finalizer") return "/finalizer";
   if (workerRole === "seamstress" || workerRole === "printer" || workerRole === "seo") return "/staff";
@@ -953,14 +958,14 @@ function settleFrozenSession(sessionId, userId, skipKeys) {
   const rows = db.prepare("SELECT base_product_id,size_id,quantity,quantity_actual FROM stock_base WHERE recount_session_id=?").all(sessionId);
   const demandQ = db.prepare(`SELECT COALESCE(SUM(oi.quantity),0) as c FROM order_items oi
     JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id
-    WHERE v.base_product_id=? AND oi.size_id=? AND o.created_at>=? AND o.status!='cancelled'`);
+    WHERE v.base_product_id=? AND oi.size_id=? AND oi.recount_session_id=? AND o.status!='cancelled'`);
   const dec = db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?");
   const log = db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)");
   const histItem = db.prepare("INSERT INTO recount_items(session_id,base_product_id,variation_id,size_id,before_qty,after_qty,diff,ordered_during)VALUES(?,?,0,?,?,?,0,?)");
   let settled = 0;
   rows.forEach(r => {
     if (skipKeys && skipKeys.has(r.base_product_id + "_" + r.size_id)) return;
-    const demand = demandQ.get(r.base_product_id, r.size_id, session.started_at).c;
+    const demand = demandQ.get(r.base_product_id, r.size_id, sessionId).c;
     if (demand <= 0) return;
     dec.run(demand, r.base_product_id, r.size_id);
     log.run(r.base_product_id, r.size_id, -demand, "Переоблік: замовлено під час переобліку — " + demand + " шт", userId);
@@ -1020,14 +1025,13 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
 
       let deferredNote = "", orderedDuring = 0;
       if (row && row.recount_session_id) {
-        const session = db.prepare("SELECT started_at FROM recount_sessions WHERE id=?").get(row.recount_session_id);
-        if (session) {
-          const demand = db.prepare(`SELECT COALESCE(SUM(oi.quantity),0) as c FROM order_items oi
-            JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id
-            WHERE v.base_product_id=? AND oi.size_id=? AND o.created_at>=? AND o.status!='cancelled'`)
-            .get(bpId, sizeId, session.started_at).c;
-          if (demand > 0) { diff -= demand; orderedDuring = demand; deferredNote = ` (з них ${demand} замовлено під час переобліку)`; }
-        }
+        // Замовлення, зроблені під час заморозки, позначені міткою на самій
+        // позиції — це точно ті, що не зменшили списану кількість.
+        const demand = db.prepare(`SELECT COALESCE(SUM(oi.quantity),0) as c FROM order_items oi
+          JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id
+          WHERE v.base_product_id=? AND oi.size_id=? AND oi.recount_session_id=? AND o.status!='cancelled'`)
+          .get(bpId, sizeId, row.recount_session_id).c;
+        if (demand > 0) { diff -= demand; orderedDuring = demand; deferredNote = ` (з них ${demand} замовлено під час переобліку)`; }
         touchedSessions.add(row.recount_session_id);
       }
 
@@ -1684,8 +1688,9 @@ app.post("/api/orders", authMiddleware, (req, res) => {
           if (!compModelSizes.includes(compSize) && compModelSizes.length === 1) compSize = compModelSizes[0];
           // A frozen row (active recount) skips the decrement here — it
           // gets reconciled in one shot by /api/recount/apply instead.
-          db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, v.bpid, compSize);
-          orderItems.push({ variation_id: v.id, size_id: compSize, quantity: qty, drop_price: 0, from_returns: 0, kit_id: item.kit_id });
+          const compUpd = db.prepare("UPDATE stock_base SET quantity=MAX(0,quantity-?) WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, v.bpid, compSize);
+          orderItems.push({ variation_id: v.id, size_id: compSize, quantity: qty, drop_price: 0, from_returns: 0, kit_id: item.kit_id,
+            recount_session_id: compUpd.changes ? null : frozenSessionFor(v.bpid, compSize) });
         }
         // First component gets the kit price for display
         if (orderItems.length && orderItems[orderItems.length - kitComps.length]) {
@@ -1715,8 +1720,9 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 
         // A frozen row (active recount) skips the decrement here — it
         // gets reconciled in one shot by /api/recount/apply instead.
-        db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, v.base_product_id, item.size_id);
-        orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: 0, kit_id: null });
+        const upd = db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, v.base_product_id, item.size_id);
+        orderItems.push({ variation_id: v.id, size_id: item.size_id, quantity: qty, drop_price: dropPrice, from_returns: 0, kit_id: null,
+          recount_session_id: upd.changes ? null : frozenSessionFor(v.base_product_id, item.size_id) });
       }
     }
 
@@ -1750,8 +1756,8 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     const o = db.prepare("INSERT INTO orders(dropshipper_id,client_name,client_phone,client_city,client_warehouse,cod_amount,total_drop_price,payout_amount,note,drop_channel,is_prepaid,receipt_photo,declared_value,own_ttn,cargo_description,weight,delivery_type,client_street,client_house,client_flat,is_postomat,parcel_width,parcel_height,parcel_length,ttn)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .run(dropId, client_name.trim(), client_phone.trim(), client_city||"", client_warehouse||"", cod, totalDrop, payout, note||"", orderChannel, isPrepaid, req.body.receipt_photo||"", parseFloat(req.body.declared_value)||cod, ownTtn?1:0, req.body.cargo_description||"Одяг", orderWeight, deliveryType, req.body.client_street||"", req.body.client_house||"", req.body.client_flat||"", isPostomat?1:0, parseFloat(req.body.parcel_width)||0, parseFloat(req.body.parcel_height)||0, parseFloat(req.body.parcel_length)||0, adminTtn);
 
-    const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id)VALUES(?,?,?,?,?,?,?)");
-    orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id));
+    const addItem = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns,kit_id,recount_session_id)VALUES(?,?,?,?,?,?,?,?)");
+    orderItems.forEach(i => addItem.run(o.lastInsertRowid, i.variation_id, i.size_id, i.quantity, i.drop_price, i.from_returns, i.kit_id, i.recount_session_id || null));
 
     // Settle the order from balance: deduct the drop price and record it.
     if (payFromBalance) {

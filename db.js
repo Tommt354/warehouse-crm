@@ -555,6 +555,12 @@ addCol("base_products","cost_price","REAL DEFAULT 0");
 addCol("base_products","drop_price","REAL DEFAULT 0");
 addCol("models","category_drop_id","INTEGER DEFAULT NULL");
 addCol("order_items","kit_id","INTEGER DEFAULT NULL");
+// Позиція замовлена під час активного переобліку: списану кількість тоді не
+// чіпають, її зводять при збереженні переобліку. Позначаємо саму позицію, а не
+// вираховуємо по часу створення замовлення — час має точність до секунди, і
+// замовлення, створене в ту саму секунду, що й старт переобліку, списувалось
+// двічі. Зі щоденним переобліком такі збіги стають реальними.
+addCol("order_items","recount_session_id","INTEGER DEFAULT NULL");
 addCol("variations","allow_negative_order","INTEGER DEFAULT 1");
 // Per-variation drop-catalog category override. A model has one
 // category_drop_id, but its printed variations can each belong to a different
