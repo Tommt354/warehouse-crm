@@ -669,6 +669,10 @@ addCol("orders","is_postomat","INTEGER DEFAULT 0");
 addCol("orders","parcel_width","REAL DEFAULT 0");
 addCol("orders","parcel_height","REAL DEFAULT 0");
 addCol("orders","parcel_length","REAL DEFAULT 0");
+// Код статусу Нової Пошти (StatusCode із TrackingDocument). Текст np_status_text
+// містить назви міст і для фільтра не годиться — фільтруємо по коду. Для старих
+// замовлень код порожній, тож група НП виводиться з внутрішнього статусу.
+addCol("orders","np_status_code","INTEGER DEFAULT NULL");
 addCol("workers","use_daily_rate","INTEGER DEFAULT 1");
 addCol("worker_payroll","task_id","INTEGER DEFAULT NULL");
 // Payroll operation counts now live on the print/patch itself (not on the
@@ -782,11 +786,11 @@ if(!db.prepare("SELECT id FROM order_statuses LIMIT 1").get()){
     { code: "new", name: "Нове", color: "#3b82f6", sort: 1, system: 1 },
     { code: "in_progress", name: "В роботі", color: "#f59e0b", sort: 2, system: 1 },
     { code: "packed", name: "Запаковано", color: "#8b5cf6", sort: 3, system: 1 },
-    { code: "shipped", name: "Відправлено", color: "#10b981", sort: 4, system: 1 },
-    { code: "delivered", name: "Доставлено", color: "#22c55e", sort: 5, system: 0 },
+    { code: "shipped", name: "В дорозі", color: "#10b981", sort: 4, system: 1 },
+    { code: "delivered", name: "Отримано", color: "#22c55e", sort: 5, system: 0 },
     { code: "done", name: "Виконано", color: "#059669", sort: 6, system: 0 },
-    { code: "refused", name: "Відмова", color: "#ef4444", sort: 7, system: 0 },
-    { code: "return_transit", name: "Повернення", color: "#f97316", sort: 8, system: 0 },
+    { code: "refused", name: "Відмова від отримання", color: "#ef4444", sort: 7, system: 0 },
+    { code: "return_transit", name: "Повертається", color: "#f97316", sort: 8, system: 0 },
     { code: "cancelled", name: "Скасовано", color: "#6b7280", sort: 9, system: 1 }
   ];
   const ins = db.prepare("INSERT INTO order_statuses(code,name,color,sort_order,is_system)VALUES(?,?,?,?,?)");
@@ -821,6 +825,17 @@ if (!db.prepare("SELECT id FROM order_statuses WHERE code='collected'").get()) {
   db.prepare("UPDATE order_statuses SET sort_order=sort_order+1 WHERE sort_order>?").run(base);
   db.prepare("INSERT INTO order_statuses(code,name,color,sort_order,is_system)VALUES('collected','Зібрано','#14b8a6',?,1)").run(base + 1);
   console.log("✅ Додано статус 'Зібрано'");
+}
+// Назви статусів після відправки мають збігатися з тим, що пише Нова Пошта:
+// раніше бейдж казав «Отримано», випадачка — «Доставлено», а НП — «Відправлення
+// отримано», і це був один і той самий стан. Разова міграція під прапорцем, щоб
+// не перезаписувати назви, якщо адмін колись перейменує їх свідомо.
+if (!db.prepare("SELECT value FROM settings WHERE key='status_names_np_v1'").get()) {
+  const rename = db.prepare("UPDATE order_statuses SET name=? WHERE code=?");
+  [["shipped","В дорозі"],["delivering","У відділенні"],["delivered","Отримано"],
+   ["refused","Відмова від отримання"],["return_transit","Повертається"]].forEach(([c,n]) => rename.run(n, c));
+  db.prepare("INSERT OR REPLACE INTO settings(key,value)VALUES('status_names_np_v1','1')").run();
+  console.log("✅ Назви статусів узгоджено з Новою Поштою");
 }
 if(!db.prepare("SELECT id FROM sizes LIMIT 1").get()){
   const s=db.prepare("INSERT INTO sizes(name,sort_order)VALUES(?,?)");

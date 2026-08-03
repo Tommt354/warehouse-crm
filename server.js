@@ -38,6 +38,51 @@ function pullOrderStockOnce(db, orderId) {
   return true;
 }
 
+// Гроші тримаємо з копійками, але рівно двома знаками: суми повернень і виплат
+// приходили з НП і з ділень як 126.2633333333 і в такому вигляді лягали в базу.
+const round2 = n => Math.round(((parseFloat(n) || 0) + Number.EPSILON) * 100) / 100;
+
+// ── СТАТУСИ НОВОЇ ПОШТИ ───────────────────────────────────────────
+// Групи кодів НП (StatusCode із TrackingDocument) — окрема вісь від
+// внутрішнього статусу замовлення: склад веде своє (Нове → Зібрано →
+// Запаковано), НП — своє. `from` дає групу для старих замовлень, у яких
+// np_status_code ще не записаний: внутрішній статус туди й потрапив із НП.
+const NP_GROUPS = [
+  { code: "created",    name: "Створено",              codes: [1, 2, 3, 4],    from: [] },
+  { code: "in_transit", name: "В дорозі",              codes: [5, 6, 41],      from: ["shipped"] },
+  { code: "arrived",    name: "У відділенні",          codes: [7, 8],          from: ["delivering"] },
+  { code: "received",   name: "Отримано",              codes: [9, 10, 11],     from: ["delivered"] },
+  { code: "refused",    name: "Відмова від отримання", codes: [17, 102, 103],  from: ["refused"] },
+  { code: "returning",  name: "Повертається",          codes: [106],           from: ["return_transit"] }
+];
+function npGroupFor(o) {
+  if (o.np_status_code != null && o.np_status_code !== "") {
+    const g = NP_GROUPS.find(x => x.codes.includes(parseInt(o.np_status_code)));
+    return g ? g.code : "other";
+  }
+  const g = NP_GROUPS.find(x => x.from.includes(o.status));
+  return g ? g.code : "";
+}
+
+// ── СТАТУС ВИПЛАТИ ────────────────────────────────────────────────
+// Третя, теж окрема вісь: гроші за замовлення. Не зберігається колонкою, а
+// виводиться з payout_items/payout_requests — вони й так єдине джерело правди,
+// а колонка розійшлася б із ними на кожному скасуванні чи видаленні виплати.
+const PAYOUT_STATUSES = [
+  { code: "unpaid",    name: "Не виплачено", color: "#ef4444" },
+  { code: "requested", name: "Запит",        color: "#f59e0b" },
+  { code: "paid",      name: "Виплачено",    color: "#22c55e" },
+  { code: "none",      name: "Без виплати",  color: "#6b7280" }
+];
+function payoutStatusFor(o) {
+  if (o.payout_req_status === "paid") return "paid";
+  if (o.payout_req_status) return "requested";
+  if (o.is_prepaid) return "none";
+  return "unpaid";
+}
+// Останній запит на виплату, у якому є це замовлення.
+const PAYOUT_REQ_SQL = "(SELECT pr.status FROM payout_items pi JOIN payout_requests pr ON pi.payout_request_id=pr.id WHERE pi.order_id=o.id ORDER BY pr.id DESC LIMIT 1) as payout_req_status";
+
 // ── СПОВІЩЕННЯ ────────────────────────────────────────────────────
 // Стрічка подій у кабінеті дропера. Пишеться на user_id, тому той самий
 // механізм вмикається на адміна/склад без змін — просто інший отримувач.
@@ -192,7 +237,7 @@ app.post("/api/users/:id/balance", authMiddleware, requireRole("admin"), (req, r
   if (!u) return res.status(404).json({ error: "Користувач не знайдений" });
   db.transaction(() => {
     db.prepare("INSERT INTO balance_transactions(user_id,amount,type,note,created_by)VALUES(?,?,?,?,?)").run(uid, amt, type, note || "", req.user.id);
-    db.prepare("UPDATE users SET balance=balance+? WHERE id=?").run(amt, uid);
+    db.prepare("UPDATE users SET balance=ROUND(balance+?,2) WHERE id=?").run(amt, uid);
   })();
   const newBalance = db.prepare("SELECT balance FROM users WHERE id=?").get(uid).balance;
   res.json({ ok: true, balance: newBalance });
@@ -236,6 +281,15 @@ app.delete("/api/discounts/:id", authMiddleware, requireRole("admin"), (req, res
 app.get("/api/my-discounts", authMiddleware, (req, res) => {
   const rows = db.prepare("SELECT * FROM dropshipper_discounts WHERE dropshipper_id=? ORDER BY id").all(req.user.id);
   res.json({ discounts: decorateDiscounts(rows) });
+});
+
+// Довідники для фільтрів: статуси НП і статуси виплати. Одним запитом, щоб
+// назви й коди жили в сервері, а не дублювались у drop.html та admin.html.
+app.get("/api/filter-dicts", authMiddleware, (req, res) => {
+  res.json({
+    np_statuses: NP_GROUPS.map(g => ({ code: g.code, name: g.name })),
+    payout_statuses: PAYOUT_STATUSES
+  });
 });
 
 // ── СПОВІЩЕННЯ: API ──────────────────────────────────────────────
@@ -1565,6 +1619,9 @@ app.post("/api/orders", authMiddleware, (req, res) => {
       }
     }
 
+    // Сума позицій — теж до копійок: складання дробових цін дає хвости на
+    // кшталт 1234.5600000000002, і далі вони тягнуться у виплати й баланс.
+    totalDrop = round2(totalDrop);
     const cod = ownTtn ? 0 : (parseFloat(cod_amount) || 0);
     const isPrepaid = (ownTtn || req.body.is_prepaid) ? 1 : 0;
 
@@ -1600,7 +1657,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
       db.prepare("UPDATE orders SET paid_from_balance=1 WHERE id=?").run(o.lastInsertRowid);
       db.prepare("INSERT INTO balance_transactions(user_id,amount,type,order_id,note,created_by)VALUES(?,?,?,?,?,?)")
         .run(dropId, -totalDrop, "order", o.lastInsertRowid, "Замовлення #" + o.lastInsertRowid, req.user.id);
-      db.prepare("UPDATE users SET balance=balance-? WHERE id=?").run(totalDrop, dropId);
+      db.prepare("UPDATE users SET balance=ROUND(balance-?,2) WHERE id=?").run(totalDrop, dropId);
     }
 
     return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout, is_prepaid: isPrepaid, paid_from_balance: payFromBalance ? 1 : 0 };
@@ -1692,8 +1749,8 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 
 // List orders
 app.get("/api/orders", authMiddleware, (req, res) => {
-  const { status, limit, ready, channel, date_from, date_to, ttn_search, page, page_size, warehouse } = req.query;
-  let q = "SELECT o.*,u.name as drop_name FROM orders o JOIN users u ON o.dropshipper_id=u.id";
+  const { status, limit, ready, channel, date_from, date_to, ttn_search, page, page_size, warehouse, np_status, payout_status } = req.query;
+  let q = "SELECT o.*,u.name as drop_name," + PAYOUT_REQ_SQL + " FROM orders o JOIN users u ON o.dropshipper_id=u.id";
   const params = [];
   const where = [];
 
@@ -1719,6 +1776,8 @@ app.get("/api/orders", authMiddleware, (req, res) => {
 
   const orders = db.prepare(q).all(...params);
   orders.forEach(o => {
+    o.np_group = npGroupFor(o);
+    o.payout_status = payoutStatusFor(o);
     o.items_count = db.prepare("SELECT SUM(quantity) as c FROM order_items WHERE order_id=?").get(o.id).c || 0;
     const readyCount = db.prepare("SELECT COUNT(*) as c FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id WHERE oi.order_id=? AND m.is_ready_product=1").get(o.id).c;
     o.has_ready_items = readyCount > 0;
@@ -1734,6 +1793,10 @@ app.get("/api/orders", authMiddleware, (req, res) => {
   let filtered = orders;
   if (ready === "1") filtered = orders.filter(o => o.has_ready_items);
   else if (ready === "0") filtered = orders.filter(o => !o.has_ready_items);
+  // Статус НП і статус виплати — обидва похідні, тож фільтруються тут, до
+  // пагінації: інакше сторінки рахувались би по невідфільтрованому списку.
+  if (np_status) filtered = filtered.filter(o => o.np_group === np_status);
+  if (payout_status) filtered = filtered.filter(o => o.payout_status === payout_status);
 
   const total = filtered.length;
   if (page_size) {
@@ -1747,9 +1810,11 @@ app.get("/api/orders", authMiddleware, (req, res) => {
 
 // Single order with items + return availability
 app.get("/api/orders/:id", authMiddleware, (req, res) => {
-  const o = db.prepare("SELECT o.*,u.name as drop_name,u.phone as drop_phone FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.id);
+  const o = db.prepare("SELECT o.*,u.name as drop_name,u.phone as drop_phone," + PAYOUT_REQ_SQL + " FROM orders o JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Не знайдено" });
   if (req.user.role === "dropshipper" && o.dropshipper_id !== req.user.id) return res.status(403).json({ error: "Немає доступу" });
+  o.np_group = npGroupFor(o);
+  o.payout_status = payoutStatusFor(o);
 
   o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,bp.photo as bp_photo,p.photo as print_photo,v.print_id,v.base_product_id,s.name as size_name,p.name as print_name,m.is_ready_product,oi.original_size_id,os.name as original_size_name,k.name as kit_name,k.photo as kit_photo
     FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id LEFT JOIN sizes os ON oi.original_size_id=os.id LEFT JOIN kits k ON oi.kit_id=k.id
@@ -1868,7 +1933,7 @@ app.post("/api/order-items/:id/swap-product", authMiddleware, requireRole("admin
       if (balanceDelta !== 0) {
         db.prepare("INSERT INTO balance_transactions(user_id,amount,type,order_id,note,created_by)VALUES(?,?,?,?,?,?)")
           .run(item.dropshipper_id, -balanceDelta, "adjust", item.order_id, "Зміна товару у замовленні #" + item.order_id, req.user.id);
-        db.prepare("UPDATE users SET balance=balance-? WHERE id=?").run(balanceDelta, item.dropshipper_id);
+        db.prepare("UPDATE users SET balance=ROUND(balance-?,2) WHERE id=?").run(balanceDelta, item.dropshipper_id);
       }
     }
     const nName = db.prepare("SELECT name FROM variations WHERE id=?").get(new_variation_id)?.name || "";
@@ -1932,7 +1997,7 @@ app.post("/api/orders/:id/items", authMiddleware, requireRole("admin","warehouse
       if (balanceDelta !== 0) {
         db.prepare("INSERT INTO balance_transactions(user_id,amount,type,order_id,note,created_by)VALUES(?,?,?,?,?,?)")
           .run(o.dropshipper_id, -balanceDelta, "adjust", o.id, "Додано товар у замовлення #" + o.id, req.user.id);
-        db.prepare("UPDATE users SET balance=balance-? WHERE id=?").run(balanceDelta, o.dropshipper_id);
+        db.prepare("UPDATE users SET balance=ROUND(balance-?,2) WHERE id=?").run(balanceDelta, o.dropshipper_id);
       }
     }
     db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('swap',?,?,?,?,?)")
@@ -2077,7 +2142,7 @@ app.post("/api/orders/:id/fetch-return-cost", authMiddleware, async (req, res) =
       const st2 = r2.data?.[0];
       if (st2) cost = parseFloat(st2.DocumentCost) || parseFloat(st2.CostOnSite) || parseFloat(st2.StoragePrice) || 0;
     }
-    if (cost > 0) db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost, o.id);
+    if (cost > 0) db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(round2(cost), o.id);
     res.json({ ok: true, return_ttn: retTtn, return_cost: cost, raw: st1 });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -2157,7 +2222,7 @@ function refundOrderBalance(o, byUserId) {
   if (!o || !o.paid_from_balance) return;
   db.prepare("INSERT INTO balance_transactions(user_id,amount,type,order_id,note,created_by)VALUES(?,?,?,?,?,?)")
     .run(o.dropshipper_id, o.total_drop_price, "refund", o.id, "Повернення за скасоване замовлення #" + o.id, byUserId || null);
-  db.prepare("UPDATE users SET balance=balance+? WHERE id=?").run(o.total_drop_price, o.dropshipper_id);
+  db.prepare("UPDATE users SET balance=ROUND(balance+?,2) WHERE id=?").run(o.total_drop_price, o.dropshipper_id);
 }
 
 app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
@@ -2766,8 +2831,10 @@ async function trackOneOrder(apiKey, o) {
   // Попередній текст статусу НП потрібен, щоб сповіщення падало тільки на
   // реальну зміну: трекінг ходить кожні 15 хв і здебільшого бачить те саме.
   const prevNpText = db.prepare("SELECT np_status_text FROM orders WHERE id=?").get(o.id)?.np_status_text || "";
-  db.prepare("UPDATE orders SET np_status_text=? WHERE id=?").run(st.Status || "", o.id);
   const code = parseInt(st.StatusCode);
+  // Код зберігаємо поруч із текстом: текст містить назви міст («прямує до
+  // м. Хмельницький») і для фільтра не годиться, а код — стабільний.
+  db.prepare("UPDATE orders SET np_status_text=?,np_status_code=? WHERE id=?").run(st.Status || "", isNaN(code) ? null : code, o.id);
   let ns = null;
   // Codes 5/6/41 mean NP has the parcel physically moving (departed the
   // sender's city / en route to the destination city) — the actual "shipped"
@@ -2806,7 +2873,7 @@ async function trackOneOrder(apiKey, o) {
       const existingCost = db.prepare("SELECT return_cost FROM orders WHERE id=?").get(o.id);
       if (!existingCost?.return_cost || existingCost.return_cost === 0) {
         const cost = parseFloat(st.DocumentCost) || parseFloat(st.RedeliverySum) || 0;
-        if (cost > 0) db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(cost, o.id);
+        if (cost > 0) db.prepare("UPDATE orders SET return_cost=? WHERE id=?").run(round2(cost), o.id);
       }
     }
   }
@@ -3315,11 +3382,16 @@ app.get("/api/stats/detailed", authMiddleware, (req, res) => {
     WHERE o.dropshipper_id=? AND date(o.created_at) BETWEEN ? AND ? AND o.status NOT IN ('cancelled')
     GROUP BY v.id ORDER BY qty DESC, orders DESC LIMIT 8`).all(uid, df, dt);
 
+  // Гроші віддаємо вже округленими до копійок: раніше середній прибуток і
+  // «не виплачено» летіли на клієнт як 126.2633333333.
+  daily.forEach(d => { d.profit = round2(d.profit); d.loss = round2(d.loss); });
   res.json({
-    total, success, failed, profit, codTotal, dropTotal, returnCost, paid, orderSum,
-    avgProfit: success > 0 ? profit / success : 0,
-    successRate: (success + failed) > 0 ? (success / (success + failed) * 100) : 0,
-    unpaid: profit - returnCost - paid,
+    total, success, failed,
+    profit: round2(profit), codTotal: round2(codTotal), dropTotal: round2(dropTotal),
+    returnCost: round2(returnCost), paid: round2(paid), orderSum: round2(orderSum),
+    avgProfit: success > 0 ? round2(profit / success) : 0,
+    successRate: (success + failed) > 0 ? Math.round(success / (success + failed) * 1000) / 10 : 0,
+    unpaid: round2(profit - returnCost - paid),
     daily, topProducts, date_from: df, date_to: dt
   });
 });
@@ -3373,10 +3445,10 @@ app.post("/api/payouts/request", authMiddleware, (req, res) => {
   const unpaid = db.prepare(`SELECT o.* FROM orders o WHERE o.dropshipper_id=? AND o.status='delivered' AND o.id NOT IN (SELECT order_id FROM payout_items) AND o.is_prepaid=0`).all(uid);
   const returns = db.prepare(`SELECT o.* FROM orders o WHERE o.dropshipper_id=? AND o.status IN ('refused','return_transit') AND o.id NOT IN (SELECT order_id FROM payout_items) AND o.is_prepaid=0`).all(uid);
   const ins = db.prepare("INSERT OR IGNORE INTO payout_items(payout_request_id,order_id,amount,is_return)VALUES(?,?,?,?)");
-  unpaid.forEach(o => ins.run(pr.id, o.id, o.payout_amount, 0));
-  returns.forEach(o => ins.run(pr.id, o.id, -(o.return_cost || 0), 1));
+  unpaid.forEach(o => ins.run(pr.id, o.id, round2(o.payout_amount), 0));
+  returns.forEach(o => ins.run(pr.id, o.id, -round2(o.return_cost || 0), 1));
   // Recalc total
-  const total = db.prepare("SELECT SUM(amount) as s FROM payout_items WHERE payout_request_id=?").get(pr.id).s || 0;
+  const total = round2(db.prepare("SELECT SUM(amount) as s FROM payout_items WHERE payout_request_id=?").get(pr.id).s || 0);
   db.prepare("UPDATE payout_requests SET total_amount=? WHERE id=?").run(total, pr.id);
   // Сповіщаємо лише коли запит сформував хтось інший (адмін за дропера) —
   // на власне натискання кнопки сповіщення собі ж було б шумом.
@@ -3405,17 +3477,19 @@ app.post("/api/payouts/:id/apply-balance", authMiddleware, requireRole("admin"),
   const u = db.prepare("SELECT balance FROM users WHERE id=?").get(pr.dropshipper_id);
   const bal = u ? (u.balance || 0) : 0;
   if (!bal) return res.status(400).json({ error: "Баланс нульовий" });
+  const balR = round2(bal);
   db.transaction(() => {
-    db.prepare("UPDATE payout_requests SET balance_applied=balance_applied+? WHERE id=?").run(bal, pr.id);
+    db.prepare("UPDATE payout_requests SET balance_applied=ROUND(balance_applied+?,2) WHERE id=?").run(balR, pr.id);
     db.prepare("INSERT INTO balance_transactions(user_id,amount,type,note,created_by)VALUES(?,?,?,?,?)")
-      .run(pr.dropshipper_id, -bal, "payout", "Залік у виплату #" + pr.id, req.user.id);
-    db.prepare("UPDATE users SET balance=balance-? WHERE id=?").run(bal, pr.dropshipper_id);
+      .run(pr.dropshipper_id, -balR, "payout", "Залік у виплату #" + pr.id, req.user.id);
+    db.prepare("UPDATE users SET balance=ROUND(balance-?,2) WHERE id=?").run(balR, pr.dropshipper_id);
   })();
   const applied = db.prepare("SELECT balance_applied FROM payout_requests WHERE id=?").get(pr.id).balance_applied;
+  const finalTotal = round2((pr.total_amount || 0) + applied);
   notify(pr.dropshipper_id, "payout",
-    (bal >= 0 ? "Баланс +" : "Борг ") + bal.toFixed(0) + "₴ зараховано у виплату #" + pr.id,
-    { body: "До виплати: " + ((pr.total_amount || 0) + applied).toFixed(0) + "₴", payout_id: pr.id });
-  res.json({ ok: true, balance_applied: applied, final_total: (pr.total_amount || 0) + applied });
+    (balR >= 0 ? "Баланс +" : "Борг ") + balR.toFixed(2) + "₴ зараховано у виплату #" + pr.id,
+    { body: "До виплати: " + finalTotal.toFixed(2) + "₴", payout_id: pr.id });
+  res.json({ ok: true, balance_applied: applied, final_total: finalTotal });
 });
 
 // Admin: mark payout as paid
@@ -3425,8 +3499,8 @@ app.put("/api/payouts/:id/paid", authMiddleware, requireRole("admin"), (req, res
   // Головна подія для дропера: гроші пішли. Сума — разом із заліком балансу,
   // тобто рівно те, що він отримає на реквізити.
   if (pr && pr.status !== "paid") {
-    const sum = (pr.total_amount || 0) + (pr.balance_applied || 0);
-    notify(pr.dropshipper_id, "payout", "Виплату #" + pr.id + " проведено · " + sum.toFixed(0) + "₴", { payout_id: pr.id });
+    const sum = round2((pr.total_amount || 0) + (pr.balance_applied || 0));
+    notify(pr.dropshipper_id, "payout", "Виплату #" + pr.id + " проведено · " + sum.toFixed(2) + "₴", { payout_id: pr.id });
   }
   res.json({ ok: true });
 });

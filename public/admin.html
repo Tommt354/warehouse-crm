@@ -191,16 +191,11 @@
 <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;align-items:center"><button class="btn" id="ac-all" onclick="admCh='';admOrdPage=0;loadAdmOrders(admOrdFilter)">Всі канали</button><button class="btn" id="ac-hot" onclick="admCh='hot';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="flame" data-size="15"></i> HOT</button><button class="btn" id="ac-ads" onclick="admCh='ads';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="megaphone" data-size="15"></i> ADS</button><input type="date" id="adm-df" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><span style="color:var(--td);font-size:9px">—</span><input type="date" id="adm-dt" style="padding:5px 8px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;padding:6px 10px;color-scheme:dark"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600;font-size:10px" onclick="admOrdPage=0;loadAdmOrders(admOrdFilter)">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('adm-df').value='';document.getElementById('adm-dt').value='';admOrdPage=0;loadAdmOrders(admOrdFilter)"><i data-icon="x" data-size="11"></i></button></div>
 <div style="display:flex;gap:3px;justify-content:flex-end;margin-bottom:6px"><button class="stab" id="adm-p-7" onclick="setAdmDatePeriod(7)">7д</button><button class="stab" id="adm-p-15" onclick="setAdmDatePeriod(15)">15д</button><button class="stab on" id="adm-p-30" onclick="setAdmDatePeriod(30)">30д</button></div>
 <div style="margin-bottom:6px"><input id="adm-ttn" placeholder="Пошук по ТТН або телефону..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="admOrdPage=0;loadAdmOrders(admOrdFilter)"></div>
-<div class="acts" style="flex-wrap:wrap;gap:4px">
-  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('')" id="ao-all">Всі</button>
-  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('new')" id="ao-new">Нові</button>
-  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('in_progress')" id="ao-in_progress">В роботі</button>
-  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('packed')" id="ao-packed">Готові</button>
-  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('shipped')" id="ao-shipped">Відправлені</button>
-  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('delivered')" id="ao-delivered">Отримані</button>
-  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('refused')" id="ao-refused">Відмови</button>
-  <button class="btn" onclick="admOrdPage=0;loadAdmOrders('cancelled')" id="ao-cancelled">Скасовані</button>
-</div>
+<!-- Кнопки статусів малюються з order_statuses, тож кастомний статус адміна
+     одразу зʼявляється у фільтрі, а назви збігаються з бейджами на картках. -->
+<div class="acts" id="adm-ord-stbtns" style="flex-wrap:wrap;gap:4px"></div>
+<!-- Дві окремі осі: де посилка в НП і де гроші. -->
+<div id="adm-ord-filters" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0"></div>
 <div style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
   <div style="font-size:11px;color:var(--td);display:flex;align-items:center;gap:6px">На сторінці: <select id="adm-ord-pagesize" onchange="admOrdPage=0;loadAdmOrders(admOrdFilter)" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><option value="20">20</option><option value="40">40</option><option value="50" selected>50</option></select></div>
   <button id="adm-track-btn" class="btn btn-sm" onclick="admTrackNP()" style="border-color:rgba(66,165,245,.3);color:var(--blue);font-size:11px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button>
@@ -793,7 +788,10 @@ let mmSel={colors:new Set,sizes:new Set,prints:new Set,patches:new Set};let mmSi
 async function uploadModelSizeGrid(e){const f=e.target.files[0];if(!f)return;const r=new FileReader;r.onload=async function(){try{const d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});mmSizeGridPhoto=d.url;document.getElementById("mm-sizegrid-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){alert(e.message)}};r.readAsDataURL(f);e.target.value=""}
 
 var ordStatusList=[];
-async function loadOrdStatusList(){try{ordStatusList=(await api("/api/order-statuses")).statuses.filter(s=>s.active)}catch(e){}}
+async function loadOrdStatusList(){
+  try{ordStatusList=(await api("/api/order-statuses")).statuses.filter(s=>s.active)}catch(e){}
+  try{const d=await api("/api/filter-dicts");ADM_NPST=d.np_statuses||[];ADM_PAYST=d.payout_statuses||[]}catch(e){}
+}
 async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-name").textContent=ME.name||ME.username;
   const h=location.hash.slice(1);const navBtn=h&&document.querySelector(`.side-nav a[data-p="${h}"]`);
   await loadOrdStatusList();
@@ -1726,8 +1724,21 @@ async function saveKit(){
 }
 
 // ── Admin Orders (big cards like warehouse) ──────────────────────
-const OSL={new:"Нове",in_progress:"В роботі",collected:"Зібрано",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",return_transit:"Поверн.",return_received:"Поверн. отримано",cancelled:"Скасовано"};
-const OSC={new:"tag-g",in_progress:"tag-b",collected:"tag-coll",packed:"tag-g",shipped:"tag-y",delivering:"tag-y",delivered:"tag-g",refused:"tag-r",cancelled:"tag-r"};
+// Назви й кольори статусів — з order_statuses (ordStatusList), а не з хардкоду:
+// через нього бейдж на картці казав «Отримано», а випадачка поруч, яка вже
+// читала базу, — «Доставлено», і це був один і той самий стан.
+function stName(code){var s=ordStatusList.filter(function(x){return x.code===code})[0];return s?s.name:code}
+function stColor(code){var s=ordStatusList.filter(function(x){return x.code===code})[0];return (s&&s.color)||"#8b93a7"}
+function stTag(code,size){var c=stColor(code);return '<span class="tag" style="font-size:'+(size||11)+'px;background:'+c+'22;color:'+c+'">'+esc(stName(code))+'</span>'}
+// Статус виплати — окрема вісь: де саме гроші за це замовлення.
+var ADM_NPST=[],ADM_PAYST=[];
+function payTag(o,size){
+  var p=ADM_PAYST.filter(function(x){return x.code===o.payout_status})[0];
+  if(!p)return"";
+  return '<span class="tag" style="font-size:'+(size||11)+'px;background:'+p.color+'22;color:'+p.color+'">'+esc(p.name)+'</span>';
+}
+// Гроші завжди з копійками і рівно двома знаками.
+function money(n){return (Math.round(((parseFloat(n)||0)+Number.EPSILON)*100)/100).toFixed(2)}
 let admOrdFilter="",admReady="",admCh="",admOrdPage=0;
 
 // ── CUTS (Крій) ──────────────────────────────────────────────────
@@ -1840,8 +1851,29 @@ function setAdmDatePeriod(days){
 
 async function admTrackNP(){var b=document.getElementById("adm-track-btn");b.disabled=true;b.innerHTML='<div style="display:inline-block;width:12px;height:12px;border:2px solid var(--brd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></div>Оновлення...';try{await fetch("/api/nova-poshta/track-all",{method:"POST",headers:{"Content-Type":"application/json"}});b.innerHTML=Icon('check',12)+' Оновлено';b.style.color='var(--acc)';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false;loadAdmOrders(admOrdFilter)},1500)}catch(e){b.innerHTML=Icon('x',12)+' Помилка';setTimeout(function(){b.innerHTML=Icon('refreshCw',12)+' Оновити статуси НП';b.style.color='var(--blue)';b.disabled=false},2000)}}
 let admTtnPollT=null;
+var admNp="",admPay="";
+// Кнопки статусів + два селекти (НП, виплата) малюються з довідників сервера.
+function renderAdmOrdFilters(){
+  var box=document.getElementById("adm-ord-stbtns");
+  if(box){
+    var tabs=[{code:"",name:"Всі"}].concat(ordStatusList.map(function(s){return{code:s.code,name:s.name}}));
+    box.innerHTML=tabs.map(function(s){
+      return '<button class="btn'+(s.code===(admOrdFilter||"")?" btn-a":"")+'" id="ao-'+(s.code||"all")+'" onclick="admOrdPage=0;loadAdmOrders(\''+s.code+'\')">'+esc(s.name)+'</button>';
+    }).join("");
+  }
+  var fb=document.getElementById("adm-ord-filters");
+  if(!fb)return;
+  var sel=function(id,varName,val,list,ph){
+    return '<select id="'+id+'" onchange="'+varName+'=this.value;admOrdPage=0;loadAdmOrders(admOrdFilter)" style="padding:6px 9px;font-size:11px;background:var(--input);border:1px solid '+(val?"var(--acc)":"var(--brd)")+';border-radius:6px;color:'+(val?"var(--acc)":"#fff")+';font-family:inherit;max-width:200px">'+
+      '<option value="">'+ph+'</option>'+
+      list.map(function(x){return '<option value="'+x.code+'"'+(x.code===val?' selected':'')+'>'+esc(x.name)+'</option>'}).join("")+'</select>';
+  };
+  fb.innerHTML=sel("adm-np","admNp",admNp,ADM_NPST,"Статус НП: всі")+sel("adm-pay","admPay",admPay,ADM_PAYST,"Виплата: всі")+
+    ((admNp||admPay)?'<button class="btn btn-sm" style="font-size:10px" onclick="admNp=\'\';admPay=\'\';admOrdPage=0;loadAdmOrders(admOrdFilter)">'+Icon('x',11)+' Скинути</button>':'');
+}
 async function loadAdmOrders(status,silent){if(!silent)document.getElementById("adm-orders").innerHTML='<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   admOrdFilter=status;
+  renderAdmOrdFilters();
   document.querySelectorAll("[id^=ao-]").forEach(b=>b.className="btn");
   const btn=document.getElementById("ao-"+(status||"all"));if(btn)btn.className="btn btn-a";
   document.querySelectorAll("[id^=ar-]").forEach(b=>{b.className="btn";if(b.id==="ar-"+(admReady||"all"))b.className="btn btn-a"});
@@ -1853,6 +1885,8 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
   if(admCh)url+="&channel="+admCh;
   var df=document.getElementById("adm-df")?.value||"",dt=document.getElementById("adm-dt")?.value||"";
   if(df)url+="&date_from="+df;if(dt)url+="&date_to="+dt;
+  if(admNp)url+="&np_status="+admNp;
+  if(admPay)url+="&payout_status="+admPay;
   var ttn=document.getElementById("adm-ttn")?.value||"";if(ttn)url+="&ttn_search="+ttn;
   loadAdmForeign(ttn.trim());
   const r=await api(url);const orders=r.orders;
@@ -1863,7 +1897,7 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     const{order}=await api("/api/orders/"+o.id);
     html+='<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;margin-bottom:12px;overflow:hidden">';
     html+='<div style="padding:12px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--brd)">';
-    html+='<div><div style="font-size:18px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(o.drop_channel==="hot"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(124,134,255,.1);color:#7c86ff">ADS</span>':'')+'</div>';
+    html+='<div><div style="font-size:18px;font-weight:700;color:var(--th)">#'+o.id+' '+stTag(o.status)+' '+payTag(o)+''+(o.drop_channel==="hot"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(255,167,38,.1);color:#ffa726">HOT</span>':'')+(o.drop_channel==="ads"?' <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(124,134,255,.1);color:#7c86ff">ADS</span>':'')+'</div>';
     html+='<div style="font-size:13px;color:var(--th);margin-top:3px">'+esc(o.client_name)+' · <span style="color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(o.client_phone)+'</span></div>';
     html+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div></div>';
     html+='<div style="text-align:right"><div style="font-size:10px;color:var(--blue)">'+esc(o.drop_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.created_at?.slice(0,16)||"")+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--th);margin-top:2px">'+o.cod_amount+'₴</div></div></div>';
@@ -1917,9 +1951,9 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     if(o.note)html+='<div style="padding:6px 14px"><div style="font-size:12px;color:var(--warn);padding:6px 10px;background:rgba(255,167,38,.06);border-radius:6px;border:1px solid rgba(255,167,38,.1)">'+Icon('fileText',13)+' '+esc(o.note)+'</div></div>';
     html+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.1);flex-wrap:wrap;gap:6px">';
     if(o.status==='refused'||o.status==='return_transit')
-      html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--red)">Збиток: -'+(o.return_cost||0).toFixed(0)+'₴</span></div>';
+      html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+money(o.cod_amount)+'₴ · Дроп: '+money(o.total_drop_price)+'₴ · <span style="color:var(--red)">Збиток: -'+money(o.return_cost||0)+'₴</span></div>';
     else
-      html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+o.cod_amount+'₴ · Дроп: '+o.total_drop_price.toFixed(0)+'₴ · <span style="color:var(--acc)">Виплата: '+o.payout_amount.toFixed(0)+'₴</span></div>';
+      html+='<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--th)">Наложка: '+money(o.cod_amount)+'₴ · Дроп: '+money(o.total_drop_price)+'₴ · <span style="color:var(--acc)">Виплата: '+money(o.payout_amount)+'₴</span></div>';
     html+='<div style="display:flex;gap:6px;align-items:center"><select onchange="chAdmSt('+o.id+',this.value)" style="padding:6px 10px;font-size:12px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">';
     ordStatusList.forEach(function(s){html+='<option value="'+s.code+'"'+(o.status===s.code?' selected':'')+'>'+esc(s.name)+'</option>'});
     html+='</select>';
@@ -2631,22 +2665,22 @@ function renderPayouts(list){
     '<div style="margin-top:4px">'+(p.payment_type==="iban"?'<div style="font-size:10px;color:var(--td)">IBAN:</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:var(--acc);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(p.payment_iban||"")+'\')">'+esc(p.payment_iban||"не вказано")+'</div>'+(p.full_name?'<div style="font-size:10px;color:var(--td);margin-top:2px">'+esc(p.full_name)+'</div>':''):'<div style="font-size:10px;color:var(--td)">Карта:</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:600;color:var(--warn);cursor:pointer" onclick="event.stopPropagation();copyTTN(\''+esc(p.payment_card||"")+'\')">'+esc(p.payment_card||"не вказано")+'</div>')+'</div>'+
     (p.comment?'<div style="font-size:11px;color:var(--t);margin-top:2px">'+Icon('messageSquare',12)+' '+esc(p.comment)+'</div>':'')+
     '<div style="font-size:10px;color:var(--td);margin-top:2px">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+
-    '<div style="font-size:10px;margin-top:3px"><span style="color:var(--acc)">'+Icon('check',11)+' '+success.length+' успішних (+'+successSum.toFixed(0)+'₴)</span> · <span style="color:var(--red)">'+Icon('x',11)+' '+returns.length+' повернень (-'+returnSum.toFixed(0)+'₴)</span> · <span style="color:'+retColor+';font-weight:700">'+retPct.toFixed(0)+'% повернень</span></div>'+
+    '<div style="font-size:10px;margin-top:3px"><span style="color:var(--acc)">'+Icon('check',11)+' '+success.length+' успішних (+'+money(successSum)+'₴)</span> · <span style="color:var(--red)">'+Icon('x',11)+' '+returns.length+' повернень (-'+money(returnSum)+'₴)</span> · <span style="color:'+retColor+';font-weight:700">'+retPct.toFixed(0)+'% повернень</span></div>'+
     '</div><div style="text-align:right;min-width:150px">'+
-      '<div style="font-size:10px;color:var(--td)">Замовлення</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--th)">'+p.total_amount.toFixed(0)+'₴</div>'+
+      '<div style="font-size:10px;color:var(--td)">Замовлення</div><div style="font-family:JetBrains Mono,monospace;font-size:15px;font-weight:700;color:var(--th)">'+money(p.total_amount)+'₴</div>'+
       (p.balance_enabled?(
         (applied?'<div style="font-size:11px;color:'+(applied>=0?'var(--acc)':'var(--red)')+';margin-top:3px">Баланс залічено: '+(applied>=0?'+':'')+applied.toFixed(0)+'₴</div>':'')+
-        (!isPaid&&Math.abs(bal)>=0.01?'<div style="margin-top:5px;padding:6px 8px;background:'+(bal>=0?'rgba(53,210,154,.1)':'rgba(255,107,107,.1)')+';border-radius:8px"><div style="font-size:10px;color:var(--td)">Баланс дропера</div><div style="font-family:JetBrains Mono,monospace;font-weight:700;color:'+(bal>=0?'var(--acc)':'var(--red)')+'">'+(bal>=0?'+':'')+bal.toFixed(0)+'₴</div><button class="btn btn-sm" style="font-size:10px;margin-top:5px" onclick="event.stopPropagation();applyBalance('+p.id+')">'+Icon('plusCircle',11)+' Перевести у виплату</button></div>':'')+
-        '<div style="border-top:1px solid var(--brd);margin-top:6px;padding-top:5px"><div style="font-size:10px;color:var(--td)">До виплати</div><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:800;color:'+(finalTotal>=0?'var(--acc)':'var(--red)')+'">'+finalTotal.toFixed(0)+'₴</div></div>'
-      ):'<div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(isPaid?'var(--acc)':'var(--red)')+';margin-top:2px">'+p.total_amount.toFixed(0)+'₴</div>')+
+        (!isPaid&&Math.abs(bal)>=0.01?'<div style="margin-top:5px;padding:6px 8px;background:'+(bal>=0?'rgba(53,210,154,.1)':'rgba(255,107,107,.1)')+';border-radius:8px"><div style="font-size:10px;color:var(--td)">Баланс дропера</div><div style="font-family:JetBrains Mono,monospace;font-weight:700;color:'+(bal>=0?'var(--acc)':'var(--red)')+'">'+(bal>=0?'+':'')+money(bal)+'₴</div><button class="btn btn-sm" style="font-size:10px;margin-top:5px" onclick="event.stopPropagation();applyBalance('+p.id+')">'+Icon('plusCircle',11)+' Перевести у виплату</button></div>':'')+
+        '<div style="border-top:1px solid var(--brd);margin-top:6px;padding-top:5px"><div style="font-size:10px;color:var(--td)">До виплати</div><div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:800;color:'+(finalTotal>=0?'var(--acc)':'var(--red)')+'">'+money(finalTotal)+'₴</div></div>'
+      ):'<div style="font-family:JetBrains Mono,monospace;font-size:20px;font-weight:700;color:'+(isPaid?'var(--acc)':'var(--red)')+';margin-top:2px">'+money(p.total_amount)+'₴</div>')+
     '<div style="margin-top:6px">'+(isPaid?'<span style="color:var(--acc);font-size:12px;font-weight:600">'+Icon('check',13)+' Виплачено</span>':'<button class="btn btn-p" onclick="event.stopPropagation();markPaid('+p.id+')" style="font-size:11px">'+Icon('banknote',12)+' Виплачено</button>')+'</div></div></div>'+
     '<div style="padding:0 14px 10px;display:flex;gap:6px;flex-wrap:wrap">'+
       '<button class="btn btn-sm" onclick="event.stopPropagation();togglePayoutDetails(this)">'+Icon('eye',13)+' Детальніше · '+totalCnt+' замовл.</button>'+
       '<button class="btn btn-sm" onclick="event.stopPropagation();viewDropStats('+p.dropshipper_id+',\''+esc(p.drop_name).replace(/'/g,"")+'\')">'+Icon('barChart3',13)+' Картка дропера</button>'+
     '</div>'+
     '<div class="payout-details" style="display:none;border-top:1px solid var(--brd)">'+
-    (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">'+Icon('check',12)+' Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
-    (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">'+Icon('x',12)+' Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+i.amount.toFixed(0)+'₴</div></div>'}).join("")+'</div>':'')+
+    (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">'+Icon('check',12)+' Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+money(i.amount)+'₴</div></div>'}).join("")+'</div>':'')+
+    (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">'+Icon('x',12)+' Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+money(i.amount)+'₴</div></div>'}).join("")+'</div>':'')+
     '</div></div>';
   }).join(""):'<div class="empty"><span class="ic">'+Icon('banknote',40)+'</span>Немає запитів на виплату</div>';
 }
@@ -2724,7 +2758,7 @@ function renderReturns(orders){
       var days=daysPending(o);
       var dayColor=days>=7?"var(--red)":days>=3?"var(--warn)":"var(--td)";
       return '<div style="background:var(--card);border:1px solid '+(allDone?'rgba(124,134,255,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:8px;overflow:hidden">'+
-      '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span>'+(allDone?' <span style="font-size:10px;color:var(--acc)">'+Icon('check',11)+' На складі</span>':'')+'</div>'+
+      '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' '+stTag(o.status)+''+(allDone?' <span style="font-size:10px;color:var(--acc)">'+Icon('check',11)+' На складі</span>':'')+'</div>'+
       '<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · '+esc(o.drop_name)+'</div>'+
       (o.ttn?'<div style="font-size:11px;color:'+ttnColor(o)+';font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:'+ttnColor(o)+'">'+Icon('package',10)+' '+esc(o.np_status_text)+'</div>':'')+
       (o.return_ttn?'<div style="font-size:9px;color:var(--warn)">'+Icon('undo2',10)+' ТТН повернення: '+esc(o.return_ttn)+'</div>':'')+
@@ -2803,7 +2837,7 @@ async function doRetSearch(){
   try{
     var o=(await api("/api/orders/by-ttn/"+encodeURIComponent(ttn))).order;
     el.innerHTML='<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px">'+
-      '<div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span></div>'+
+      '<div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' '+stTag(o.status)+'</div>'+
       '<div style="font-size:12px;color:var(--th);margin-top:4px">'+esc(o.client_name)+' · '+esc(o.client_phone)+'</div>'+
       '<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>'+
       (o.ttn?'<div style="font-size:12px;font-family:JetBrains Mono,monospace;color:'+ttnColor(o)+';margin-top:6px">ТТН: '+esc(o.ttn)+'</div>':'')+
@@ -3058,7 +3092,7 @@ async function scanRetTTN(){
   try{
     const{order:o}=await api("/api/orders/by-ttn/"+encodeURIComponent(ttn));
     let html='<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:14px;margin-bottom:10px">';
-    html+='<div style="font-size:16px;font-weight:700;color:var(--th);margin-bottom:8px">#'+o.id+' · '+esc(o.client_name)+' <span class="tag '+(OSC[o.status]||"")+'">'+(OSL[o.status]||o.status)+'</span></div>';
+    html+='<div style="font-size:16px;font-weight:700;color:var(--th);margin-bottom:8px">#'+o.id+' · '+esc(o.client_name)+' '+stTag(o.status)+'</div>';
     for(const i of o.items){
       const done=i.returned_to_stock;
       html+='<div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--brd);align-items:center">';
@@ -3168,7 +3202,7 @@ function renderWorkerTiles(){
       '<div style="margin-bottom:8px;color:var(--acc)">'+Icon(info.icon,28)+'</div>'+
       '<div style="font-size:13px;font-weight:700;color:var(--th)">'+info.label+'</div>'+
       '<div style="font-size:10px;color:var(--td);margin-top:4px">'+people.length+' '+(people.length===1?"людина":"людей")+'</div>'+
-      (totalBalance>0?'<div style="font-family:JetBrains Mono,monospace;font-size:12px;color:var(--warn);margin-top:4px">'+totalBalance.toFixed(0)+'₴ до виплати</div>':'')+
+      (totalBalance>0?'<div style="font-family:JetBrains Mono,monospace;font-size:12px;color:var(--warn);margin-top:4px">'+money(totalBalance)+'₴ до виплати</div>':'')+
       '</div></div>';
   }).join("");
 }
@@ -3232,7 +3266,7 @@ async function openWorkerDetail(id){
     return '<div style="background:var(--bg);border:1px solid rgba(124,134,255,.15);border-radius:10px;margin-bottom:6px;overflow:hidden">'+
     '<div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'\':\' none\'">'+
     '<div><div style="font-size:12px;font-weight:600;color:var(--th)">Виплата #'+(w.payouts.length-idx)+'</div><div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+'</div></div>'+
-    '<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+p.amount.toFixed(0)+'₴</div></div>'+
+    '<div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+money(p.amount)+'₴</div></div>'+
     '<div style="display:none;border-top:1px solid var(--brd);padding:8px 12px">'+
     (periodItems.length?periodItems.map(function(pr){return '<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--td)">'+(pr.created_at?.slice(5,16)||"")+' '+(pr.order_id?"#"+pr.order_id:"")+'</div><div style="color:var(--t)">'+esc(pr.note||pr.type)+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:600">+'+pr.amount.toFixed(0)+'₴</div></div>'}).join(""):'<div style="font-size:10px;color:var(--td)">Деталі недоступні</div>')+
     '</div></div>'
@@ -3240,7 +3274,7 @@ async function openWorkerDetail(id){
   // Current earnings (not yet paid)
   var unpaidItems=w.payroll.filter(function(pr){return !w.payouts.length||pr.created_at>(w.payouts[0]?.created_at||"")});
   if(unpaidItems.length){html+='<div style="font-size:13px;font-weight:600;color:var(--warn);margin:10px 0 6px">Поточні нарахування (не виплачено):</div>';
-  html+='<table class="tbl"><tr><th>Дата</th><th>Замовлення</th><th>Тип</th><th>Сума</th></tr>'+unpaidItems.map(function(p){return '<tr><td style="font-size:9px">'+(p.created_at?.slice(0,16)||"")+'</td><td>'+(p.order_id?"#"+p.order_id:"—")+'</td><td style="font-size:10px;color:var(--td)">'+esc(p.note||p.type)+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+p.amount.toFixed(0)+'₴</td></tr>'}).join("")+'</table>'}
+  html+='<table class="tbl"><tr><th>Дата</th><th>Замовлення</th><th>Тип</th><th>Сума</th></tr>'+unpaidItems.map(function(p){return '<tr><td style="font-size:9px">'+(p.created_at?.slice(0,16)||"")+'</td><td>'+(p.order_id?"#"+p.order_id:"—")+'</td><td style="font-size:10px;color:var(--td)">'+esc(p.note||p.type)+'</td><td style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+money(p.amount)+'₴</td></tr>'}).join("")+'</table>'}
   document.getElementById("wkd-title").textContent=w.name;document.getElementById("wkd-body").innerHTML=html;openM("wk-detail-modal")}catch(e){}
 }
 async function payWorker(id){if(!confirm("Виплатити?"))return;try{await api("/api/workers/"+id+"/pay",{method:"POST"});closeM("wk-detail-modal");loadWorkers()}catch(e){}}
@@ -3316,7 +3350,7 @@ async function openDropBalance(id,name){
   document.getElementById("bal-sum").value="";document.getElementById("bal-type").value="deposit";document.getElementById("bal-note").value="";
   document.getElementById("bal-err").style.display="none";
   try{var r=await api("/api/users/"+id+"/balance");
-  document.getElementById("bal-amount").textContent=(r.balance||0).toFixed(0)+"₴";
+  document.getElementById("bal-amount").textContent=money(r.balance||0)+"₴";
   document.getElementById("bal-history").innerHTML=r.transactions.length?r.transactions.map(function(t){
     var col=t.amount>0?"var(--acc)":"var(--red)";
     return '<div style="padding:6px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;display:flex;justify-content:space-between"><div><div style="font-size:11px;color:var(--th)">'+(t.type==="deposit"?"Поповнення":t.type==="withdraw"?"Списання":t.type==="order"?"Замовлення #"+t.oid:t.type==="refund"?"Повернення #"+t.oid:t.type==="adjust"?"Коригування #"+t.oid:t.type)+'</div><div style="font-size:9px;color:var(--td)">'+(t.note?esc(t.note)+" · ":"")+(t.created_at?.slice(0,16)||"")+'</div></div><div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:'+col+'">'+(t.amount>0?"+":"")+t.amount.toFixed(0)+'₴</div></div>'
@@ -3330,7 +3364,7 @@ async function submitBalance(){
   var type=document.getElementById("bal-type").value;
   var amount=type==="withdraw"?-sum:sum;
   try{var r=await api("/api/users/"+balUserId+"/balance",{method:"POST",body:JSON.stringify({amount:amount,type:type,note:document.getElementById("bal-note").value})});
-  document.getElementById("bal-amount").textContent=(r.balance||0).toFixed(0)+"₴";
+  document.getElementById("bal-amount").textContent=money(r.balance||0)+"₴";
   document.getElementById("bal-sum").value="";document.getElementById("bal-note").value="";
   openDropBalance(balUserId,"");loadDrops()}catch(e){err.textContent=e.message;err.style.display="block"}
 }

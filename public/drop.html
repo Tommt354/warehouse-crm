@@ -102,6 +102,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;flex-wrap:wrap"><input type="date" id="dr-df" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><span style="color:var(--td);font-size:10px">—</span><input type="date" id="dr-dt" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark"><button class="btn btn-sm btn-p" style="font-size:10px" onclick="ordPage=0;loadOrders()">OK</button><button class="btn btn-sm" style="font-size:10px" onclick="document.getElementById('dr-df').value='';document.getElementById('dr-dt').value='';ordPage=0;loadOrders()"><i data-icon="x" data-size="11"></i></button></div>
 <div style="margin-bottom:8px"><input id="dr-ttn" placeholder="Пошук по ТТН..." style="width:100%;padding:8px 12px;font-size:12px;font-family:JetBrains Mono,monospace;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="ordPage=0;loadOrders()"></div>
 <div class="stabs" id="ord-stabs"></div>
+<div id="ord-filters" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0"></div>
 <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
   <div style="font-size:11px;color:var(--td);display:flex;align-items:center;gap:6px">На сторінці: <select id="ord-pagesize" onchange="ordPage=0;loadOrders()" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff"><option value="20">20</option><option value="40">40</option><option value="50" selected>50</option></select></div>
   <button id="np-track-btn" class="btn" onclick="trackNP()" style="font-size:11px;padding:6px 12px"><i data-icon="refreshCw" data-size="12"></i> Оновити статуси НП</button>
@@ -228,7 +229,7 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 </div></div>
 
 <script>
-var ME,allV=[],allSz=[],oItems=[],dropCh="ads",ordStatus="",ordPage=0,catP=null,cpCatP=null,dashPeriod="today";
+var ME,allV=[],allSz=[],oItems=[],dropCh="ads",ordStatus="",ordNp="",ordPay="",ordPage=0,catP=null,cpCatP=null,dashPeriod="today";
 var noDeliveryType="warehouse",noIsPostomat=false,noWeightManual=false;
 function setDeliveryType(type,btn){
   noDeliveryType=type;
@@ -244,11 +245,31 @@ function calcOrderWeight(){
   var w=oItems.reduce(function(s,c){return s+(c.weight||0)*c.qty},0);
   document.getElementById("no-weight").value=(Math.max(0.1,w)||0.5).toFixed(1);
 }
-var SL={new:"Нове",in_progress:"В роботі",collected:"Зібрано",packed:"Готово",shipped:"Відправлено",delivering:"Доставка",delivered:"Отримано",refused:"Відмова",cancelled:"Скасовано"};
-var SCL={new:"tag-new",in_progress:"tag-prog",collected:"tag-coll",packed:"tag-done",shipped:"tag-ship",delivering:"tag-ship",delivered:"tag-done",refused:"tag-bad",cancelled:"tag-bad"};
-var OSTS=[{k:"",l:"Всі"},{k:"new",l:"Нові"},{k:"in_progress",l:"В роботі"},{k:"packed",l:"Готові"},{k:"shipped",l:"Відправлені"},{k:"delivering",l:"Доставка"},{k:"delivered",l:"Отримані"},{k:"refused",l:"Відмови"},{k:"cancelled",l:"Скасовані"}];
+// Назви й кольори статусів — з order_statuses, а не з хардкоду: інакше бейдж
+// каже одне, випадачка в адмінці інше, а кастомні статуси не мають назви взагалі.
+var STATUSES=[],SL={},SCOL={},NPST=[],PAYST=[];
+async function loadDicts(){
+  try{
+    var r=await api("/api/order-statuses");
+    STATUSES=(r.statuses||[]).filter(function(s){return s.active});
+    SL={};SCOL={};STATUSES.forEach(function(s){SL[s.code]=s.name;SCOL[s.code]=s.color||"#8b93a7"});
+  }catch(e){}
+  try{var d=await api("/api/filter-dicts");NPST=d.np_statuses||[];PAYST=d.payout_statuses||[]}catch(e){}
+}
+function statusTag(code,size){
+  var c=SCOL[code]||"#8b93a7";
+  return '<span class="tag" style="font-size:'+(size||10)+'px;padding:2px 8px;background:'+c+'22;color:'+c+'">'+esc(SL[code]||code)+'</span>';
+}
+// Бейдж виплати — окрема вісь від статусу замовлення: показує, де саме гроші.
+function payTag(o,size){
+  var p=PAYST.filter(function(x){return x.code===o.payout_status})[0];
+  if(!p)return"";
+  return '<span class="tag" style="font-size:'+(size||10)+'px;padding:2px 8px;background:'+p.color+'22;color:'+p.color+'">'+esc(p.name)+'</span>';
+}
+// Гроші завжди з копійками і рівно двома знаками.
+function money(n){return (Math.round(((parseFloat(n)||0)+Number.EPSILON)*100)/100).toFixed(2)}
 
-async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash();refreshNotifBadge();setInterval(refreshNotifBadge,60000)}catch(e){location.href="/login"}}
+async function init(){try{ME=(await api("/api/auth/me")).user;document.getElementById("u-info").textContent="ID: "+ME.id+" · "+ME.name;await loadDicts();var h=location.hash.slice(1);if(h&&document.getElementById("pg-"+h))goNav(h);else loadDash();refreshNotifBadge();setInterval(refreshNotifBadge,60000)}catch(e){location.href="/login"}}
 async function logout(){await fetch("/api/auth/logout",{method:"POST"});location.href="/login"}
 function ttnColor(o){if(o.own_ttn)return'#c17f4e';var s=o.status||'';if(s==='delivered')return'#34d399';if(s==='refused'||s==='cancelled')return'var(--red)';if(s==='delivering'||s==='shipped')return'var(--blue)';return'var(--warn)'}
 function copyTTN(t){navigator.clipboard.writeText(t);var d=document.createElement("div");d.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--acc);color:#0a0e17;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:99999";d.innerHTML=Icon('check',12)+" "+esc(t)+" скопійовано";document.body.appendChild(d);setTimeout(function(){d.remove()},1500)}
@@ -329,14 +350,25 @@ async function loadDash(){if(!document.getElementById("stat-from").value)setStat
 
 // ── ORDERS ───────────────────────────────────────────────────────
 function renderOrdTabs(){
-  document.getElementById("ord-stabs").innerHTML=OSTS.map(function(s){return '<div class="stab'+(s.k===ordStatus?' on':'')+'" onclick="ordStatus=\''+s.k+'\';ordPage=0;loadOrders()">'+s.l+'</div>'}).join("");
+  var tabs=[{k:"",l:"Всі"}].concat(STATUSES.map(function(s){return{k:s.code,l:s.name}}));
+  document.getElementById("ord-stabs").innerHTML=tabs.map(function(s){return '<div class="stab'+(s.k===ordStatus?' on':'')+'" onclick="ordStatus=\''+s.k+'\';ordPage=0;loadOrders()">'+esc(s.l)+'</div>'}).join("");
+  // Дві окремі осі фільтрації: де посилка в НП і де гроші. Малюємо тут, щоб
+  // списки бралися з сервера й не розходились із бейджами на картках.
+  var sel=function(id,val,list,ph){
+    return '<select id="'+id+'" onchange="'+(id==="ord-np"?"ordNp":"ordPay")+'=this.value;ordPage=0;loadOrders()" style="padding:6px 9px;font-size:11px;background:var(--input);border:1px solid '+(val?"var(--acc)":"var(--brd)")+';border-radius:6px;color:'+(val?"var(--acc)":"#fff")+';font-family:inherit;max-width:190px">'+
+      '<option value="">'+ph+'</option>'+
+      list.map(function(x){return '<option value="'+x.code+'"'+(x.code===val?' selected':'')+'>'+esc(x.name)+'</option>'}).join("")+'</select>';
+  };
+  var box=document.getElementById("ord-filters");
+  if(box)box.innerHTML=sel("ord-np",ordNp,NPST,"Статус НП: всі")+sel("ord-pay",ordPay,PAYST,"Виплата: всі")+
+    ((ordNp||ordPay)?'<button class="btn btn-sm" style="font-size:10px" onclick="ordNp=\'\';ordPay=\'\';ordPage=0;loadOrders()">'+Icon('x',11)+' Скинути</button>':'');
 }
 async function loadOrders(){document.getElementById("ord-list").innerHTML='<div class="inline-load" style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:11px;color:var(--td);margin-top:6px">Завантаження...</div></div>';
   renderOrdTabs();
   var df=document.getElementById("dr-df")?.value||"",dt=document.getElementById("dr-dt")?.value||"";
   var ttn=document.getElementById("dr-ttn")?.value||"";
   var pp=parseInt(document.getElementById("ord-pagesize")?.value)||50;
-  var url="/api/orders?page="+(ordPage+1)+"&page_size="+pp+(ordStatus?"&status="+ordStatus:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(ttn?"&ttn_search="+ttn:"");
+  var url="/api/orders?page="+(ordPage+1)+"&page_size="+pp+(ordStatus?"&status="+ordStatus:"")+(ordNp?"&np_status="+ordNp:"")+(ordPay?"&payout_status="+ordPay:"")+(df?"&date_from="+df:"")+(dt?"&date_to="+dt:"")+(ttn?"&ttn_search="+ttn:"");
   var r=await api(url);var orders=r.orders;
   var el=document.getElementById("ord-list");
   if(!orders.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('clipboardList',13)+'</span>Немає замовлень</div>';document.getElementById("ord-pagi").innerHTML="";return}
@@ -390,14 +422,14 @@ function renderOC(o){
   var groups=groupOrderItems(o._items||[]);
   var chB=o.drop_channel==='hot'?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(255,167,38,.12);color:#ffa726;font-weight:600">HOT</span>':'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(124,134,255,.12);color:#7c86ff;font-weight:600">ADS</span>';
   var isRet=(o.status==='refused'||o.status==='return_transit');
-  var money=isRet?'-'+(o.return_cost||0).toFixed(0):'+'+o.payout_amount.toFixed(0);
+  var sum=isRet?'-'+money(o.return_cost||0):'+'+money(o.payout_amount);
   var h='<div class="oc" data-open="0">';
   h+='<div style="padding:11px 14px 6px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'+
-    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><span class="tag '+(SCL[o.status]||"")+'" style="font-size:10px;padding:2px 8px">'+(SL[o.status]||o.status)+'</span> '+chB+'<span style="font-size:11px;color:var(--td)">#'+o.id+'</span></div>'+
+    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'+statusTag(o.status)+payTag(o)+' '+chB+'<span style="font-size:11px;color:var(--td)">#'+o.id+'</span></div>'+
     '<div style="font-size:13px;font-weight:700;color:var(--th);margin-top:5px">'+esc(o.client_name)+(o.client_phone?' <span style="color:var(--acc);font-weight:500;font-family:JetBrains Mono,monospace;font-size:11px">'+esc(o.client_phone)+'</span>':'')+'</div>'+
     (o.client_city?'<div style="font-size:11px;color:var(--td);margin-top:1px">'+esc(o.client_city)+(o.client_warehouse?' · '+esc(o.client_warehouse):'')+'</div>':'<div style="font-size:11px;color:var(--td);margin-top:1px">'+(o.created_at?o.created_at.slice(5,16):"")+'</div>')+
     '</div>'+
-    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+money+'₴</div><div style="font-size:10px;color:'+(isRet?'var(--red)':'var(--acc)')+';margin-top:-2px">'+(isRet?'збиток':'прибуток')+'</div><div style="font-size:12px;color:var(--tt);font-family:JetBrains Mono,monospace">'+o.cod_amount+'₴ нал</div><div style="font-size:12px;color:var(--td);font-family:JetBrains Mono,monospace">дроп '+(o.total_drop_price||0).toFixed(0)+'₴</div></div>'+
+    '<div style="text-align:right;flex-shrink:0"><div style="font-family:JetBrains Mono,monospace;font-size:17px;font-weight:700;color:'+(isRet?'var(--red)':'var(--acc)')+'">'+sum+'₴</div><div style="font-size:10px;color:'+(isRet?'var(--red)':'var(--acc)')+';margin-top:-2px">'+(isRet?'збиток':'прибуток')+'</div><div style="font-size:12px;color:var(--tt);font-family:JetBrains Mono,monospace">'+money(o.cod_amount)+'₴ нал</div><div style="font-size:12px;color:var(--td);font-family:JetBrains Mono,monospace">дроп '+money(o.total_drop_price||0)+'₴</div></div>'+
   '</div>';
   h+='<div class="oc-items" style="padding:0 14px;max-height:150px;overflow-y:auto;transition:max-height .25s ease">'+ocRows(groups)+'</div>';
   // Full order detail — shown when the card is expanded.
@@ -407,9 +439,9 @@ function renderOC(o){
   var chip=function(l,v){return '<span style="font-size:11px;background:var(--bg);border-radius:7px;padding:5px 9px"><span style="color:var(--td)">'+l+':</span> <span style="color:var(--th);font-weight:600">'+v+'</span></span>';};
   var moreHtml=
     '<div style="display:flex;gap:6px;margin-bottom:9px">'+
-      m2("Наложка",o.cod_amount+"₴","var(--th)")+
-      m2("Дроп-ціна",(o.total_drop_price||0).toFixed(0)+"₴","var(--tt)")+
-      m2(isRet?"Повернення":"Заробіток",(isRet?"-"+(o.return_cost||0).toFixed(0):"+"+o.payout_amount.toFixed(0))+"₴",isRet?"var(--red)":"var(--acc)")+
+      m2("Наложка",money(o.cod_amount)+"₴","var(--th)")+
+      m2("Дроп-ціна",money(o.total_drop_price||0)+"₴","var(--tt)")+
+      m2(isRet?"Повернення":"Заробіток",(isRet?"-"+money(o.return_cost||0):"+"+money(o.payout_amount))+"₴",isRet?"var(--red)":"var(--acc)")+
     '</div>'+
     '<div style="background:var(--bg);border-radius:10px;padding:9px 11px;margin-bottom:9px">'+
       '<div style="font-size:11px;color:var(--acc);font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:5px">'+Icon("truck",13)+' '+dtl+(o.is_postomat?" · поштомат":"")+'</div>'+
@@ -436,7 +468,7 @@ function renderOC(o){
 async function viewOrder(id){
   var o=(await api("/api/orders/"+id)).order;
   document.getElementById("od-t").textContent="#"+o.id;
-  var h='<div><span class="tag '+(SCL[o.status]||"")+'">'+(SL[o.status]||o.status)+'</span>';
+  var h='<div style="display:flex;gap:6px;flex-wrap:wrap">'+statusTag(o.status,11)+payTag(o,11)+'</div><div>';
   h+='<div style="font-size:13px;color:var(--th);margin-top:6px">'+esc(o.client_name)+' · <span style="color:var(--acc)">'+esc(o.client_phone)+'</span></div>';
   h+='<div style="font-size:11px;color:var(--td)">'+esc(o.client_city)+' · '+esc(o.client_warehouse)+'</div>';
   if(o.ttn)h+='<div style="font-size:11px;color:var(--warn);font-family:JetBrains Mono,monospace;margin-top:3px">ТТН: '+esc(o.ttn)+'</div>';
@@ -453,18 +485,18 @@ async function viewOrder(id){
     if(g.kit){
       var ph=g.kit_photo||(g.items[0]&&(g.items[0].var_photo||g.items[0].print_photo||g.items[0].bp_photo))||"";
       var comps=g.items.map(function(ci){return '<div style="font-size:10px;color:var(--td)">'+esc(ci.var_name)+' — '+esc(ci.original_size_name||ci.size_name)+'</div>'}).join("");
-      h+='<div class="od-item">'+(ph?'<img src="'+ph+'">':'<div style="width:50px;height:50px;background:var(--bg);border-radius:6px"></div>')+'<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+Icon('gift',12)+' '+esc(g.kit_name||"Комплект")+(g.quantity>1?' ×'+g.quantity:'')+'</div>'+comps+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+g.price.toFixed(0)+'₴</div></div>';
+      h+='<div class="od-item">'+(ph?'<img src="'+ph+'">':'<div style="width:50px;height:50px;background:var(--bg);border-radius:6px"></div>')+'<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+Icon('gift',12)+' '+esc(g.kit_name||"Комплект")+(g.quantity>1?' ×'+g.quantity:'')+'</div>'+comps+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+money(g.price)+'₴</div></div>';
     }else{
       var it=g.it;
-      h+='<div class="od-item">'+((it.var_photo||it.print_photo||it.bp_photo)?'<img src="'+(it.var_photo||it.print_photo||it.bp_photo)+'">':'<div style="width:50px;height:50px;background:var(--bg);border-radius:6px"></div>')+'<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(it.var_name)+'</div><span style="color:var(--acc);font-weight:700">'+esc(it.original_size_name||it.size_name)+'</span>'+(it.quantity>1?' ×'+it.quantity:'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+(it.drop_price*it.quantity).toFixed(0)+'₴</div></div>';
+      h+='<div class="od-item">'+((it.var_photo||it.print_photo||it.bp_photo)?'<img src="'+(it.var_photo||it.print_photo||it.bp_photo)+'">':'<div style="width:50px;height:50px;background:var(--bg);border-radius:6px"></div>')+'<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--th)">'+esc(it.var_name)+'</div><span style="color:var(--acc);font-weight:700">'+esc(it.original_size_name||it.size_name)+'</span>'+(it.quantity>1?' ×'+it.quantity:'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+money(it.drop_price*it.quantity)+'₴</div></div>';
     }
   });
-  h+='<div style="margin-top:10px;text-align:right"><div>Наложка: <strong>'+o.cod_amount+'₴</strong></div><div>Дроп: '+o.total_drop_price.toFixed(0)+'₴</div>';
+  h+='<div style="margin-top:10px;text-align:right"><div>Наложка: <strong>'+money(o.cod_amount)+'₴</strong></div><div>Дроп: '+money(o.total_drop_price)+'₴</div>';
   if(o.status==='refused'||o.status==='return_transit'){
-    h+='<div style="color:var(--red);font-size:15px;font-weight:700">Повернення: -'+(o.return_cost||0).toFixed(0)+'₴</div>';
+    h+='<div style="color:var(--red);font-size:15px;font-weight:700">Повернення: -'+money(o.return_cost||0)+'₴</div>';
     if(o.return_ttn)h+='<div style="font-size:10px;color:var(--td)">Зворотня ТТН: '+esc(o.return_ttn)+'</div>';
   }else{
-    h+='<div style="color:var(--acc);font-size:15px;font-weight:700">Заробіток: '+o.payout_amount.toFixed(0)+'₴</div>';
+    h+='<div style="color:var(--acc);font-size:15px;font-weight:700">Заробіток: '+money(o.payout_amount)+'₴</div>';
   }
   h+='</div>';
   if(o.note)h+='<div style="margin-top:6px;font-size:11px;color:var(--warn)">'+Icon('fileText',11)+' '+esc(o.note)+'</div>';
@@ -539,8 +571,8 @@ function renderCpSummary(){
   var cnt=oItems.reduce(function(s,i){return s+i.qty},0);
   var total=oItems.reduce(function(s,i){return s+(i.price||0)*i.qty},0);
   document.getElementById("cp-sum-count").textContent=cnt+" шт";
-  document.getElementById("cp-sum-total").textContent=total.toFixed(0);
-  document.getElementById("cp-sum-list").innerHTML=oItems.map(function(it,i){return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--th)"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name)+(it.sz?' ('+esc(it.sz)+')':'')+' ×'+it.qty+'</span><span style="color:var(--acc);white-space:nowrap">'+((it.price||0)*it.qty).toFixed(0)+'₴</span><button onclick="delOItemPick('+i+')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">✕</button></div>'}).join("");
+  document.getElementById("cp-sum-total").textContent=money(total);
+  document.getElementById("cp-sum-list").innerHTML=oItems.map(function(it,i){return '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--th)"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name)+(it.sz?' ('+esc(it.sz)+')':'')+' ×'+it.qty+'</span><span style="color:var(--acc);white-space:nowrap">'+money((it.price||0)*it.qty)+'₴</span><button onclick="delOItemPick('+i+')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">✕</button></div>'}).join("");
 }
 function delOItemPick(i){oItems.splice(i,1);renderOItems();calcPay();calcOrderWeight();updateCpCount()}
 
@@ -610,7 +642,7 @@ function pickKitUnified(kitId,sizeId,sizeName){
 function renderOItems(){
   var el=document.getElementById("no-items");
   if(!oItems.length){el.innerHTML='<div style="color:var(--td);font-size:11px">Натисніть "Додати товар"</div>';return}
-  el.innerHTML=oItems.map(function(c,i){return '<div class="oi-card">'+(c.photo?'<img src="'+c.photo+'" style="width:36px;height:36px;border-radius:5px;object-fit:cover">':'')+'<div style="flex:1;color:var(--th)">'+esc(c.name)+'</div><div style="color:var(--acc);font-weight:600">'+c.sz+'</div><div style="display:flex;align-items:center;gap:3px"><button onclick="oItems['+i+'].qty=Math.max(1,oItems['+i+'].qty-1);renderOItems();calcPay();calcOrderWeight()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">−</button><span style="font-family:JetBrains Mono,monospace;font-size:11px;min-width:16px;text-align:center">'+c.qty+'</span><button onclick="oItems['+i+'].qty++;renderOItems();calcPay();calcOrderWeight()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">+</button></div><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--td);min-width:40px;text-align:right">'+(c.price*c.qty).toFixed(0)+'₴</div><button class="oi-del" onclick="oItems.splice('+i+',1);renderOItems();calcPay();calcOrderWeight()">'+Icon('x',12)+'</button></div>'}).join("");
+  el.innerHTML=oItems.map(function(c,i){return '<div class="oi-card">'+(c.photo?'<img src="'+c.photo+'" style="width:36px;height:36px;border-radius:5px;object-fit:cover">':'')+'<div style="flex:1;color:var(--th)">'+esc(c.name)+'</div><div style="color:var(--acc);font-weight:600">'+c.sz+'</div><div style="display:flex;align-items:center;gap:3px"><button onclick="oItems['+i+'].qty=Math.max(1,oItems['+i+'].qty-1);renderOItems();calcPay();calcOrderWeight()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">−</button><span style="font-family:JetBrains Mono,monospace;font-size:11px;min-width:16px;text-align:center">'+c.qty+'</span><button onclick="oItems['+i+'].qty++;renderOItems();calcPay();calcOrderWeight()" style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--t);width:20px;height:20px;cursor:pointer;font-size:11px">+</button></div><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--td);min-width:40px;text-align:right">'+money(c.price*c.qty)+'₴</div><button class="oi-del" onclick="oItems.splice('+i+',1);renderOItems();calcPay();calcOrderWeight()">'+Icon('x',12)+'</button></div>'}).join("");
 }
 
 var dropCityRef="",dropSettleRef="",receiptPhoto="",lastCities=[];
@@ -628,7 +660,7 @@ function applyPrepaidUI(){
   document.getElementById("no-prepaid-wrap").style.display=(p&&!own&&!bal)?"":"none";
   document.getElementById("no-ownttn-note").style.display=(own&&!bal)?"":"none";
   var bn=document.getElementById("no-balance-note");
-  if(bal){var dpb=oItems.reduce(function(s,c){return s+c.price*c.qty},0);bn.style.display="";bn.innerHTML='Спишеться <b>'+dpb.toFixed(0)+'₴</b> з балансу. Поточний баланс: <b>'+((window.ME&&ME.balance)||0).toFixed(0)+'₴</b>'}else bn.style.display="none";
+  if(bal){var dpb=oItems.reduce(function(s,c){return s+c.price*c.qty},0);bn.style.display="";bn.innerHTML='Спишеться <b>'+money(dpb)+'₴</b> з балансу. Поточний баланс: <b>'+money((window.ME&&ME.balance)||0)+'₴</b>'}else bn.style.display="none";
   if(p&&!own&&!bal){var dp=oItems.reduce(function(s,c){return s+c.price*c.qty},0);document.getElementById("no-dval").value=dp}
   calcPay();
 }
@@ -675,7 +707,7 @@ function pickWh(i){var w=noWhResults[i];if(!w)return;document.getElementById("no
 
 async function uploadReceipt(e){var f=e.target.files[0];if(!f)return;var r=new FileReader;r.onload=async function(){try{var d=await api("/api/photos/upload",{method:"POST",body:JSON.stringify({data:r.result})});receiptPhoto=d.url;document.getElementById("no-receipt-preview").innerHTML='<img src="'+d.url+'" style="width:100%;height:100%;object-fit:cover">'}catch(e){}};r.readAsDataURL(f);e.target.value=""}
 
-function calcPay(){var isPre=document.getElementById("no-prepaid").classList.contains("on");var cod=isPre?0:(parseFloat(document.getElementById("no-cod").value)||0);var drop=oItems.reduce(function(s,c){return s+c.price*c.qty},0);var p=cod-drop;document.getElementById("no-pay").innerHTML=isPre?'Повна оплата · Дроп: '+drop.toFixed(0)+'₴':(cod?'Дроп: '+drop.toFixed(0)+'₴ · <strong style="color:'+(p>=0?'var(--acc)':'var(--red)')+'">Заробіток: '+p.toFixed(0)+'₴</strong>':'')}
+function calcPay(){var isPre=document.getElementById("no-prepaid").classList.contains("on");var cod=isPre?0:(parseFloat(document.getElementById("no-cod").value)||0);var drop=oItems.reduce(function(s,c){return s+c.price*c.qty},0);var p=cod-drop;document.getElementById("no-pay").innerHTML=isPre?'Повна оплата · Дроп: '+money(drop)+'₴':(cod?'Дроп: '+money(drop)+'₴ · <strong style="color:'+(p>=0?'var(--acc)':'var(--red)')+'">Заробіток: '+money(p)+'₴</strong>':'')}
 
 async function submitOrder(){
   var err=document.getElementById("no-err");err.style.display="none";
@@ -816,8 +848,8 @@ function payItemsHtml(items){
   var rets=(items||[]).filter(function(i){return i.is_return});
   var sSum=success.reduce(function(s,i){return s+i.amount},0);
   var rSum=rets.reduce(function(s,i){return s+Math.abs(i.amount)},0);
-  return (success.length?'<div style="font-size:10px;font-weight:600;color:var(--acc);margin-bottom:4px">Успішні (+'+sSum.toFixed(0)+'₴):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+(i.ttn?' <span style="color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(i.ttn)+'</span>':'')+'</div><div style="color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">+'+i.amount.toFixed(0)+'₴</div></div>'}).join(""):"")+
-    (rets.length?'<div style="font-size:10px;font-weight:600;color:var(--red);margin:6px 0 4px">Повернення (-'+rSum.toFixed(0)+'₴):</div>'+rets.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+'</div><div style="color:var(--red);font-weight:700;font-family:JetBrains Mono,monospace">'+i.amount.toFixed(0)+'₴</div></div>'}).join(""):"");
+  return (success.length?'<div style="font-size:10px;font-weight:600;color:var(--acc);margin-bottom:4px">Успішні (+'+money(sSum)+'₴):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+(i.ttn?' <span style="color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(i.ttn)+'</span>':'')+'</div><div style="color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">+'+money(i.amount)+'₴</div></div>'}).join(""):"")+
+    (rets.length?'<div style="font-size:10px;font-weight:600;color:var(--red);margin:6px 0 4px">Повернення (-'+money(rSum)+'₴):</div>'+rets.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+'</div><div style="color:var(--red);font-weight:700;font-family:JetBrains Mono,monospace">'+money(i.amount)+'₴</div></div>'}).join(""):"");
 }
 // Відсоток повернень у межах виплати — той самий розрахунок, що в адміна.
 function payRetPct(items){
@@ -858,7 +890,7 @@ async function loadPayouts(){
     if(r.active){
       var aPct=payRetPct(r.activeItems);
       document.getElementById("pay-active-block").innerHTML='<div data-payout-card style="background:rgba(255,167,38,.06);border:1px solid rgba(255,167,38,.15);border-radius:10px;padding:12px;margin-bottom:10px">'+
-        '<div style="font-size:13px;font-weight:600;color:var(--warn);margin-bottom:6px">'+Icon('clipboardList',13)+' Активний запит #'+r.active.id+' · <span style="font-family:JetBrains Mono,monospace">'+r.active.total_amount.toFixed(0)+'₴</span></div>'+
+        '<div style="font-size:13px;font-weight:600;color:var(--warn);margin-bottom:6px">'+Icon('clipboardList',13)+' Активний запит #'+r.active.id+' · <span style="font-family:JetBrains Mono,monospace">'+money(r.active.total_amount)+'₴</span></div>'+
         '<div style="font-size:11px;color:var(--td)">'+r.activeItems.length+' замовлень · Створено: '+(r.active.created_at?.slice(0,16)||"")+' · <span style="color:'+payPctColor(aPct)+';font-weight:700">'+aPct.toFixed(0)+'% повернень</span></div>'+
         (r.active.comment?'<div style="font-size:11px;color:var(--t);margin-top:4px">'+Icon('messageSquare',11)+' '+esc(r.active.comment)+'</div>':'')+
         '<div style="margin-top:8px"><button class="btn btn-sm" onclick="togglePayCard(this)">'+Icon('eye',12)+' Детальніше · '+r.activeItems.length+' замовл.</button></div>'+
@@ -878,7 +910,7 @@ async function loadPayouts(){
       '<div style="font-size:10px;color:var(--td)">'+(p.created_at?.slice(0,16)||"")+(p.paid_at?" · Виплачено: "+p.paid_at.slice(0,16):"")+'</div>'+
       (p.comment?'<div style="font-size:10px;color:var(--t)">'+Icon('messageSquare',10)+' '+esc(p.comment)+'</div>':'')+
       '<div style="font-size:9px;margin-top:2px"><span style="color:var(--acc)">'+Icon('check',9)+success.length+'</span> · <span style="color:var(--red)">'+Icon('x',9)+rets.length+'</span> · <span style="color:'+payPctColor(hPct)+';font-weight:700">'+hPct.toFixed(0)+'% поверн.</span></div>'+
-      '</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+p.total_amount.toFixed(0)+'₴</div>'+
+      '</div><div style="text-align:right"><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+money(p.total_amount)+'₴</div>'+
       '<div style="font-size:10px;color:'+(p.status==="paid"?"var(--acc)":"var(--red)")+'">'+(p.status==="paid"?Icon('check',10)+" Виплачено":Icon('refreshCw',10)+" Очікує")+'</div></div></div>'+
       '<div style="padding:0 12px 10px"><button class="btn btn-sm" onclick="event.stopPropagation();togglePayCard(this)">'+Icon('eye',12)+' Детальніше · '+(p.items||[]).length+' замовл.</button></div>'+
       '<div class="payout-details" style="display:none;border-top:1px solid var(--brd);padding:8px 12px">'+payItemsHtml(p.items)+'</div></div>'
