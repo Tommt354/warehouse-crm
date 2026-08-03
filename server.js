@@ -1435,7 +1435,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
   // the manager in Telegram; a balance order settles from the balance instead.
   if (req.body.is_prepaid && !ownTtn && !payFromBalance && !req.body.receipt_photo) return res.status(400).json({ error: "Завантажте скрін чеку оплати" });
 
-  const result = db.transaction(() => {
+  const createOrderTx = db.transaction(() => {
     let totalDrop = 0;
     let totalWeight = 0;
     const orderItems = [];
@@ -1546,7 +1546,15 @@ app.post("/api/orders", authMiddleware, (req, res) => {
     }
 
     return { order_id: o.lastInsertRowid, total_drop: totalDrop, payout, is_prepaid: isPrepaid, paid_from_balance: payFromBalance ? 1 : 0 };
-  })();
+  });
+
+  // Помилки всередині транзакції — це нормальні бізнес-відмови («недостатньо
+  // на складі», «варіація не знайдена»). Без цього перехоплення вони летіли
+  // в обробник Express і поверталися HTML-сторінкою зі стек-трейсом, тож
+  // дропер бачив поламану помилку замість причини.
+  let result;
+  try { result = createOrderTx(); }
+  catch (e) { return res.status(400).json({ error: e.message || "Не вдалося створити замовлення" }); }
 
 // Auto-generate TTN for COD orders (not prepaid, not self-pickup)
   if (!result.is_prepaid && result.order_id && deliveryType !== "pickup") {
