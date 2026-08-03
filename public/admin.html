@@ -1732,8 +1732,10 @@ let admOrdFilter="",admReady="",admCh="",admOrdPage=0;
 
 // ── CUTS (Крій) ──────────────────────────────────────────────────
 let cutShowAll=false,cutWsFilter=0;
+var cutLoaded=[];
 async function loadCuts(){
   try{var r=await api("/api/stock-cuts?show_all="+(cutShowAll?"1":"0"));
+  cutLoaded=r.products||[];
   var szs=r.sizes;
   // Workshop filter buttons
   document.getElementById("cut-ws-filter").innerHTML='<button class="btn btn-sm'+(cutWsFilter===0?' on':'')+'" onclick="cutWsFilter=0;loadCuts()">Всі цехи</button>'+r.workshops.map(function(w){return '<button class="btn btn-sm'+(cutWsFilter===w.id?' on':'')+'" onclick="cutWsFilter='+w.id+';loadCuts()">'+Icon('factory',13)+' '+esc(w.name)+'</button>'}).join("");
@@ -1745,18 +1747,42 @@ async function loadCuts(){
     var allWs={};for(var sid in p.cuts){p.cuts[sid].workshops.forEach(function(w){if(!allWs[w.id])allWs[w.id]={name:w.name,qty:0};allWs[w.id].qty+=w.qty})}
     var wsLine=Object.values(allWs).map(function(w){return Icon('factory',12)+' '+esc(w.name)}).join(' · ');
     return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:8px;padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:14px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div><div style="font-size:11px;color:var(--warn)">'+wsLine+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">'+szs.map(function(s){var cd=p.cuts[s.id];if(!cd||cd.total<=0)return"";
-      var editCtl=cutWsFilter?'<div style="display:flex;gap:2px;margin-top:4px;justify-content:center"><button style="background:none;border:none;color:var(--acc);cursor:pointer;padding:1px" onclick="editCutQty('+p.id+','+s.id+','+cutWsFilter+','+cd.total+')">'+Icon('pencil',11)+'</button><button style="background:none;border:none;color:var(--red);cursor:pointer;padding:1px" onclick="deleteCutQty('+p.id+','+s.id+','+cutWsFilter+')">'+Icon('trash2',11)+'</button></div>':'';
+      // Кнопки доступні завжди: якщо цех не обрано і крій лежить у кількох
+      // цехах, спершу спитаємо, у якому саме правити.
+      var editCtl='<div style="display:flex;gap:2px;margin-top:4px;justify-content:center"><button style="background:none;border:none;color:var(--acc);cursor:pointer;padding:1px" title="Змінити" onclick="editCutQty('+p.id+','+s.id+')">'+Icon('pencil',11)+'</button><button style="background:none;border:none;color:var(--red);cursor:pointer;padding:1px" title="Видалити" onclick="deleteCutQty('+p.id+','+s.id+')">'+Icon('trash2',11)+'</button></div>';
       return '<div style="background:var(--bg);border-radius:8px;padding:6px 10px;text-align:center;min-width:50px"><div style="font-size:13px;font-weight:700;color:var(--th)">'+s.name+'</div><div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:700;color:var(--acc)">'+cd.total+'</div>'+editCtl+'</div>'}).join("")+'</div></div>'
   }).join(""):'<div class="empty"><span class="ic">'+Icon('scissors',40)+'</span>'+(cutShowAll?'Немає товарів':'Немає крою')+'</div>'}catch(e){}
 }
-async function editCutQty(bpId,sizeId,wsId,current){
-  var v=prompt("Нова кількість крою для цього розміру:",current);
-  if(v===null)return;var qty=parseInt(v);if(isNaN(qty)||qty<0)return;
-  try{await api("/api/stock-cuts/set",{method:"POST",body:JSON.stringify({base_product_id:bpId,size_id:sizeId,workshop_id:wsId,quantity:qty})});loadCuts()}catch(e){alert(e.message)}
+// Крій зберігається по трійці товар+розмір+цех, тож для правки треба знати цех.
+// Якщо фільтр по цеху вже стоїть — беремо його; якщо крій лежить в одному цеху
+// — беремо той; якщо в кількох — показуємо вибір.
+function cutWorkshopsFor(bpId,sizeId){
+  var p=cutLoaded.find(function(x){return x.id===bpId});
+  if(!p||!p.cuts||!p.cuts[sizeId])return [];
+  var ws=p.cuts[sizeId].workshops||[];
+  return cutWsFilter?ws.filter(function(w){return w.id===cutWsFilter}):ws;
 }
-async function deleteCutQty(bpId,sizeId,wsId){
-  if(!confirm("Обнулити крій цього розміру в цьому цеху?"))return;
-  try{await api("/api/stock-cuts/set",{method:"POST",body:JSON.stringify({base_product_id:bpId,size_id:sizeId,workshop_id:wsId,quantity:0})});loadCuts()}catch(e){alert(e.message)}
+function pickCutWorkshop(bpId,sizeId,action){
+  var ws=cutWorkshopsFor(bpId,sizeId);
+  if(!ws.length){alert("У цьому розмірі немає крою");return null}
+  if(ws.length===1)return ws[0];
+  var msg="Крій лежить у кількох цехах. Введіть номер:\n"+ws.map(function(w,i){return (i+1)+") "+w.name+" — "+w.qty+" шт"}).join("\n");
+  var v=prompt(msg,"1");
+  if(v===null)return null;
+  var idx=parseInt(v)-1;
+  if(isNaN(idx)||idx<0||idx>=ws.length){alert("Невірний номер");return null}
+  return ws[idx];
+}
+async function editCutQty(bpId,sizeId){
+  var w=pickCutWorkshop(bpId,sizeId,"edit");if(!w)return;
+  var v=prompt("Крій у цеху «"+w.name+"». Нова кількість:",w.qty);
+  if(v===null)return;var qty=parseInt(v);if(isNaN(qty)||qty<0)return;
+  try{await api("/api/stock-cuts/set",{method:"POST",body:JSON.stringify({base_product_id:bpId,size_id:sizeId,workshop_id:w.id,quantity:qty})});loadCuts()}catch(e){alert(e.message)}
+}
+async function deleteCutQty(bpId,sizeId){
+  var w=pickCutWorkshop(bpId,sizeId,"delete");if(!w)return;
+  if(!confirm("Видалити крій «"+w.name+"» ("+w.qty+" шт) для цього розміру?"))return;
+  try{await api("/api/stock-cuts/set",{method:"POST",body:JSON.stringify({base_product_id:bpId,size_id:sizeId,workshop_id:w.id,quantity:0})});loadCuts()}catch(e){alert(e.message)}
 }
 var cutBpList=[];
 async function openCutModal(){
