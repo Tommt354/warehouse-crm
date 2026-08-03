@@ -56,6 +56,7 @@
     <a data-p="payouts"><i data-icon="wallet" data-size="15"></i> Виплати</a>
     <a data-p="stocklog"><i data-icon="barChart3" data-size="15"></i> Рух товару</a>
     <a data-p="recount"><i data-icon="checkCheck" data-size="15"></i> Переоблік</a>
+    <a data-p="cyclecount"><i data-icon="clipboard" data-size="15"></i> Щоденний переоблік</a>
     <a data-p="accounting"><i data-icon="banknote" data-size="15"></i> Бухгалтерія</a>
     <a data-p="settings"><i data-icon="settings" data-size="15"></i> Налаштування</a>
   </div>
@@ -399,6 +400,19 @@
   <div id="rc-changes" style="font-size:12px;color:var(--td)">Немає змін</div>
   <button class="btn btn-p" onclick="applyRecount()"><i data-icon="checkCheck" data-size="14"></i> Зберегти переоблік</button>
 </div>
+</div>
+
+<div class="page" id="pg-cyclecount"><div class="pt"><i data-icon="clipboard" data-size="17"></i> Щоденний переоблік</div>
+<div style="font-size:11px;color:var(--td);margin-bottom:8px">Пакувальник щодня рахує кілька позицій свого складу перед відкриттям зміни — сліпо, не бачачи очікуваної кількості. Введене одразу вирівнює залишок, а розбіжність лишається тут.</div>
+<div class="acts">
+  <button class="stab" id="cc-7" onclick="setCcPeriod(7)">7д</button>
+  <button class="stab on" id="cc-30" onclick="setCcPeriod(30)">30д</button>
+  <button class="stab" id="cc-90" onclick="setCcPeriod(90)">90д</button>
+  <input type="date" id="cc-df"><input type="date" id="cc-dt">
+  <button class="btn btn-sm btn-p" onclick="loadCycleCount()">OK</button>
+</div>
+<div id="cc-summary" style="margin-bottom:12px"></div>
+<div id="cc-days"></div>
 </div>
 
 <div class="page" id="pg-accounting"><div class="pt"><i data-icon="banknote" data-size="17"></i> Бухгалтерія</div>
@@ -832,7 +846,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,defect:loadAdmDefect,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,defect:loadAdmDefect,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},cyclecount:loadCycleCount,accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -2867,6 +2881,51 @@ async function doRetSearch(){
       '</div>';
   }catch(e){el.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
 }
+
+// ── Щоденний переоблік ───────────────────────────────────────────
+function setCcPeriod(days){
+  document.querySelectorAll('#cc-7,#cc-30,#cc-90').forEach(function(b){b.classList.remove("on")});
+  document.getElementById("cc-"+days).classList.add("on");
+  var end=new Date();var start=new Date(end.getTime()-(days-1)*86400000);
+  function fmt(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+  document.getElementById("cc-df").value=fmt(start);
+  document.getElementById("cc-dt").value=fmt(end);
+  loadCycleCount();
+}
+var CC_WH={base:"Склад База",molod:"Готовий товар"};
+async function loadCycleCount(){
+  if(!document.getElementById("cc-df").value)return setCcPeriod(30);
+  var f=document.getElementById("cc-df").value,t=document.getElementById("cc-dt").value;
+  var r;try{r=await api("/api/cycle-count/stats?from="+f+"&to="+t)}catch(e){return}
+  function tile(label,val,color){return '<div style="flex:1;min-width:130px;background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:10px"><div style="font-size:10px;color:var(--td);margin-bottom:4px">'+label+'</div><div style="font-size:18px;font-weight:700;color:'+(color||"var(--th)")+'">'+val+'</div></div>'}
+  document.getElementById("cc-summary").innerHTML='<div style="display:flex;flex-wrap:wrap;gap:8px">'
+    +tile("Складу перераховано",r.coverage_pct+"%<span style='font-size:11px;color:var(--td)'> "+r.counted_products+" з "+r.total_products+"</span>")
+    +tile("Розбіжність",r.divergence_pct+"%<span style='font-size:11px;color:var(--td)'> "+r.diverged_products+" поз.</span>",r.diverged_products?"var(--warn)":"var(--acc)")
+    +tile("Недостача",r.shortage_units+" шт · "+fmtMoney(r.shortage_cost)+"₴",r.shortage_units?"var(--red)":"var(--th)")
+    +tile("Перестача",r.surplus_units+" шт · "+fmtMoney(r.surplus_cost)+"₴")
+    +tile("Собівартість розбіжності",(r.net_cost>0?"+":"")+fmtMoney(r.net_cost)+"₴",r.net_cost<0?"var(--red)":"var(--acc)")
+    +'</div>'+(r.started?'<div style="font-size:11px;color:var(--td);margin-top:6px">Щоденний переоблік ведеться з '+esc(r.started)+'</div>':'');
+  var days=r.days||[];
+  document.getElementById("cc-days").innerHTML=days.length?days.map(function(d){
+    var st=d.status==="done"?'<span style="color:var(--acc)">'+Icon('check',12)+' зданий</span>'
+      :d.status==="missed"?'<span style="color:var(--red)">не зданий</span>'
+      :'<span style="color:var(--warn)">очікує</span>';
+    var body=d.items.length?'<div style="margin-top:6px">'+d.items.map(function(i){
+        var neg=i.diff<0;
+        return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--brd);font-size:11px">'
+          +'<div style="color:var(--th)">'+esc(i.product_name)+' <span style="color:var(--td)">'+esc(i.size_name)+'</span></div>'
+          +'<div style="white-space:nowrap;color:'+(neg?"var(--red)":"var(--acc)")+'">'+i.before_qty+' → '+i.after_qty+' ('+(i.diff>0?"+":"")+i.diff+' шт · '+(i.cost_diff>0?"+":"")+fmtMoney(i.cost_diff)+'₴)'+(i.ordered_during?' <span style="color:var(--td)">з них '+i.ordered_during+' замовлено під час</span>':'')+'</div></div>';
+      }).join("")+'</div>'
+      :(d.status==="done"?'<div style="font-size:11px;color:var(--acc);margin-top:4px">Усе зійшлося</div>':'');
+    return '<div style="background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:10px;margin-bottom:8px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">'
+      +'<div><b style="font-size:12px;color:var(--th)">'+esc(d.date)+'</b> <span style="font-size:11px;color:var(--td)">'+(CC_WH[d.warehouse]||d.warehouse)+' · '+d.positions+' поз.'+(d.user_name?' · '+esc(d.user_name):'')+'</span></div>'
+      +'<div style="font-size:11px">'+st+'</div></div>'
+      +'<div style="font-size:10px;color:var(--td);margin-top:3px">'+d.assigned.map(esc).join(" · ")+'</div>'
+      +body+'</div>';
+  }).join(""):'<div class="empty"><span class="ic">'+Icon('clipboard',30)+'</span>За цей період завдань не було</div>';
+}
+function fmtMoney(v){return (Math.round((v||0)*100)/100).toLocaleString("uk-UA")}
 
 function setAccPeriod(days){
   document.querySelectorAll('#ac-7,#ac-15,#ac-30').forEach(function(b){b.classList.remove("on")});

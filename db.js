@@ -486,6 +486,37 @@ db.exec(`
     FOREIGN KEY (session_id) REFERENCES recount_sessions(id) ON DELETE CASCADE
   );
 
+  -- Щоденний циклічний переоблік: одне завдання на склад на день. Поки воно
+  -- не виконане, пакувальник цього складу не може відкрити зміну — це і є
+  -- весь сенс механізму: розбіжність знаходиться назавтра, а не через місяць.
+  -- Завдання видається сліпим: працівник бачить лише які товари рахувати,
+  -- очікувану кількість — ніколи. Введені цифри йдуть через звичайний
+  -- /api/recount/apply, тож завдання посилається на recount-сесію, у якій
+  -- лежать і заморозка, і історія по позиціях.
+  CREATE TABLE IF NOT EXISTS cycle_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    warehouse TEXT NOT NULL DEFAULT 'base',
+    task_date TEXT NOT NULL,
+    session_id INTEGER,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    finished_at TEXT DEFAULT NULL,
+    finished_by INTEGER,
+    UNIQUE(warehouse, task_date),
+    FOREIGN KEY (session_id) REFERENCES recount_sessions(id) ON DELETE SET NULL
+  );
+
+  -- Які саме товари випали на цей день. Зберігаємо окремо від recount_items:
+  -- ті пишуться лише коли щось змінилось, а знати треба весь виданий список
+  -- (у т.ч. позиції, що зійшлися) — інакше % перерахованого складу бреше.
+  CREATE TABLE IF NOT EXISTS cycle_task_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    base_product_id INTEGER NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES cycle_tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (base_product_id) REFERENCES base_products(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,

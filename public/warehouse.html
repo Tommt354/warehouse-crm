@@ -69,7 +69,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
 <body>
 <div class="wrap">
   <div class="hdr"><div><img src="/public/logo-white.png" alt="ADS DROP" style="height:20px;width:auto;margin-bottom:4px;display:block"><h1 style="font-size:16px;margin-top:2px"><i data-icon="package" data-size="17"></i> Склад</h1><small id="u-info">—</small></div><button class="btn-out" onclick="logout()">Вийти</button></div>
-  <div id="shift-banner" style="background:rgba(255,107,107,.06);border:1px solid rgba(255,107,107,.15);border-radius:12px;padding:14px;margin-bottom:14px;text-align:center"><div style="font-size:14px;font-weight:600;color:var(--red);margin-bottom:8px"><i data-icon="alertTriangle" data-size="15"></i> Зміна не відкрита</div><button class="btn btn-p" onclick="openShiftModal()" style="font-size:14px"><i data-icon="unlock" data-size="15"></i> Розпочати зміну</button></div>
+  <div id="shift-banner" style="background:rgba(255,107,107,.06);border:1px solid rgba(255,107,107,.15);border-radius:12px;padding:14px;margin-bottom:14px;text-align:center"><div style="font-size:14px;font-weight:600;color:var(--red);margin-bottom:8px"><i data-icon="alertTriangle" data-size="15"></i> Зміна не відкрита</div><button class="btn btn-p" id="shift-open-btn" onclick="openShiftModal()" style="font-size:14px"><i data-icon="unlock" data-size="15"></i> Розпочати зміну</button></div>
   <div id="shift-active" style="display:none;background:var(--accbg);border:1px solid rgba(124,134,255,.15);border-radius:12px;padding:10px 14px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:12px;color:var(--acc);font-weight:600"><i data-icon="check" data-size="12"></i> Зміна відкрита</span><div id="shift-crew" style="font-size:10px;color:var(--td);margin-top:2px"></div></div><button class="btn btn-sm" style="border-color:rgba(255,107,107,.2);color:var(--red)" onclick="closeShift()"><i data-icon="lock" data-size="13"></i> Закрити зміну</button></div></div>
   <div class="main-tabs">
     <div class="main-tab on" onclick="showMain('orders')"><i data-icon="clipboardList" data-size="15"></i> Замовлення</div>
@@ -240,6 +240,14 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
 <div style="font-size:12px;color:var(--td);margin-bottom:10px">Оберіть хто сьогодні на зміні:</div>
 <div id="shift-worker-list"></div>
 <div style="display:flex;gap:6px;margin-top:12px"><button class="btn btn-p" onclick="startShift()"><i data-icon="check" data-size="14"></i> Розпочати</button><button class="btn" onclick="clM('shift-modal')">Скасувати</button></div>
+</div></div>
+
+<!-- Щоденний переоблік: сліпе завдання перед відкриттям зміни -->
+<div class="modal-bg" id="cycle-modal"><div class="modal" style="max-width:520px"><h3><i data-icon="clipboard" data-size="16"></i> Щоденний переоблік</h3>
+<div style="font-size:12px;color:var(--td);margin-bottom:10px">Порахуйте ці товари на полиці й введіть фактичну кількість по кожному розміру. Без цього зміну не відкрити.</div>
+<div id="cycle-list"></div>
+<div id="cycle-err" class="msg" style="display:none;background:rgba(255,107,107,.08);color:var(--red);font-size:11px;padding:8px;border-radius:8px;margin-top:8px"></div>
+<div style="display:flex;gap:6px;margin-top:12px"><button class="btn btn-p" id="cycle-save-btn" onclick="submitCycleCount(this)"><i data-icon="check" data-size="14"></i> Зберегти й відкрити зміну</button><button class="btn" onclick="clM('cycle-modal')">Пізніше</button></div>
 </div></div>
 
 <!-- Shift close modal -->
@@ -522,9 +530,17 @@ async function checkShift(){
   }else{
     document.getElementById("shift-banner").style.display="";
     document.getElementById("shift-active").style.display="none";
+    // Одразу видно, що спершу переоблік, а не «кнопка чомусь не працює».
+    try{var c=await api("/api/cycle-count/current");
+      var b=document.getElementById("shift-open-btn");
+      if(b)b.innerHTML=c.required?(Icon('clipboard',15)+' Щоденний переоблік і зміна'):(Icon('unlock',15)+' Розпочати зміну');
+    }catch(e2){}
   }}catch(e){}
 }
 async function openShiftModal(){
+  // Щоденний переоблік іде поперед зміни: сервер однаково не відкриє зміну,
+  // поки завдання не здане, тож ведемо людину одразу туди.
+  if(await cycleBlocks())return;
   if(ME.worker_role==="packer_ready"){
     // Solo shift — no team to pick, server resolves worker_ids to himself.
     try{await api("/api/shifts/open",{method:"POST",body:JSON.stringify({})});checkShift()}catch(e){}
@@ -553,6 +569,47 @@ async function confirmCloseShift(){
   document.getElementById("shift-close-modal").classList.remove("on");
   currentShift=null;checkShift();
   document.getElementById("wh-orders").innerHTML='<div class="msg msg-ok" style="text-align:center;font-size:14px;padding:20px">'+Icon('check',15)+' Зміна закрита! Запаковано замовлень: <b>'+r.orders_packed+'</b></div>'}catch(e){}
+}
+
+// ── ЩОДЕННИЙ ПЕРЕОБЛІК ────────────────────────────────────────────
+// Рахунок сліпий: сервер не присилає очікуваних кількостей, і показувати тут
+// нічого, крім товару й порожніх полів. Введене одразу вирівнює залишок.
+var cycleTask=null,cycleProducts=[];
+async function cycleBlocks(){
+  var r;try{r=await api("/api/cycle-count/current")}catch(e){return false}
+  if(!r.required)return false;
+  cycleTask=r.task;cycleProducts=r.products||[];
+  renderCycleTask();document.getElementById("cycle-err").style.display="none";opM("cycle-modal");
+  return true;
+}
+function renderCycleTask(){
+  document.getElementById("cycle-list").innerHTML=cycleProducts.map(function(p){
+    if(!p.sizes.length)return "";
+    return '<div style="border:1px solid var(--brd);border-radius:10px;padding:10px;margin-bottom:8px">'
+      +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'
+      +'<div style="width:40px;height:40px;border-radius:8px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(p.photo?'<img src="'+p.photo+'" style="width:100%;height:100%;object-fit:cover">':Icon('camera',16))+'</div>'
+      +'<div><div style="font-size:13px;font-weight:600;color:var(--th)">'+esc(p.name)+'</div><div style="font-size:10px;color:var(--td)">'+esc(p.category_name||p.model_name||"")+'</div></div></div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+p.sizes.map(function(s){
+        return '<div style="text-align:center"><div style="font-size:10px;color:var(--td);margin-bottom:2px">'+esc(s.name)+'</div>'
+          +'<input type="number" min="0" inputmode="numeric" data-bp="'+p.id+'" data-sz="'+s.id+'" class="cycle-in" style="width:56px;padding:6px;text-align:center;font-size:14px;border:1px solid var(--brd);border-radius:6px;background:var(--card);color:var(--th);font-family:inherit"></div>';
+      }).join("")+'</div></div>';
+  }).join("");
+}
+async function submitCycleCount(btn){
+  var counts=[],missing=0;
+  document.querySelectorAll(".cycle-in").forEach(function(i){
+    if(i.value===""){missing++;i.style.borderColor="var(--red)";return}
+    i.style.borderColor="var(--brd)";
+    counts.push({base_product_id:parseInt(i.dataset.bp),size_id:parseInt(i.dataset.sz),quantity:parseInt(i.value)});
+  });
+  var err=document.getElementById("cycle-err");
+  if(missing){err.textContent="Заповніть усі розміри — порожнє поле це не нуль, а непорахована позиція";err.style.display="block";return}
+  err.style.display="none";btnSpin(btn);
+  try{
+    await api("/api/cycle-count/submit",{method:"POST",body:JSON.stringify({counts:counts})});
+    clM("cycle-modal");btnDone(btn);
+    openShiftModal();
+  }catch(e){err.textContent=e.message;err.style.display="block";btnDone(btn)}
 }
 
 // ── RETURNS ──────────────────────────────────────────────────────

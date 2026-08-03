@@ -997,9 +997,10 @@ app.post("/api/recount/cancel", authMiddleware, requireRole("admin","warehouse")
 // a row that was frozen under an active session, this is also where the
 // orders placed during the freeze finally get deducted — exactly once,
 // summed up and applied here instead of one at a time as they came in.
-app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
-  const { adjustments } = req.body;
-  if (!Array.isArray(adjustments) || !adjustments.length) return res.status(400).json({ error: "Немає змін" });
+// Саме застосування винесене з ендпоінта, бо ним користується ще й щоденний
+// переоблік (/api/cycle-count/submit) — механіка вирівнювання залишку одна на
+// всі переобліки, дублювати її означало б розійтися з нею при першій же правці.
+function applyRecountAdjustments(adjustments, userId, scope) {
   let changed = 0;
   const touchedSessions = new Set();
   // Кожне збереження переобліку має лишити слід в історії. Якщо переоблік
@@ -1008,8 +1009,8 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
   let adhocSessionId = null;
   const adhocSession = () => {
     if (!adhocSessionId) {
-      adhocSessionId = db.prepare("INSERT INTO recount_sessions(category_id,status,started_by,finished_at)VALUES(NULL,'saved',?,datetime('now','localtime'))")
-        .run(req.user.id).lastInsertRowid;
+      adhocSessionId = db.prepare("INSERT INTO recount_sessions(category_id,status,scope,started_by,finished_at)VALUES(NULL,'saved',?,?,datetime('now','localtime'))")
+        .run(scope || "base", userId).lastInsertRowid;
     }
     return adhocSessionId;
   };
@@ -1038,7 +1039,7 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
       if (diff === 0 && !deferredNote) return;
       db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=?,recount_session_id=NULL WHERE base_product_id=? AND size_id=?").run(diff, actual, bpId, sizeId);
       db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)")
-        .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual + deferredNote, req.user.id);
+        .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual + deferredNote, userId);
       logItem.run(row && row.recount_session_id ? row.recount_session_id : adhocSession(), bpId, sizeId, current, actual, actual - current, orderedDuring);
       handledKeys.add(bpId + "_" + sizeId);
       changed++;
@@ -1046,11 +1047,18 @@ app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"),
     touchedSessions.forEach(id => {
       // Позиції, у які не вводили число, теж мають прийняти замовлення,
       // зроблені під час переобліку — інакше вони зникнуть із обліку.
-      settleFrozenSession(id, req.user.id, handledKeys);
+      settleFrozenSession(id, userId, handledKeys);
       db.prepare("UPDATE stock_base SET recount_session_id=NULL WHERE recount_session_id=?").run(id);
       db.prepare("UPDATE recount_sessions SET status='saved',finished_at=datetime('now','localtime') WHERE id=?").run(id);
     });
   })();
+  return changed;
+}
+
+app.post("/api/recount/apply", authMiddleware, requireRole("admin","warehouse"), (req, res) => {
+  const { adjustments } = req.body;
+  if (!Array.isArray(adjustments) || !adjustments.length) return res.status(400).json({ error: "Немає змін" });
+  const changed = applyRecountAdjustments(adjustments, req.user.id, "base");
   res.json({ ok: true, changed });
 });
 
@@ -1090,6 +1098,204 @@ app.get("/api/recount/history/:id", authMiddleware, requireRole("admin","warehou
   session.shortage = session.items.reduce((s, i) => s + (i.diff < 0 ? -i.diff : 0), 0);
   session.surplus = session.items.reduce((s, i) => s + (i.diff > 0 ? i.diff : 0), 0);
   res.json({ session });
+});
+
+// ── ЩОДЕННИЙ ПЕРЕОБЛІК (циклічний) ─────────────────────────────────
+// Замість одного місячного переобліку — маленьке завдання щодня: поки
+// пакувальник не порахував свої позиції, зміна не відкривається. Сенс саме в
+// довжині петлі: розбіжність знаходиться назавтра, коли ще пам'ятають, що
+// вчора відбувалось, а не через 30 днів, коли вже нічого не з'ясувати.
+const CYCLE_POSITIONS = { base: 3, molod: 1 };
+const CYCLE_TURNOVER_DAYS = 30; // за який період міряємо оборот (ABC)
+const CYCLE_COOLDOWN_DAYS = 14; // скільки днів товар не повторюється у завданнях
+
+// Склад, за який відповідає цей користувач. Пакувальник Готового товару
+// прив'язаний до Молодіжної; звичайний пакувальник — до свого assigned_warehouse
+// (порожній = База). Решта ролей щоденного переобліку не мають.
+function cycleWarehouseFor(user) {
+  if (!user || user.role !== "warehouse") return null;
+  if (user.worker_role === "packer_ready") return "molod";
+  if (user.worker_role === "packer") return user.assigned_warehouse === "molod" ? "molod" : "base";
+  return null;
+}
+
+function todayLocal() {
+  return db.prepare("SELECT date('now','localtime') d").get().d;
+}
+
+// Підбір позицій на день: у першу чергу найходовіший товар (оборот за
+// CYCLE_TURNOVER_DAYS днів), із ротацією — товар, який рахували в останні
+// CYCLE_COOLDOWN_DAYS днів, у чергу не потрапляє. Якщо ходових не вистачає
+// (маленький склад), добираємо тим, що рахували найдавніше.
+function pickCycleProducts(warehouse, limit) {
+  const all = db.prepare(`SELECT bp.id, bp.name,
+      COALESCE((SELECT SUM(oi.quantity) FROM order_items oi
+        JOIN variations v ON oi.variation_id=v.id JOIN orders o ON oi.order_id=o.id
+        WHERE v.base_product_id=bp.id AND o.status!='cancelled'
+          AND o.created_at >= date('now','localtime',?)),0) AS turnover,
+      (SELECT MAX(ct.task_date) FROM cycle_task_items cti JOIN cycle_tasks ct ON cti.task_id=ct.id
+        WHERE cti.base_product_id=bp.id AND ct.status='done') AS last_counted
+    FROM base_products bp JOIN models m ON bp.model_id=m.id
+    WHERE bp.active=1 AND m.active=1 AND COALESCE(NULLIF(m.main_warehouse,''),'base')=?`)
+    .all("-" + CYCLE_TURNOVER_DAYS + " days", warehouse);
+  const cutoff = db.prepare("SELECT date('now','localtime',?) d").get("-" + CYCLE_COOLDOWN_DAYS + " days").d;
+  const byTurnover = (a, b) => (b.turnover - a.turnover) || String(a.last_counted || "").localeCompare(String(b.last_counted || "")) || (a.id - b.id);
+  const fresh = all.filter(p => !p.last_counted || p.last_counted < cutoff).sort(byTurnover);
+  const recent = all.filter(p => p.last_counted && p.last_counted >= cutoff)
+    .sort((a, b) => String(a.last_counted).localeCompare(String(b.last_counted)) || (b.turnover - a.turnover));
+  return fresh.concat(recent).slice(0, limit);
+}
+
+// Завдання на сьогодні для цього складу; якщо його ще немає — видаємо тут же
+// і одразу заморожуємо ці позиції звичайною recount-сесією, щоб замовлення,
+// які прилетять під час підрахунку, не збили число під руками (ті ж граблі,
+// що й у великому переобліку — механізм використовуємо той самий).
+function ensureCycleTask(warehouse, userId) {
+  const today = todayLocal();
+  // Завдання, яке так і не здали за минулі дні, треба закрити, а не лишати
+  // висіти: його сесія тримає позиції замороженими, і замовлення на ці товари
+  // перестають зменшувати списану кількість. Закриваємо так само, як
+  // скасування переобліку — кількості не чіпаємо, попит зводимо.
+  db.prepare("SELECT * FROM cycle_tasks WHERE warehouse=? AND status='pending' AND task_date<?")
+    .all(warehouse, today).forEach(stale => {
+      db.transaction(() => {
+        if (stale.session_id) {
+          settleFrozenSession(stale.session_id, userId, null);
+          db.prepare("UPDATE stock_base SET recount_session_id=NULL WHERE recount_session_id=?").run(stale.session_id);
+          db.prepare("UPDATE recount_sessions SET status='cancelled',finished_at=datetime('now','localtime') WHERE id=? AND status='active'").run(stale.session_id);
+        }
+        db.prepare("UPDATE cycle_tasks SET status='missed',finished_at=datetime('now','localtime') WHERE id=?").run(stale.id);
+      })();
+    });
+  let task = db.prepare("SELECT * FROM cycle_tasks WHERE warehouse=? AND task_date=?").get(warehouse, today);
+  if (task) return task;
+  const picks = pickCycleProducts(warehouse, CYCLE_POSITIONS[warehouse] || 1);
+  if (!picks.length) return null;
+  db.transaction(() => {
+    const sessionId = db.prepare("INSERT INTO recount_sessions(category_id,status,scope,started_by)VALUES(NULL,'active','cycle',?)").run(userId).lastInsertRowid;
+    const taskId = db.prepare("INSERT INTO cycle_tasks(warehouse,task_date,session_id)VALUES(?,?,?)").run(warehouse, today, sessionId).lastInsertRowid;
+    const addItem = db.prepare("INSERT INTO cycle_task_items(task_id,base_product_id)VALUES(?,?)");
+    const freeze = db.prepare("UPDATE stock_base SET recount_session_id=? WHERE base_product_id=? AND recount_session_id IS NULL");
+    picks.forEach(p => { addItem.run(taskId, p.id); freeze.run(sessionId, p.id); });
+    task = db.prepare("SELECT * FROM cycle_tasks WHERE id=?").get(taskId);
+  })();
+  return task;
+}
+
+// Що бачить пакувальник: лише які товари й розміри рахувати. Жодної очікуваної
+// кількості в payload немає навмисно — рахунок сліпий, інакше він перетворюється
+// на звірку "чи збігається з екраном".
+app.get("/api/cycle-count/current", authMiddleware, (req, res) => {
+  const warehouse = cycleWarehouseFor(req.user);
+  if (!warehouse) return res.json({ required: false, task: null });
+  const task = ensureCycleTask(warehouse, req.user.id);
+  if (!task) return res.json({ required: false, task: null });
+  if (task.status === "done") return res.json({ required: false, task: { id: task.id, status: "done", warehouse } });
+  const products = db.prepare(`SELECT bp.id, bp.name, bp.photo, m.name as model_name, cat.name as category_name
+    FROM cycle_task_items cti JOIN base_products bp ON cti.base_product_id=bp.id
+    JOIN models m ON bp.model_id=m.id LEFT JOIN categories cat ON m.category_id=cat.id
+    WHERE cti.task_id=? ORDER BY m.name, bp.name`).all(task.id);
+  const szq = db.prepare(`SELECT s.id, s.name FROM stock_base sb JOIN sizes s ON sb.size_id=s.id
+    WHERE sb.base_product_id=? ORDER BY s.sort_order`);
+  products.forEach(p => { p.sizes = szq.all(p.id); });
+  res.json({ required: true, task: { id: task.id, status: task.status, warehouse, date: task.task_date }, products });
+});
+
+// Введена цифра одразу вирівнює залишок — тією ж механікою, що й великий
+// переоблік. Окремого підтвердження адміном немає: сенс щоденного переобліку в
+// тому, що склад завжди відповідає полиці, а розбіжність адмін розбирає постфактум.
+app.post("/api/cycle-count/submit", authMiddleware, (req, res) => {
+  const warehouse = cycleWarehouseFor(req.user);
+  if (!warehouse) return res.status(403).json({ error: "Щоденний переоблік не для цієї ролі" });
+  const task = db.prepare("SELECT * FROM cycle_tasks WHERE warehouse=? AND task_date=?").get(warehouse, todayLocal());
+  if (!task) return res.status(404).json({ error: "Завдання на сьогодні не знайдено" });
+  if (task.status === "done") return res.json({ ok: true, already: true });
+  const counts = Array.isArray(req.body.counts) ? req.body.counts : [];
+  // Порахувати треба все видане: пропущений розмір — це не "нуль", це
+  // непорахована позиція, і мовчки вирівняти її в нуль було б знищенням залишку.
+  const required = db.prepare(`SELECT sb.base_product_id, sb.size_id FROM cycle_task_items cti
+    JOIN stock_base sb ON sb.base_product_id=cti.base_product_id WHERE cti.task_id=?`).all(task.id);
+  const given = new Map();
+  counts.forEach(c => {
+    const bp = parseInt(c.base_product_id), sz = parseInt(c.size_id), q = parseInt(c.quantity);
+    if (bp && sz && !isNaN(q) && q >= 0) given.set(bp + "_" + sz, q);
+  });
+  const missing = required.filter(r => !given.has(r.base_product_id + "_" + r.size_id));
+  if (missing.length) return res.status(400).json({ error: "Введіть кількість для кожного розміру (" + missing.length + " не заповнено)" });
+
+  const adjustments = required.map(r => ({ base_product_id: r.base_product_id, size_id: r.size_id, actual_quantity: given.get(r.base_product_id + "_" + r.size_id) }));
+  db.transaction(() => {
+    applyRecountAdjustments(adjustments, req.user.id, "cycle");
+    // Якщо всі позиції зійшлися копійка в копійку, applyRecountAdjustments міг
+    // не дійти до закриття сесії (нічого не змінювалось) — розморожуємо самі,
+    // інакше склад лишиться замороженим до кінця днів.
+    const still = db.prepare("SELECT status FROM recount_sessions WHERE id=?").get(task.session_id);
+    if (still && still.status === "active") {
+      settleFrozenSession(task.session_id, req.user.id, null);
+      db.prepare("UPDATE stock_base SET recount_session_id=NULL WHERE recount_session_id=?").run(task.session_id);
+      db.prepare("UPDATE recount_sessions SET status='saved',finished_at=datetime('now','localtime') WHERE id=?").run(task.session_id);
+    }
+    db.prepare("UPDATE cycle_tasks SET status='done',finished_at=datetime('now','localtime'),finished_by=? WHERE id=?").run(req.user.id, task.id);
+  })();
+  res.json({ ok: true });
+});
+
+// Вкладка «Щоденний переоблік» в адмінці: наскільки склад перевірено за період,
+// скільки позицій розійшлось і на яку суму собівартості, і повна історія по днях
+// з поіменним переліком того, що саме розбіглось.
+app.get("/api/cycle-count/stats", authMiddleware, requireRole("admin"), (req, res) => {
+  const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+  const to = req.query.to || todayLocal();
+  const started = db.prepare("SELECT MIN(task_date) d FROM cycle_tasks").get().d;
+  const tasks = db.prepare(`SELECT ct.*, u.name as user_name FROM cycle_tasks ct LEFT JOIN users u ON ct.finished_by=u.id
+    WHERE ct.task_date BETWEEN ? AND ? ORDER BY ct.task_date DESC, ct.warehouse`).all(from, to);
+  const itemsQ = db.prepare(`SELECT ri.base_product_id, ri.size_id, ri.before_qty, ri.after_qty, ri.diff, ri.ordered_during,
+      bp.name as product_name, bp.photo, s.name as size_name,
+      COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0) as cost_price
+    FROM recount_items ri JOIN base_products bp ON ri.base_product_id=bp.id
+    JOIN models m ON bp.model_id=m.id JOIN sizes s ON ri.size_id=s.id
+    WHERE ri.session_id=? AND ri.diff!=0 ORDER BY bp.name, s.sort_order`);
+  const assignedQ = db.prepare(`SELECT bp.id, bp.name FROM cycle_task_items cti JOIN base_products bp ON cti.base_product_id=bp.id
+    WHERE cti.task_id=? ORDER BY bp.name`);
+  const countedProducts = new Set(), divergedProducts = new Set();
+  let shortageUnits = 0, surplusUnits = 0, shortageCost = 0, surplusCost = 0;
+  const days = tasks.map(t => {
+    const assigned = assignedQ.all(t.id);
+    const items = t.session_id ? itemsQ.all(t.session_id) : [];
+    const diverged = new Set();
+    items.forEach(i => {
+      diverged.add(i.base_product_id);
+      if (t.status === "done") {
+        if (i.diff < 0) { shortageUnits += -i.diff; shortageCost += -i.diff * i.cost_price; }
+        else { surplusUnits += i.diff; surplusCost += i.diff * i.cost_price; }
+      }
+    });
+    if (t.status === "done") {
+      assigned.forEach(a => countedProducts.add(a.id));
+      diverged.forEach(id => divergedProducts.add(id));
+    }
+    return {
+      id: t.id, date: t.task_date, warehouse: t.warehouse, status: t.status,
+      user_name: t.user_name || "", finished_at: t.finished_at,
+      assigned: assigned.map(a => a.name), positions: assigned.length,
+      items: items.map(i => ({ ...i, cost_diff: i.diff * i.cost_price }))
+    };
+  });
+  const totalProducts = db.prepare(`SELECT COUNT(*) c FROM base_products bp JOIN models m ON bp.model_id=m.id
+    WHERE bp.active=1 AND m.active=1`).get().c;
+  res.json({
+    from, to, started,
+    total_products: totalProducts,
+    counted_products: countedProducts.size,
+    coverage_pct: totalProducts ? Math.round(countedProducts.size / totalProducts * 1000) / 10 : 0,
+    diverged_products: divergedProducts.size,
+    divergence_pct: countedProducts.size ? Math.round(divergedProducts.size / countedProducts.size * 1000) / 10 : 0,
+    shortage_units: shortageUnits, surplus_units: surplusUnits,
+    shortage_cost: Math.round(shortageCost * 100) / 100,
+    surplus_cost: Math.round(surplusCost * 100) / 100,
+    net_cost: Math.round((surplusCost - shortageCost) * 100) / 100,
+    days
+  });
 });
 
 // Update model workers from product context
@@ -3272,6 +3478,14 @@ app.get("/api/shifts/current", authMiddleware, (req, res) => {
 app.post("/api/shifts/open", authMiddleware, (req, res) => {
   const existing = db.prepare("SELECT id FROM shifts WHERE packer_user_id=? AND status='open'").get(req.user.id);
   if (existing) return res.status(400).json({ error: "Зміна вже відкрита" });
+  // Зміну не відкрити, поки не зданий щоденний переоблік свого складу — це і є
+  // головний важіль механізму. Перевірка на сервері, а не лише в інтерфейсі:
+  // кнопку можна обійти, ендпоінт — ні.
+  const cycleWh = cycleWarehouseFor(req.user);
+  if (cycleWh) {
+    const task = ensureCycleTask(cycleWh, req.user.id);
+    if (task && task.status !== "done") return res.status(400).json({ error: "Спочатку виконайте щоденний переоблік", cycle_required: true });
+  }
   let { worker_ids } = req.body;
   // Solo roles (e.g. packer_ready) don't pick a team — default to just
   // whichever worker profile is linked to the logged-in account.
