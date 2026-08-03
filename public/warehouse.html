@@ -201,7 +201,7 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
   <div id="wh-ret-cats" class="cards" style="margin-bottom:8px"></div>
   <div id="wh-ret-plist"></div>
 </div>
-<div id="wh-ret-chosen" style="display:none;border-top:1px solid var(--brd);padding-top:10px;margin-top:10px"></div>
+<div id="wh-ret-cart" style="border-top:1px solid var(--brd);padding-top:10px;margin-top:10px"></div>
 <div id="wh-ret-msg"></div>
 <div style="display:flex;gap:5px;margin-top:10px"><button class="btn" onclick="clM('wh-ret-modal')">Закрити</button></div>
 </div></div>
@@ -630,12 +630,12 @@ var retMode="add",retCatP=null,retVars=[],retSizes=[],retChosen=null;
 function openRetAdd(){retMode="add";openRetPicker("Додати повернення")}
 function openRetWo(){retMode="wo";openRetPicker("Списати повернення")}
 function openRetPicker(title){
-  retCatP=null;retChosen=null;
+  retCatP=null;retOpenVar=null;retCart={};
   document.getElementById("wh-ret-title").textContent=title;
   document.getElementById("wh-ret-psearch").value="";
-  document.getElementById("wh-ret-chosen").style.display="none";
   document.getElementById("wh-ret-msg").innerHTML="";
   opM("wh-ret-modal");
+  renderRetCart();
   loadRetPicker();
 }
 async function loadRetPicker(){
@@ -658,42 +658,80 @@ function renderRetPickList(){
   if(q)list=list.filter(function(v){return ((v.name||"")+" "+(v.base_name||"")+" "+(v.model_name||"")).toLowerCase().includes(q)});
   document.getElementById("wh-ret-plist").innerHTML=list.length?list.slice(0,60).map(function(v){
     var ph=v.photo||v.print_photo||v.bp_photo||"";
-    return '<div onclick="pickRetVar('+v.id+')" style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--brd);border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--card)">'+
-      '<div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:grid;place-items:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+'</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--th);font-weight:600">'+esc(v.name||v.base_name)+'</div><div style="font-size:10px;color:var(--td)">'+esc(v.model_name||"")+'</div></div>'+
+    var open=retOpenVar===v.id;
+    return '<div style="border:1px solid '+(open?'var(--acc)':'var(--brd)')+';border-radius:9px;margin-bottom:6px;background:var(--card);padding:8px">'+
+      '<div onclick="pickRetVar('+v.id+')" style="display:flex;gap:10px;align-items:center;cursor:pointer">'+
+        '<div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:grid;place-items:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--th);font-weight:600">'+esc(v.name||v.base_name)+'</div><div style="font-size:10px;color:var(--td)">'+esc(v.model_name||"")+'</div></div>'+
+        '<div style="color:var(--td)">'+Icon(open?'x':'package',14)+'</div>'+
+      '</div>'+
+      (open?retSizeChips(v):'')+
     '</div>';
   }).join(""):'<div style="color:var(--td);font-size:12px;padding:10px">'+(q?"Нічого не знайдено":"Оберіть категорію")+'</div>';
 }
+// Кошик: ходиш каталогом скільки треба, накидаєш позиції, і одним натиском
+// уся партія заходить на полицю (сервер приймає її однією транзакцією).
+var retCart={},retOpenVar=null,retShelf={};
 async function pickRetVar(vid){
-  var v=retVars.find(function(x){return x.id===vid});if(!v)return;
-  retChosen=v;
-  var onShelf={};
-  try{var rs=await api("/api/stock-returns");(rs.items||[]).forEach(function(i){if(i.variation_id===vid)onShelf[i.size_id]=i.quantity})}catch(e){}
+  retOpenVar=(retOpenVar===vid)?null:vid;
+  if(retOpenVar){
+    try{var rs=await api("/api/stock-returns");retShelf={};(rs.items||[]).forEach(function(i){retShelf[i.variation_id+"_"+i.size_id]=i.quantity})}catch(e){}
+  }
+  renderRetPickList();
+}
+function retSizeChips(v){
   var sids=Object.keys(v.stock||{});
-  var box=document.getElementById("wh-ret-chosen");
-  box.innerHTML='<div style="font-size:12px;color:var(--th);font-weight:600;margin-bottom:6px">'+esc(v.name||v.base_name)+'</div>'+
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+sids.map(function(sid){
-      var sn=(retSizes.find(function(s){return s.id==sid})||{}).name||sid;
-      var have=onShelf[sid]||0;
-      return '<button class="btn btn-sm" data-sid="'+sid+'" onclick="chooseRetSize(this,'+sid+')" style="font-size:11px">'+esc(sn)+' <span style="color:var(--td)">('+have+')</span></button>';
-    }).join("")+'</div>'+
-    '<div class="fld"><label>Кількість</label><input type="number" id="wh-ret-qty" value="1" min="1"></div>'+
-    '<button class="btn '+(retMode==="add"?"btn-a":"btn-d")+'" onclick="saveRetAction()">'+Icon(retMode==="add"?"download":"upload",13)+' '+(retMode==="add"?"Додати":"Списати")+'</button>';
-  box.style.display="";
-  retChosen._size=null;
+  if(!sids.length)return '<div style="font-size:11px;color:var(--td);padding:6px 0">У моделі не задано розмірів</div>';
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;padding:8px 0 4px">'+sids.map(function(sid){
+    var sn=(retSizes.find(function(s){return s.id==sid})||{}).name||sid;
+    var key=v.id+"_"+sid;
+    var inCart=retCart[key]?retCart[key].quantity:0;
+    var onShelf=retShelf[key]||0;
+    return '<button class="btn btn-sm'+(inCart?' btn-p':'')+'" onclick="event.stopPropagation();addRetCart('+v.id+','+sid+')" style="font-size:11px">'+
+      esc(sn)+' <span style="color:var(--td)">('+onShelf+')</span>'+(inCart?' <b>+'+inCart+'</b>':'')+'</button>';
+  }).join("")+'</div>';
 }
-function chooseRetSize(btn,sid){
-  document.querySelectorAll("#wh-ret-chosen button[data-sid]").forEach(function(b){b.classList.remove("btn-p")});
-  btn.classList.add("btn-p");
-  retChosen._size=sid;
+function addRetCart(vid,sid){
+  var v=retVars.find(function(x){return x.id===vid});if(!v)return;
+  var key=vid+"_"+sid;
+  var sn=(retSizes.find(function(s){return s.id==sid})||{}).name||sid;
+  if(retCart[key])retCart[key].quantity++;
+  else retCart[key]={variation_id:vid,size_id:parseInt(sid),quantity:1,name:v.name||v.base_name,size_name:sn};
+  // при списанні не даємо набрати більше, ніж лежить на полиці
+  if(retMode==="wo"){
+    var max=retShelf[key]||0;
+    if(retCart[key].quantity>max){retCart[key].quantity=max;if(!max)delete retCart[key]}
+  }
+  renderRetPickList();renderRetCart();
 }
-async function saveRetAction(){
+function setRetCartQty(key,val){
+  var q=parseInt(val)||0;
+  if(q<=0)delete retCart[key];else retCart[key].quantity=q;
+  renderRetCart();renderRetPickList();
+}
+function removeRetCart(key){delete retCart[key];renderRetCart();renderRetPickList()}
+function renderRetCart(){
+  var keys=Object.keys(retCart);
+  var box=document.getElementById("wh-ret-cart");
+  if(!keys.length){box.innerHTML='<div style="font-size:11px;color:var(--td)">Оберіть товари — можна кілька, з різних категорій</div>';return}
+  var total=keys.reduce(function(s,k){return s+retCart[k].quantity},0);
+  box.innerHTML='<div style="max-height:150px;overflow-y:auto;margin-bottom:8px">'+keys.map(function(k){
+    var it=retCart[k];
+    return '<div style="display:flex;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--brd)">'+
+      '<div style="flex:1;min-width:0;font-size:11px;color:var(--th)">'+esc(it.name)+' <b style="color:var(--acc)">'+esc(it.size_name)+'</b></div>'+
+      '<input type="number" min="1" value="'+it.quantity+'" onchange="setRetCartQty(\''+k+'\',this.value)" style="width:56px;padding:4px;font-size:11px;text-align:center;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff">'+
+      '<button class="btn btn-sm" onclick="removeRetCart(\''+k+'\')" style="padding:3px 7px">'+Icon('x',12)+'</button>'+
+    '</div>';
+  }).join("")+'</div>'+
+  '<button class="btn '+(retMode==="add"?"btn-a":"btn-d")+'" style="width:100%;justify-content:center" onclick="saveRetBulk()">'+
+    Icon(retMode==="add"?"download":"upload",14)+' '+(retMode==="add"?"Додати":"Списати")+' '+keys.length+' поз. ('+total+' шт)</button>';
+}
+async function saveRetBulk(){
+  var items=Object.values(retCart);
   var msg=document.getElementById("wh-ret-msg");
-  if(!retChosen||!retChosen._size){msg.innerHTML='<div class="msg msg-err">Оберіть розмір</div>';return}
-  var qty=parseInt(document.getElementById("wh-ret-qty").value)||0;
-  if(qty<=0){msg.innerHTML='<div class="msg msg-err">Вкажіть кількість</div>';return}
+  if(!items.length){msg.innerHTML='<div class="msg msg-err">Список порожній</div>';return}
   try{
-    await api("/api/stock-returns/"+(retMode==="add"?"add":"write-off"),{method:"POST",body:JSON.stringify({variation_id:retChosen.id,size_id:parseInt(retChosen._size),quantity:qty})});
+    var r=await api("/api/stock-returns/bulk",{method:"POST",body:JSON.stringify({mode:retMode==="add"?"add":"write-off",items:items})});
     clM("wh-ret-modal");loadWhReturns();
   }catch(e){msg.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
 }

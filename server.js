@@ -2195,6 +2195,46 @@ app.post("/api/stock-returns/write-off", authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
+// Пакетне додавання/списання повернень: користувач ходить каталогом, набирає
+// кошик і закидає все одним натиском. Уся партія — одна транзакція, щоб не
+// вийшло "половина зайшла, половина ні".
+app.post("/api/stock-returns/bulk", authMiddleware, (req, res) => {
+  if (!canManageReturns(req, res)) return;
+  const mode = req.body.mode === "write-off" ? "write-off" : "add";
+  const items = Array.isArray(req.body.items) ? req.body.items : [];
+  if (!items.length) return res.status(400).json({ error: "Список порожній" });
+
+  // Перевіряємо всю партію до того, як щось змінювати.
+  const prepared = [];
+  for (const raw of items) {
+    const variationId = parseInt(raw.variation_id), sizeId = parseInt(raw.size_id), qty = parseInt(raw.quantity) || 0;
+    if (!variationId || !sizeId || qty <= 0) return res.status(400).json({ error: "Невірна позиція у списку" });
+    const v = db.prepare("SELECT v.id,v.print_id,v.name,v.base_product_id FROM variations v WHERE v.id=?").get(variationId);
+    if (!v) return res.status(404).json({ error: "Товар не знайдено" });
+    if (!v.print_id) return res.status(400).json({ error: v.name + " — готовий товар не має повернень" });
+    if (mode === "write-off") {
+      const cur = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(variationId, sizeId);
+      if (!cur || cur.quantity < qty) return res.status(400).json({ error: v.name + " — на складі повернень стільки немає" });
+    }
+    prepared.push({ variationId, sizeId, qty, bpId: v.base_product_id });
+  }
+
+  db.transaction(() => {
+    prepared.forEach(p => {
+      if (mode === "add") {
+        db.prepare("INSERT OR IGNORE INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,0)").run(p.variationId, p.sizeId);
+        db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(p.qty, p.variationId, p.sizeId);
+      } else {
+        db.prepare("UPDATE stock_returns SET quantity=quantity-? WHERE variation_id=? AND size_id=?").run(p.qty, p.variationId, p.sizeId);
+      }
+      db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES(?,?,?,?,?,?,?)")
+        .run(mode === "add" ? "return_in" : "writeoff", p.bpId, p.variationId, p.sizeId, p.qty,
+          mode === "add" ? "Повернення додано вручну" : "Списання з повернень", req.user.id);
+    });
+  })();
+  res.json({ ok: true, positions: prepared.length, total_qty: prepared.reduce((s, p) => s + p.qty, 0) });
+});
+
 // Переоблік повернень = обнулення полиці, крім позначених винятків.
 // keep — масив {variation_id,size_id}, які лишаються недоторканими.
 // Кожна обнулена позиція лягає в історію переобліків, щоб було видно, що
