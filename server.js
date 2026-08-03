@@ -819,12 +819,18 @@ app.get("/api/recount/history/:id", authMiddleware, requireRole("admin","warehou
     FROM recount_sessions rs LEFT JOIN users u ON rs.started_by=u.id LEFT JOIN categories c ON rs.category_id=c.id
     WHERE rs.id=?`).get(req.params.id);
   if (!session) return res.status(404).json({ error: "Не знайдено" });
-  session.items = db.prepare(`SELECT ri.*, bp.name as product_name, bp.photo as product_photo, s.name as size_name, m.name as model_name
+  // Для переобліку повернень позиція описується варіацією (вона несе принт),
+  // для бази — базовим товаром. Показуємо те, що доречно.
+  session.items = db.prepare(`SELECT ri.*, bp.name as base_name, bp.photo as product_photo, s.name as size_name, m.name as model_name,
+    v.name as var_name, p.name as print_name,
+    COALESCE(v.name, bp.name) as product_name
     FROM recount_items ri
     JOIN base_products bp ON ri.base_product_id=bp.id
     JOIN models m ON bp.model_id=m.id
     JOIN sizes s ON ri.size_id=s.id
-    WHERE ri.session_id=? ORDER BY bp.name, s.sort_order`).all(req.params.id);
+    LEFT JOIN variations v ON ri.variation_id=v.id
+    LEFT JOIN prints p ON v.print_id=p.id
+    WHERE ri.session_id=? ORDER BY product_name, s.sort_order`).all(req.params.id);
   session.shortage = session.items.reduce((s, i) => s + (i.diff < 0 ? -i.diff : 0), 0);
   session.surplus = session.items.reduce((s, i) => s + (i.diff > 0 ? i.diff : 0), 0);
   res.json({ session });
@@ -2137,6 +2143,84 @@ app.get("/api/stock-returns", authMiddleware, (req, res) => {
   const totalQty = filtered.reduce((s, i) => s + i.quantity, 0);
   const totalCost = Math.round(filtered.reduce((s, i) => s + i.quantity * (i.cost_price || 0), 0) * 100) / 100;
   res.json({ items: filtered, total_qty: totalQty, total_cost: totalCost });
+});
+
+// ── РУЧНЕ ВЕДЕННЯ СКЛАДУ ПОВЕРНЕНЬ ────────────────────────────────
+// Доступ: адмін і Головний пакувальник (worker_role=packer). Повернення
+// існують лише для товару з принтом — готовий товар без принта система з
+// полиці повернень взяти не може, тож і класти його туди не даємо.
+function canManageReturns(req, res) {
+  if (req.user.role === "admin") return true;
+  if (req.user.role === "warehouse" && req.user.worker_role === "packer") return true;
+  res.status(403).json({ error: "Немає доступу" });
+  return false;
+}
+function returnsVariation(variationId, res) {
+  const v = db.prepare("SELECT v.id,v.print_id,v.name FROM variations v WHERE v.id=?").get(variationId);
+  if (!v) { res.status(404).json({ error: "Товар не знайдено" }); return null; }
+  if (!v.print_id) { res.status(400).json({ error: "Готовий товар не має повернень — оберіть товар із принтом" }); return null; }
+  return v;
+}
+
+// Додати повернення вручну. Базу навмисно не чіпаємо: річ прийшла ззовні,
+// з полиці бази вона не сходила.
+app.post("/api/stock-returns/add", authMiddleware, (req, res) => {
+  if (!canManageReturns(req, res)) return;
+  const { variation_id, size_id } = req.body;
+  const qty = parseInt(req.body.quantity) || 0;
+  if (!variation_id || !size_id || qty <= 0) return res.status(400).json({ error: "Оберіть товар, розмір і кількість" });
+  const v = returnsVariation(variation_id, res); if (!v) return;
+  db.transaction(() => {
+    db.prepare("INSERT OR IGNORE INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,0)").run(variation_id, size_id);
+    db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(qty, variation_id, size_id);
+    db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('return_in',(SELECT base_product_id FROM variations WHERE id=?),?,?,?,?,?)")
+      .run(variation_id, variation_id, size_id, qty, "Повернення додано вручну" + (req.body.note ? ": " + req.body.note : ""), req.user.id);
+  })();
+  res.json({ ok: true });
+});
+
+// Списати з полиці повернень. База теж не чіпається — річ іде зі складу зовсім.
+app.post("/api/stock-returns/write-off", authMiddleware, (req, res) => {
+  if (!canManageReturns(req, res)) return;
+  const { variation_id, size_id } = req.body;
+  const qty = parseInt(req.body.quantity) || 0;
+  if (!variation_id || !size_id || qty <= 0) return res.status(400).json({ error: "Оберіть товар, розмір і кількість" });
+  const cur = db.prepare("SELECT quantity FROM stock_returns WHERE variation_id=? AND size_id=?").get(variation_id, size_id);
+  if (!cur || cur.quantity < qty) return res.status(400).json({ error: "На складі повернень стільки немає" });
+  db.transaction(() => {
+    db.prepare("UPDATE stock_returns SET quantity=quantity-? WHERE variation_id=? AND size_id=?").run(qty, variation_id, size_id);
+    db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('writeoff',(SELECT base_product_id FROM variations WHERE id=?),?,?,?,?,?)")
+      .run(variation_id, variation_id, size_id, qty, "Списання з повернень" + (req.body.note ? ": " + req.body.note : ""), req.user.id);
+  })();
+  res.json({ ok: true });
+});
+
+// Переоблік повернень = обнулення полиці, крім позначених винятків.
+// keep — масив {variation_id,size_id}, які лишаються недоторканими.
+// Кожна обнулена позиція лягає в історію переобліків, щоб було видно, що
+// саме списали і скільки.
+app.post("/api/stock-returns/clear", authMiddleware, (req, res) => {
+  if (!canManageReturns(req, res)) return;
+  const keep = Array.isArray(req.body.keep) ? req.body.keep : [];
+  const keepSet = new Set(keep.map(k => `${parseInt(k.variation_id)}_${parseInt(k.size_id)}`));
+  const rows = db.prepare("SELECT sr.*,v.base_product_id FROM stock_returns sr JOIN variations v ON sr.variation_id=v.id WHERE sr.quantity > 0").all();
+  const targets = rows.filter(r => !keepSet.has(`${r.variation_id}_${r.size_id}`));
+  if (!targets.length) return res.json({ ok: true, cleared: 0, total_qty: 0 });
+
+  let sessionId;
+  db.transaction(() => {
+    sessionId = db.prepare("INSERT INTO recount_sessions(category_id,status,scope,started_by,finished_at)VALUES(NULL,'saved','returns',?,datetime('now','localtime'))")
+      .run(req.user.id).lastInsertRowid;
+    const logItem = db.prepare("INSERT INTO recount_items(session_id,base_product_id,variation_id,size_id,before_qty,after_qty,diff,ordered_during)VALUES(?,?,?,?,?,0,?,0)");
+    const zero = db.prepare("UPDATE stock_returns SET quantity=0 WHERE variation_id=? AND size_id=?");
+    const log = db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?,?)");
+    targets.forEach(t => {
+      zero.run(t.variation_id, t.size_id);
+      logItem.run(sessionId, t.base_product_id, t.variation_id, t.size_id, t.quantity, -t.quantity);
+      log.run(t.base_product_id, t.variation_id, t.size_id, t.quantity, "Переоблік повернень — списано", req.user.id);
+    });
+  })();
+  res.json({ ok: true, cleared: targets.length, total_qty: targets.reduce((s, t) => s + t.quantity, 0), session_id: sessionId });
 });
 
 // Find order by TTN

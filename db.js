@@ -622,6 +622,10 @@ if (addCol("orders","stock_pulled","INTEGER DEFAULT 0")) {
 // замовлення, ручний set адміна, use-return, клон варіації), і будь-яке
 // нове місце автоматично отримає правильну дату.
 addCol("stock_returns","in_at","TEXT DEFAULT NULL");
+// Переоблік складу повернень ведеться по варіації (вона несе принт), а не по
+// базовому товару, тож позиція історії має вміти зберігати і те, і те.
+addCol("recount_items","variation_id","INTEGER DEFAULT 0");
+addCol("recount_sessions","scope","TEXT DEFAULT 'base'");
 db.exec(`
   DROP TRIGGER IF EXISTS stock_returns_in_at;
   CREATE TRIGGER stock_returns_in_at AFTER UPDATE OF quantity ON stock_returns

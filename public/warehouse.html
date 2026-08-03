@@ -121,17 +121,26 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
         <button class="stab" data-age="30" onclick="setWhRetAge('30')">30+ днів</button>
         <button class="stab" data-age="60" onclick="setWhRetAge('60')">60+ днів</button>
       </div>
+      <div id="wh-ret-actions" style="display:none;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn btn-a" onclick="openRetAdd()"><i data-icon="download" data-size="14"></i> Додати повернення</button>
+        <button class="btn btn-d" onclick="openRetWo()"><i data-icon="upload" data-size="14"></i> Списати повернення</button>
+      </div>
       <div id="wh-ret-summary" style="margin-bottom:10px"></div>
       <div id="wh-ret-stock"></div>
     </div>
     <div id="wh-stock-rc-view" style="display:none">
-      <div class="stabs"><button class="stab on" id="wrc-tab-do" onclick="showRcTab('do')"><i data-icon="clipboardList" data-size="13"></i> Проводити</button><button class="stab" id="wrc-tab-hist" onclick="showRcTab('hist')"><i data-icon="fileText" data-size="13"></i> Історія</button></div>
+      <div class="stabs"><button class="stab on" id="wrc-tab-do" onclick="showRcTab('do')"><i data-icon="clipboardList" data-size="13"></i> База</button><button class="stab" id="wrc-tab-ret" onclick="showRcTab('ret')"><i data-icon="undo2" data-size="13"></i> Повернення</button><button class="stab" id="wrc-tab-hist" onclick="showRcTab('hist')"><i data-icon="fileText" data-size="13"></i> Історія</button></div>
       <div id="wrc-do">
         <div id="wrc-session-bar"></div>
         <div id="wrc-bread" style="margin-bottom:8px"></div>
         <div class="cards" id="wrc-cats" style="margin-bottom:10px"></div>
         <div id="wrc-list"></div>
         <div id="wrc-save-bar"></div>
+      </div>
+      <div id="wrc-ret" style="display:none">
+        <div style="font-size:11px;color:var(--td);margin-bottom:8px">Переоблік повернень списує всю полицю. Познач галочкою те, що лишається — воно не буде списане.</div>
+        <div id="wrc-ret-list"></div>
+        <div id="wrc-ret-bar"></div>
       </div>
       <div id="wrc-hist" style="display:none"><div id="wrc-hist-list"></div></div>
     </div>
@@ -182,6 +191,19 @@ input[type="date"]{padding:6px 10px;font-size:11px;background:var(--bg-input);bo
 <div id="whw-sz"></div>
 <div class="fld"><label>Причина</label><input id="whw-note"></div>
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-d" onclick="saveWhWO()"><i data-icon="upload" data-size="14"></i> Списати</button><button class="btn" onclick="clM('wh-wo-modal')">Скасувати</button></div>
+</div></div>
+
+<div class="modal-bg" id="wh-ret-modal"><div class="modal" style="max-width:560px;display:flex;flex-direction:column;overflow:hidden">
+<h3><i data-icon="undo2" data-size="16"></i> <span id="wh-ret-title">Додати повернення</span></h3>
+<div id="wh-ret-pick-wrap" style="flex:1;overflow-y:auto;min-height:0;max-height:55vh">
+  <input id="wh-ret-psearch" placeholder="Пошук товару..." oninput="renderRetPickList()" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0;margin-bottom:8px">
+  <div id="wh-ret-bread"></div>
+  <div id="wh-ret-cats" class="cards" style="margin-bottom:8px"></div>
+  <div id="wh-ret-plist"></div>
+</div>
+<div id="wh-ret-chosen" style="display:none;border-top:1px solid var(--brd);padding-top:10px;margin-top:10px"></div>
+<div id="wh-ret-msg"></div>
+<div style="display:flex;gap:5px;margin-top:10px"><button class="btn" onclick="clM('wh-ret-modal')">Закрити</button></div>
 </div></div>
 
 <div class="modal-bg" id="wh-def-modal"><div class="modal"><h3><i data-icon="alertTriangle" data-size="16"></i> Додати брак</h3>
@@ -601,6 +623,81 @@ async function loadWhStock(){
   whPage=0;renderWhStockPage();
   loadWhReturns();
 }
+// ── РУЧНЕ ВЕДЕННЯ СКЛАДУ ПОВЕРНЕНЬ ────────────────────────────────
+// Доступ має Головний пакувальник (База). Повернення бувають лише в товару з
+// принтом, тож у пікері показуємо тільки такі варіації.
+var retMode="add",retCatP=null,retVars=[],retSizes=[],retChosen=null;
+function openRetAdd(){retMode="add";openRetPicker("Додати повернення")}
+function openRetWo(){retMode="wo";openRetPicker("Списати повернення")}
+function openRetPicker(title){
+  retCatP=null;retChosen=null;
+  document.getElementById("wh-ret-title").textContent=title;
+  document.getElementById("wh-ret-psearch").value="";
+  document.getElementById("wh-ret-chosen").style.display="none";
+  document.getElementById("wh-ret-msg").innerHTML="";
+  opM("wh-ret-modal");
+  loadRetPicker();
+}
+async function loadRetPicker(){
+  var cd=await api("/api/categories?parent_id="+(retCatP||"")+"&scope=drop");
+  var bc=catBackBtn(cd.breadcrumb,"retCatP="+catParentId(cd.breadcrumb)+";loadRetPicker()");
+  bc+='<div class="bread"><a onclick="retCatP=null;loadRetPicker()">'+Icon('package',13)+' Каталог</a>';
+  cd.breadcrumb.forEach(function(b){bc+='<span style="color:var(--td);margin:0 3px">›</span><a onclick="retCatP='+b.id+';loadRetPicker()">'+esc(b.name)+'</a>'});
+  bc+='</div>';document.getElementById("wh-ret-bread").innerHTML=bc;
+  document.getElementById("wh-ret-cats").innerHTML=cd.categories.map(function(c){
+    return '<div class="crd" onclick="retCatP='+c.id+';loadRetPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',26))+'</div><div class="crd-body">'+esc(c.name)+'</div></div>';
+  }).join("");
+  var r=await api("/api/variations"+(retCatP?"?category_id="+retCatP:""));
+  retVars=(r.variations||[]).filter(function(v){return v.print_id});
+  retSizes=r.sizes||[];
+  renderRetPickList();
+}
+function renderRetPickList(){
+  var q=(document.getElementById("wh-ret-psearch").value||"").toLowerCase().trim();
+  var list=retVars;
+  if(q)list=list.filter(function(v){return ((v.name||"")+" "+(v.base_name||"")+" "+(v.model_name||"")).toLowerCase().includes(q)});
+  document.getElementById("wh-ret-plist").innerHTML=list.length?list.slice(0,60).map(function(v){
+    var ph=v.photo||v.print_photo||v.bp_photo||"";
+    return '<div onclick="pickRetVar('+v.id+')" style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--brd);border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--card)">'+
+      '<div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'<div style="display:grid;place-items:center;height:100%;color:var(--td)">'+Icon('camera',18)+'</div>')+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--th);font-weight:600">'+esc(v.name||v.base_name)+'</div><div style="font-size:10px;color:var(--td)">'+esc(v.model_name||"")+'</div></div>'+
+    '</div>';
+  }).join(""):'<div style="color:var(--td);font-size:12px;padding:10px">'+(q?"Нічого не знайдено":"Оберіть категорію")+'</div>';
+}
+async function pickRetVar(vid){
+  var v=retVars.find(function(x){return x.id===vid});if(!v)return;
+  retChosen=v;
+  var onShelf={};
+  try{var rs=await api("/api/stock-returns");(rs.items||[]).forEach(function(i){if(i.variation_id===vid)onShelf[i.size_id]=i.quantity})}catch(e){}
+  var sids=Object.keys(v.stock||{});
+  var box=document.getElementById("wh-ret-chosen");
+  box.innerHTML='<div style="font-size:12px;color:var(--th);font-weight:600;margin-bottom:6px">'+esc(v.name||v.base_name)+'</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+sids.map(function(sid){
+      var sn=(retSizes.find(function(s){return s.id==sid})||{}).name||sid;
+      var have=onShelf[sid]||0;
+      return '<button class="btn btn-sm" data-sid="'+sid+'" onclick="chooseRetSize(this,'+sid+')" style="font-size:11px">'+esc(sn)+' <span style="color:var(--td)">('+have+')</span></button>';
+    }).join("")+'</div>'+
+    '<div class="fld"><label>Кількість</label><input type="number" id="wh-ret-qty" value="1" min="1"></div>'+
+    '<button class="btn '+(retMode==="add"?"btn-a":"btn-d")+'" onclick="saveRetAction()">'+Icon(retMode==="add"?"download":"upload",13)+' '+(retMode==="add"?"Додати":"Списати")+'</button>';
+  box.style.display="";
+  retChosen._size=null;
+}
+function chooseRetSize(btn,sid){
+  document.querySelectorAll("#wh-ret-chosen button[data-sid]").forEach(function(b){b.classList.remove("btn-p")});
+  btn.classList.add("btn-p");
+  retChosen._size=sid;
+}
+async function saveRetAction(){
+  var msg=document.getElementById("wh-ret-msg");
+  if(!retChosen||!retChosen._size){msg.innerHTML='<div class="msg msg-err">Оберіть розмір</div>';return}
+  var qty=parseInt(document.getElementById("wh-ret-qty").value)||0;
+  if(qty<=0){msg.innerHTML='<div class="msg msg-err">Вкажіть кількість</div>';return}
+  try{
+    await api("/api/stock-returns/"+(retMode==="add"?"add":"write-off"),{method:"POST",body:JSON.stringify({variation_id:retChosen.id,size_id:parseInt(retChosen._size),quantity:qty})});
+    clM("wh-ret-modal");loadWhReturns();
+  }catch(e){msg.innerHTML='<div class="msg msg-err">'+Icon('x',13)+' '+esc(e.message)+'</div>'}
+}
+
 // ── СКЛАД ПОВЕРНЕНЬ ───────────────────────────────────────────────
 var whRetAge="";
 function showWhStockTab(t){
@@ -608,7 +705,7 @@ function showWhStockTab(t){
     document.getElementById("wst-"+k).classList.toggle("on",t===k);
     document.getElementById("wh-stock-"+k+"-view").style.display=t===k?"":"none";
   });
-  if(t==="ret")loadWhReturns();
+  if(t==="ret"){var ra=document.getElementById("wh-ret-actions");if(ra)ra.style.display=(ME.worker_role==="packer")?"flex":"none";loadWhReturns()}
   if(t==="def")loadWhDefectStock();
   if(t==="rc")loadWhRecount();
 }
@@ -620,11 +717,48 @@ function showWhStockTab(t){
 // переобліку не зменшують списану кількість, все зводиться при збереженні.
 var wrcCatP=null,wrcProducts=[],wrcSizes=[],wrcChanges={},wrcSession=null;
 function showRcTab(t){
-  document.getElementById("wrc-tab-do").classList.toggle("on",t==="do");
-  document.getElementById("wrc-tab-hist").classList.toggle("on",t==="hist");
-  document.getElementById("wrc-do").style.display=t==="do"?"":"none";
-  document.getElementById("wrc-hist").style.display=t==="hist"?"":"none";
+  ["do","ret","hist"].forEach(function(k){
+    document.getElementById("wrc-tab-"+k).classList.toggle("on",t===k);
+    document.getElementById("wrc-"+k).style.display=t===k?"":"none";
+  });
   if(t==="hist")loadWhRecountHistory();
+  if(t==="ret")loadRetRecount();
+}
+// Переоблік повернень: полиця обнуляється повністю, крім позначених винятків.
+var retKeep={};
+async function loadRetRecount(){
+  var el=document.getElementById("wrc-ret-list");
+  if(ME.worker_role!=="packer"){el.innerHTML='<div class="empty"><span class="ic">'+Icon('lock',30)+'</span>Доступно Головному пакувальнику</div>';document.getElementById("wrc-ret-bar").innerHTML="";return}
+  try{
+    var r=await api("/api/stock-returns");
+    if(!r.items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('undo2',30)+'</span>Полиця повернень порожня</div>';document.getElementById("wrc-ret-bar").innerHTML="";return}
+    el.innerHTML=r.items.map(function(i){
+      var key=i.variation_id+"_"+i.size_id;var keep=!!retKeep[key];
+      var ph=(i.var_photo||i.print_photo||i.bp_photo)||"";
+      return '<div onclick="toggleRetKeep(\''+key+'\')" style="display:flex;gap:10px;align-items:center;padding:9px 10px;margin-bottom:6px;border-radius:10px;cursor:pointer;border:1px solid '+(keep?'var(--acc)':'var(--brd)')+';background:'+(keep?'var(--accbg)':'var(--card)')+'">'+
+        '<div style="width:34px;height:34px;border-radius:8px;border:2px solid '+(keep?'var(--acc)':'var(--brd)')+';display:grid;place-items:center;flex-shrink:0;color:var(--acc)">'+(keep?Icon('check',18):'')+'</div>'+
+        '<div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--th)">'+esc(i.var_name)+'</div><div style="font-size:10px;color:var(--td)">'+retAgeLabel(i.days_in_stock,i.in_at)+'</div></div>'+
+        '<div style="text-align:right"><div style="font-size:15px;font-weight:800;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div><div style="font-size:12px;color:var(--th)">'+i.quantity+' шт</div></div>'+
+      '</div>';
+    }).join("");
+    var keepCnt=r.items.filter(function(i){return retKeep[i.variation_id+"_"+i.size_id]}).length;
+    var clearCnt=r.items.length-keepCnt;
+    var clearQty=r.items.filter(function(i){return !retKeep[i.variation_id+"_"+i.size_id]}).reduce(function(s2,i){return s2+i.quantity},0);
+    document.getElementById("wrc-ret-bar").innerHTML='<div style="position:sticky;bottom:0;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+      '<div style="font-size:12px;color:var(--th)">Списати: <b style="color:var(--red)">'+clearCnt+'</b> позицій ('+clearQty+' шт) · лишити: <b style="color:var(--acc)">'+keepCnt+'</b></div>'+
+      '<button class="btn btn-d" onclick="runRetRecount()">'+Icon('clipboardList',13)+' Провести переоблік</button></div>';
+  }catch(e){}
+}
+function toggleRetKeep(key){retKeep[key]=!retKeep[key];loadRetRecount()}
+async function runRetRecount(){
+  if(!confirm("Списати всі повернення, крім позначених? Дію не можна скасувати."))return;
+  var keep=Object.keys(retKeep).filter(function(k){return retKeep[k]}).map(function(k){var p=k.split("_");return {variation_id:parseInt(p[0]),size_id:parseInt(p[1])}});
+  try{
+    var r=await api("/api/stock-returns/clear",{method:"POST",body:JSON.stringify({keep:keep})});
+    alert("Переоблік проведено. Списано позицій: "+r.cleared+" ("+r.total_qty+" шт)");
+    retKeep={};loadRetRecount();
+  }catch(e){alert(e.message)}
 }
 async function loadWhRecount(){
   var cd=await api("/api/categories?parent_id="+(wrcCatP||"")+"&scope="+whScope());

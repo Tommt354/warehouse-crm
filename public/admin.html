@@ -203,6 +203,11 @@
 <div style="margin-bottom:14px"><input class="search-bar" id="ret-scan" placeholder="Скануйте ТТН для реєстрації повернення..." style="max-width:100%;font-size:14px;padding:10px 12px;font-family:'JetBrains Mono',monospace"></div>
 <div id="ret-scan-result" style="margin-bottom:14px"></div>
 <div class="pt" style="font-size:14px;margin-top:10px">Наявні повернення:</div>
+<div class="acts" style="margin-bottom:8px">
+  <button class="btn btn-a" onclick="admOpenRet('add')"><i data-icon="download" data-size="14"></i> Додати повернення</button>
+  <button class="btn btn-d" onclick="admOpenRet('wo')"><i data-icon="upload" data-size="14"></i> Списати повернення</button>
+  <button class="btn" onclick="admOpenRetRecount()"><i data-icon="clipboardList" data-size="14"></i> Переоблік повернень</button>
+</div>
 <div id="ret-stock-list"></div>
 </div>
 
@@ -628,6 +633,26 @@
 </div></div>
 
 <!-- Edit order modal -->
+<div class="modal-bg" id="adm-ret-modal"><div class="modal" style="max-width:560px;display:flex;flex-direction:column;overflow:hidden">
+<h3><i data-icon="undo2" data-size="16"></i> <span id="adm-ret-title">Додати повернення</span></h3>
+<div style="flex:1;overflow-y:auto;min-height:0;max-height:55vh">
+  <input id="adm-ret-search" placeholder="Пошук товару..." oninput="admRenderRetList()" style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;margin-bottom:8px">
+  <div id="adm-ret-bread"></div>
+  <div id="adm-ret-cats" class="cards" style="margin-bottom:8px"></div>
+  <div id="adm-ret-list"></div>
+</div>
+<div id="adm-ret-chosen" style="display:none;border-top:1px solid var(--brd);padding-top:10px;margin-top:10px"></div>
+<div id="adm-ret-msg"></div>
+<div style="margin-top:10px"><button class="btn" onclick="closeM('adm-ret-modal')">Закрити</button></div>
+</div></div>
+
+<div class="modal-bg" id="adm-retrc-modal"><div class="modal" style="max-width:600px;display:flex;flex-direction:column;overflow:hidden">
+<h3><i data-icon="clipboardList" data-size="16"></i> Переоблік повернень</h3>
+<div style="font-size:11px;color:var(--td);margin-bottom:8px">Списується вся полиця. Познач те, що лишається — воно не буде списане.</div>
+<div id="adm-retrc-list" style="flex:1;overflow-y:auto;min-height:0;max-height:55vh"></div>
+<div id="adm-retrc-bar" style="margin-top:10px"></div>
+</div></div>
+
 <div class="modal-bg" id="eo-modal"><div class="modal" style="max-width:500px"><h3><i data-icon="pencil" data-size="16"></i> Редагувати замовлення #<span id="eo-id"></span></h3>
 <div class="fld"><label>Товари</label><div id="eo-items" style="font-size:11px;color:var(--td)"></div></div>
 <div class="fld"><label>ПІБ клієнта</label><input id="eo-name"></div>
@@ -1857,6 +1882,101 @@ function doDelOrder(destination){var id=delOrdId;closeM("del-ord-modal");delOrde
 async function delOrderReq(id,destination){try{await api("/api/orders/"+id,{method:"DELETE",body:destination?JSON.stringify({destination:destination}):undefined});loadAdmOrders(admOrdFilter)}catch(e){alert(e.message)}}
 
 let editOrderId=null;
+// ── Ручне ведення складу повернень (адмін) ────────────────────────
+// Та сама механіка, що й у Головного пакувальника: додати, списати,
+// переоблік-обнулення з винятками. База при цьому не чіпається.
+var admRetMode="add",admRetCatP=null,admRetVars=[],admRetSizes=[],admRetChosen=null,admRetKeep={};
+function admOpenRet(mode){
+  admRetMode=mode;admRetCatP=null;admRetChosen=null;
+  document.getElementById("adm-ret-title").textContent=mode==="add"?"Додати повернення":"Списати повернення";
+  document.getElementById("adm-ret-search").value="";
+  document.getElementById("adm-ret-chosen").style.display="none";
+  document.getElementById("adm-ret-msg").innerHTML="";
+  openM("adm-ret-modal");admLoadRetPicker();
+}
+async function admLoadRetPicker(){
+  const cd=await api("/api/categories?parent_id="+(admRetCatP||"")+"&scope=drop");
+  let bc=catBackBtn(cd.breadcrumb,"admRetCatP="+catParentId(cd.breadcrumb)+";admLoadRetPicker()");
+  bc+='<div class="bread"><a onclick="admRetCatP=null;admLoadRetPicker()">'+Icon('package',13)+' Каталог</a>';
+  cd.breadcrumb.forEach(b=>{bc+='<span>›</span><a onclick="admRetCatP='+b.id+';admLoadRetPicker()">'+esc(b.name)+'</a>'});
+  bc+='</div>';document.getElementById("adm-ret-bread").innerHTML=bc;
+  document.getElementById("adm-ret-cats").innerHTML=cd.categories.map(c=>'<div class="crd" onclick="admRetCatP='+c.id+';admLoadRetPicker()"><div class="crd-img">'+(c.photo?'<img src="'+c.photo+'">':Icon('folder',26))+'</div><div class="crd-body">'+esc(c.name)+'</div></div>').join("");
+  const r=await api("/api/variations"+(admRetCatP?"?category_id="+admRetCatP:""));
+  admRetVars=(r.variations||[]).filter(v=>v.print_id);admRetSizes=r.sizes||[];
+  admRenderRetList();
+}
+function admRenderRetList(){
+  const q=(document.getElementById("adm-ret-search").value||"").toLowerCase().trim();
+  let list=admRetVars;
+  if(q)list=list.filter(v=>((v.name||"")+" "+(v.base_name||"")+" "+(v.model_name||"")).toLowerCase().includes(q));
+  document.getElementById("adm-ret-list").innerHTML=list.length?list.slice(0,60).map(v=>{
+    const ph=v.photo||v.print_photo||v.bp_photo||"";
+    return '<div onclick="admPickRetVar('+v.id+')" style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--brd);border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--card)">'+
+      '<div style="width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;background:var(--bg)">'+(ph?'<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover">':'')+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--th);font-weight:600">'+esc(v.name||v.base_name)+'</div><div style="font-size:10px;color:var(--td)">'+esc(v.model_name||"")+'</div></div></div>';
+  }).join(""):'<div style="color:var(--td);font-size:12px;padding:10px">'+(q?"Нічого не знайдено":"Оберіть категорію")+'</div>';
+}
+async function admPickRetVar(vid){
+  const v=admRetVars.find(x=>x.id===vid);if(!v)return;
+  admRetChosen=v;admRetChosen._size=null;
+  const onShelf={};
+  try{const rs=await api("/api/stock-returns");(rs.items||[]).forEach(i=>{if(i.variation_id===vid)onShelf[i.size_id]=i.quantity})}catch(e){}
+  const box=document.getElementById("adm-ret-chosen");
+  box.innerHTML='<div style="font-size:12px;color:var(--th);font-weight:600;margin-bottom:6px">'+esc(v.name||v.base_name)+'</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+Object.keys(v.stock||{}).map(sid=>{
+      const sn=(admRetSizes.find(s=>s.id==sid)||{}).name||sid;
+      return '<button class="btn btn-sm" data-sid="'+sid+'" onclick="admChooseRetSize(this,'+sid+')" style="font-size:11px">'+esc(sn)+' <span style="color:var(--td)">('+(onShelf[sid]||0)+')</span></button>';
+    }).join("")+'</div>'+
+    '<div class="fld"><label>Кількість</label><input type="number" id="adm-ret-qty" value="1" min="1"></div>'+
+    '<button class="btn '+(admRetMode==="add"?"btn-a":"btn-d")+'" onclick="admSaveRet()">'+(admRetMode==="add"?"Додати":"Списати")+'</button>';
+  box.style.display="";
+}
+function admChooseRetSize(btn,sid){
+  document.querySelectorAll("#adm-ret-chosen button[data-sid]").forEach(b=>b.classList.remove("btn-p"));
+  btn.classList.add("btn-p");admRetChosen._size=sid;
+}
+async function admSaveRet(){
+  const msg=document.getElementById("adm-ret-msg");
+  if(!admRetChosen||!admRetChosen._size){msg.innerHTML='<div class="msg msg-err">Оберіть розмір</div>';return}
+  const qty=parseInt(document.getElementById("adm-ret-qty").value)||0;
+  if(qty<=0){msg.innerHTML='<div class="msg msg-err">Вкажіть кількість</div>';return}
+  try{
+    await api("/api/stock-returns/"+(admRetMode==="add"?"add":"write-off"),{method:"POST",body:JSON.stringify({variation_id:admRetChosen.id,size_id:parseInt(admRetChosen._size),quantity:qty})});
+    closeM("adm-ret-modal");loadReturns();
+  }catch(e){msg.innerHTML='<div class="msg msg-err">'+esc(e.message)+'</div>'}
+}
+async function admOpenRetRecount(){admRetKeep={};openM("adm-retrc-modal");admLoadRetRecount()}
+async function admLoadRetRecount(){
+  const el=document.getElementById("adm-retrc-list");
+  try{
+    const r=await api("/api/stock-returns");
+    if(!r.items.length){el.innerHTML='<div class="empty"><span class="ic">'+Icon('undo2',30)+'</span>Полиця порожня</div>';document.getElementById("adm-retrc-bar").innerHTML="";return}
+    el.innerHTML=r.items.map(i=>{
+      const key=i.variation_id+"_"+i.size_id,keep=!!admRetKeep[key];
+      return '<div onclick="admToggleRetKeep(\''+key+'\')" style="display:flex;gap:10px;align-items:center;padding:9px 10px;margin-bottom:6px;border-radius:10px;cursor:pointer;border:1px solid '+(keep?'var(--acc)':'var(--brd)')+';background:'+(keep?'var(--accbg)':'var(--card)')+'">'+
+        '<div style="width:30px;height:30px;border-radius:7px;border:2px solid '+(keep?'var(--acc)':'var(--brd)')+';display:grid;place-items:center;flex-shrink:0;color:var(--acc)">'+(keep?Icon('check',16):'')+'</div>'+
+        '<div style="flex:1;min-width:0;font-size:12px;color:var(--th)">'+esc(i.var_name)+'</div>'+
+        '<div style="font-size:14px;font-weight:700;color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(i.size_name)+'</div>'+
+        '<div style="font-size:12px;color:var(--th);min-width:44px;text-align:right">'+i.quantity+' шт</div></div>';
+    }).join("");
+    const keepCnt=r.items.filter(i=>admRetKeep[i.variation_id+"_"+i.size_id]).length;
+    const clr=r.items.filter(i=>!admRetKeep[i.variation_id+"_"+i.size_id]);
+    document.getElementById("adm-retrc-bar").innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+      '<div style="font-size:12px;color:var(--th)">Списати: <b style="color:var(--red)">'+clr.length+'</b> ('+clr.reduce((s,i)=>s+i.quantity,0)+' шт) · лишити: <b style="color:var(--acc)">'+keepCnt+'</b></div>'+
+      '<div style="display:flex;gap:6px"><button class="btn btn-d" onclick="admRunRetRecount()">Провести</button><button class="btn" onclick="closeM(\'adm-retrc-modal\')">Скасувати</button></div></div>';
+  }catch(e){}
+}
+function admToggleRetKeep(key){admRetKeep[key]=!admRetKeep[key];admLoadRetRecount()}
+async function admRunRetRecount(){
+  if(!confirm("Списати всі повернення, крім позначених? Дію не можна скасувати."))return;
+  const keep=Object.keys(admRetKeep).filter(k=>admRetKeep[k]).map(k=>{const p=k.split("_");return {variation_id:parseInt(p[0]),size_id:parseInt(p[1])}});
+  try{
+    const r=await api("/api/stock-returns/clear",{method:"POST",body:JSON.stringify({keep:keep})});
+    alert("Переоблік проведено. Списано позицій: "+r.cleared+" ("+r.total_qty+" шт)");
+    closeM("adm-retrc-modal");loadReturns();
+  }catch(e){alert(e.message)}
+}
+
 async function openEditOrder(id){
   editOrderId=id;document.getElementById("eo-id").textContent=id;
   try{var r=await api("/api/orders/"+id);var o=r.order;
