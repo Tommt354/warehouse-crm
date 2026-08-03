@@ -644,9 +644,17 @@
 <div style="display:flex;gap:5px;margin-top:12px"><button class="btn btn-p" onclick="saveSwapSize()"><i data-icon="refreshCw" data-size="15"></i> Замінити</button><button class="btn" onclick="closeM('swap-modal')">Скасувати</button></div>
 </div></div>
 
+<!-- Картка замовлення з виплати: відкривається кліком по позиції, щоб було
+     видно, за що саме нарахована сума, без пошуку по списку замовлень. -->
+<div class="modal-bg" id="adm-order-modal" style="z-index:600"><div class="modal" style="max-width:560px">
+<h3 id="amo-t">Замовлення</h3><div id="amo-b"></div>
+<div style="margin-top:10px;text-align:right"><button class="btn" onclick="closeM('adm-order-modal')">Закрити</button></div>
+</div></div>
+
 <!-- Dropshipper stats modal -->
 <div class="modal-bg" id="drop-stats-modal"><div class="modal" style="max-width:650px"><h3 id="ds-title">Статистика</h3>
 <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><input type="date" id="ds-from" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff"><span style="color:var(--td)">—</span><input type="date" id="ds-to" style="padding:5px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff"><button class="btn btn-sm" style="background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadDropStats()">OK</button></div>
+<div style="margin-bottom:8px"><button class="stab" id="ds-final" onclick="toggleDsFinal()">Тільки завершені</button></div>
 <div id="ds-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:12px"></div>
 <div id="ds-chart" style="overflow-x:auto;margin-bottom:10px"></div>
 <div id="ds-payout-msg" style="margin-bottom:8px"></div>
@@ -2679,8 +2687,8 @@ function renderPayouts(list){
       '<button class="btn btn-sm" onclick="event.stopPropagation();viewDropStats('+p.dropshipper_id+',\''+esc(p.drop_name).replace(/'/g,"")+'\')">'+Icon('barChart3',13)+' Картка дропера</button>'+
     '</div>'+
     '<div class="payout-details" style="display:none;border-top:1px solid var(--brd)">'+
-    (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">'+Icon('check',12)+' Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+money(i.amount)+'₴</div></div>'}).join("")+'</div>':'')+
-    (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">'+Icon('x',12)+' Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+money(i.amount)+'₴</div></div>'}).join("")+'</div>':'')+
+    (success.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--acc);margin-bottom:4px">'+Icon('check',12)+' Успішні замовлення ('+success.length+'):</div>'+success.map(function(i){return '<div onclick="event.stopPropagation();admViewOrder('+i.order_id+')" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px;cursor:pointer"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.ttn?' · <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--acc);font-weight:700">+'+money(i.amount)+'₴</div></div>'}).join("")+'</div>':'')+
+    (returns.length?'<div style="padding:8px 14px"><div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">'+Icon('x',12)+' Повернення ('+returns.length+'):</div>'+returns.map(function(i){return '<div onclick="event.stopPropagation();admViewOrder('+i.order_id+')" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd);font-size:11px;cursor:pointer"><div style="color:var(--th)">#'+i.order_id+' · '+esc(i.client_name)+(i.return_ttn?' · <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--red);font-weight:700">'+money(i.amount)+'₴</div></div>'}).join("")+'</div>':'')+
     '</div></div>';
   }).join(""):'<div class="empty"><span class="ic">'+Icon('banknote',40)+'</span>Немає запитів на виплату</div>';
 }
@@ -2752,13 +2760,25 @@ function renderReturnsFiltered(){
   if(retFilter==="unreceived")filtered=filtered.slice().sort(function(a,b){return daysPending(b)-daysPending(a)});
   renderReturns(filtered);
 }
+// Де фізично їде повернення просто зараз — з коду статусу Нової Пошти.
+// У вкладці «Не отримано» це головне питання: воно ще в дорозі чи вже лежить
+// у відділенні й можна їхати забирати.
+function retNpBadge(o){
+  var m={in_transit:{l:"в дорозі",c:"#f59e0b",i:"truck"},arrived:{l:"у відділенні",c:"#35d29a",i:"package"},
+         returning:{l:"повертається",c:"#f97316",i:"undo2"},received:{l:"отримано",c:"#22c55e",i:"check"}};
+  var b=m[o.np_group];
+  // Бейдж показуємо тільки коли він справді з НП: для замовлень без коду
+  // група виводиться з внутрішнього статусу й дублювала б сусідній бейдж.
+  if(!b||!o.np_status_code)return"";
+  return '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;background:'+b.c+'22;color:'+b.c+';white-space:nowrap">'+Icon(b.i,10)+' '+b.l+'</span>';
+}
 function renderReturns(orders){
   document.getElementById("adm-returns-list").innerHTML=orders.length?orders.map(function(o){
       var allDone=o.items.every(function(i){return i.returned_to_stock});
       var days=daysPending(o);
       var dayColor=days>=7?"var(--red)":days>=3?"var(--warn)":"var(--td)";
       return '<div style="background:var(--card);border:1px solid '+(allDone?'rgba(124,134,255,.2)':'rgba(255,107,107,.2)')+';border-radius:14px;margin-bottom:8px;overflow:hidden">'+
-      '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th)">#'+o.id+' '+stTag(o.status)+''+(allDone?' <span style="font-size:10px;color:var(--acc)">'+Icon('check',11)+' На складі</span>':'')+'</div>'+
+      '<div style="padding:10px 14px;display:flex;justify-content:space-between"><div><div style="font-size:15px;font-weight:700;color:var(--th);display:flex;align-items:center;gap:6px;flex-wrap:wrap">#'+o.id+' '+stTag(o.status)+retNpBadge(o)+''+(allDone?' <span style="font-size:10px;color:var(--acc)">'+Icon('check',11)+' На складі</span>':'')+'</div>'+
       '<div style="font-size:12px;color:var(--th)">'+esc(o.client_name)+' · '+esc(o.drop_name)+'</div>'+
       (o.ttn?'<div style="font-size:11px;color:'+ttnColor(o)+';font-family:JetBrains Mono,monospace">'+esc(o.ttn)+'</div>':'')+(o.np_status_text?'<div style="font-size:9px;color:'+ttnColor(o)+'">'+Icon('package',10)+' '+esc(o.np_status_text)+'</div>':'')+
       (o.return_ttn?'<div style="font-size:9px;color:var(--warn)">'+Icon('undo2',10)+' ТТН повернення: '+esc(o.return_ttn)+'</div>':'')+
@@ -3115,6 +3135,25 @@ async function retItem(id,el){try{await api("/api/order-items/"+id+"/return-to-s
 // ── Users ────────────────────────────────────────────────────────
 const WL={packer:"Пакувальник",printer:"Принтувальник",sewer:"Нашивальник",distributor:"Видавач"};
 
+// Коротка картка замовлення для кліку з виплати.
+async function admViewOrder(id){
+  try{
+    var o=(await api("/api/orders/"+id)).order;
+    document.getElementById("amo-t").textContent="#"+o.id;
+    var isRet=(o.status==="refused"||o.status==="return_transit");
+    var h='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+stTag(o.status)+payTag(o)+'</div>'+
+      '<div style="font-size:13px;color:var(--th)">'+esc(o.client_name)+' · <span style="color:var(--acc);font-family:JetBrains Mono,monospace">'+esc(o.client_phone||"")+'</span></div>'+
+      '<div style="font-size:11px;color:var(--td);margin-bottom:8px">'+esc(o.client_city||"")+(o.client_warehouse?" · "+esc(o.client_warehouse):"")+' · дропер: '+esc(o.drop_name||"")+'</div>'+
+      (o.ttn?'<div style="font-family:JetBrains Mono,monospace;font-size:13px;color:var(--warn)">ТТН '+esc(o.ttn)+(o.np_status_text?' <span style="font-size:10px;color:var(--td)">· '+esc(o.np_status_text)+'</span>':'')+'</div>':'')+
+      (o.return_ttn?'<div style="font-family:JetBrains Mono,monospace;font-size:12px;color:var(--red)">'+Icon("undo2",11)+' '+esc(o.return_ttn)+'</div>':'')+
+      '<div style="margin:10px 0;border-top:1px solid var(--brd);padding-top:8px">'+
+      (o.items||[]).map(function(it){return '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:12px"><div style="flex:1;color:var(--th)">'+esc(it.var_name)+' <span style="color:var(--acc);font-weight:700">'+esc(it.original_size_name||it.size_name||"")+'</span>'+(it.quantity>1?" ×"+it.quantity:"")+'</div><div style="font-family:JetBrains Mono,monospace;color:var(--td)">'+money(it.drop_price*it.quantity)+'₴</div></div>'}).join("")+
+      '</div>'+
+      '<div style="text-align:right;font-family:JetBrains Mono,monospace;font-size:13px">Наложка: '+money(o.cod_amount)+'₴ · Дроп: '+money(o.total_drop_price)+'₴<div style="font-size:15px;font-weight:700;color:'+(isRet?"var(--red)":"var(--acc)")+'">'+(isRet?"Збиток: -"+money(o.return_cost||0):"Виплата: "+money(o.payout_amount))+'₴</div></div>';
+    document.getElementById("amo-b").innerHTML=h;
+    openM("adm-order-modal");
+  }catch(e){alert(e.message)}
+}
 let dsDropId=null;
 async function viewDropStats(id,name){
   dsDropId=id;document.getElementById("ds-title").textContent=name;
@@ -3131,12 +3170,20 @@ async function genDropPayout(){
     msg.innerHTML='<span style="color:var(--acc);font-size:12px">'+Icon('check',13)+' Виплату сформовано: '+r.total.toFixed(2)+'₴</span>';
   }catch(e){msg.innerHTML='<span style="color:var(--red);font-size:11px">'+Icon('x',12)+' '+esc(e.message)+'</span>'}
 }
+// Замовлення в дорозі ще не мають результату — тумблер лишає тільки ті,
+// що вже дійшли до кінця (забрали або відмова).
+var dsOnlyFinal=false;
+function toggleDsFinal(){
+  dsOnlyFinal=!dsOnlyFinal;
+  document.getElementById("ds-final").classList.toggle("on",dsOnlyFinal);
+  loadDropStats();
+}
 async function loadDropStats(){
   if(!dsDropId)return;var df=document.getElementById("ds-from").value;var dt=document.getElementById("ds-to").value;
   document.getElementById("ds-grid").innerHTML='<div style="grid-column:1/-1;text-align:center;padding:12px"><div style="display:inline-block;width:20px;height:20px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div></div>';
-  try{var r=await api("/api/stats/detailed?dropshipper_id="+dsDropId+"&date_from="+df+"&date_to="+dt);
-  var items=[{l:"Прибуток",v:r.profit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Замовлень",v:r.total,c:"var(--th)"},{l:"Сер. прибуток",v:r.avgProfit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Сума замовлень",v:r.orderSum.toFixed(2)+"₴",c:"var(--th)"},{l:"Успішно",v:r.success,c:"#34d399"},{l:"Збитки",v:"-"+r.returnCost.toFixed(2)+"₴",c:"var(--red)"},{l:"Не успішно",v:r.failed,c:"var(--red)"},{l:"% успішних",v:r.successRate.toFixed(1)+"%",c:"var(--acc)"},{l:"Виплачено",v:r.paid.toFixed(2)+"₴",c:"var(--td)"},{l:"Не виплачено",v:(r.unpaid>0?r.unpaid.toFixed(2):"0")+"₴",c:"var(--warn)"},{l:"Накл. платіж",v:r.codTotal.toFixed(2)+"₴",c:"var(--th)"},{l:"Дроп ціна",v:r.dropTotal.toFixed(2)+"₴",c:"var(--td)"}];
-  document.getElementById("ds-grid").innerHTML=items.map(function(i){return '<div class="sc"><div class="sl">'+i.l+'</div><div class="sv" style="color:'+i.c+';font-size:14px">'+i.v+'</div></div>'}).join("");
+  try{var r=await api("/api/stats/detailed?dropshipper_id="+dsDropId+"&date_from="+df+"&date_to="+dt+(dsOnlyFinal?"&only_final=1":""));
+  var items=[{l:"Прибуток",v:r.profit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Замовлень",v:r.total,c:"var(--th)"},{l:"Сер. прибуток",v:r.avgProfit.toFixed(2)+"₴",c:"var(--acc)"},{l:"Сума замовлень",v:r.orderSum.toFixed(2)+"₴",c:"var(--th)"},{l:"Успішно",v:r.success,c:"#34d399"},{l:"Збитки",v:"-"+r.returnCost.toFixed(2)+"₴",c:"var(--red)"},{l:"Не успішно",v:r.failed,c:"var(--red)"},{l:"% успішних",v:r.successRate.toFixed(1)+"%",c:"var(--acc)"},{l:"Виплачено",v:money(r.paid)+"₴",c:"var(--td)"},{l:"До виплати",v:money(r.toPay)+"₴",c:"var(--acc)",sub:(r.toPayCount||0)+" замовл. · повернення −"+money(r.toPayReturns)+"₴"},{l:"У запиті",v:money(r.requested)+"₴",c:"var(--warn)",sub:(r.requestedCount||0)+" замовл."},{l:"Накл. платіж",v:r.codTotal.toFixed(2)+"₴",c:"var(--th)"},{l:"Дроп ціна",v:r.dropTotal.toFixed(2)+"₴",c:"var(--td)"}];
+  document.getElementById("ds-grid").innerHTML=items.map(function(i){return '<div class="sc"><div class="sl">'+i.l+'</div><div class="sv" style="color:'+i.c+';font-size:14px">'+i.v+'</div>'+(i.sub?'<div class="sl" style="font-size:9px">'+i.sub+'</div>':'')+'</div>'}).join("");
   if(r.daily.length){var maxP=Math.max.apply(null,r.daily.map(function(d){return Math.max(d.profit,d.loss)}))||1;var bw=Math.max(18,Math.min(36,500/r.daily.length));var cw=r.daily.length*(bw+3)+30;
   var ch='<svg viewBox="0 0 '+cw+' 180" style="width:'+cw+'px;height:180px">';r.daily.forEach(function(d,i){var x=i*(bw+3)+15;var ph=d.profit/maxP*120;
   ch+='<rect x="'+x+'" y="'+(140-ph)+'" width="'+bw+'" height="'+ph+'" rx="2" fill="rgba(124,134,255,.45)"/>';if(d.profit>0)ch+='<text x="'+(x+bw/2)+'" y="'+(135-ph)+'" fill="var(--acc)" font-size="7" text-anchor="middle">'+Math.round(d.profit)+'</text>';

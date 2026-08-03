@@ -670,9 +670,10 @@ addCol("orders","parcel_width","REAL DEFAULT 0");
 addCol("orders","parcel_height","REAL DEFAULT 0");
 addCol("orders","parcel_length","REAL DEFAULT 0");
 // Код статусу Нової Пошти (StatusCode із TrackingDocument). Текст np_status_text
-// містить назви міст і для фільтра не годиться — фільтруємо по коду. Для старих
-// замовлень код порожній, тож група НП виводиться з внутрішнього статусу.
-addCol("orders","np_status_code","INTEGER DEFAULT NULL");
+// містить назви міст і для фільтра не годиться — фільтруємо по коду. Колонка
+// вже є в CREATE TABLE вище з DEFAULT 0, тож у старих замовлень там нуль —
+// це і означає «коду немає», група НП тоді виводиться з внутрішнього статусу.
+addCol("orders","np_status_code","INTEGER DEFAULT 0");
 addCol("workers","use_daily_rate","INTEGER DEFAULT 1");
 addCol("worker_payroll","task_id","INTEGER DEFAULT NULL");
 // Payroll operation counts now live on the print/patch itself (not on the
@@ -826,6 +827,24 @@ if (!db.prepare("SELECT id FROM order_statuses WHERE code='collected'").get()) {
   db.prepare("INSERT INTO order_statuses(code,name,color,sort_order,is_system)VALUES('collected','Зібрано','#14b8a6',?,1)").run(base + 1);
   console.log("✅ Додано статус 'Зібрано'");
 }
+// Одне замовлення — не більше однієї позиції кожного типу (успіх / повернення)
+// в одному запиті. Раніше вставка йшла через INSERT OR IGNORE, але без
+// унікального індексу «OR IGNORE» нічого не ігнорує: два одночасні натискання
+// «Подати запит» могли додати ту саму суму двічі. Перед створенням індексу
+// прибираємо дублі, якщо вони вже встигли з'явитись.
+(() => {
+  const dups = db.prepare(`SELECT payout_request_id,order_id,is_return,COUNT(*) c,MIN(id) keep
+    FROM payout_items GROUP BY payout_request_id,order_id,is_return HAVING c>1`).all();
+  if (dups.length) {
+    const del = db.prepare("DELETE FROM payout_items WHERE payout_request_id=? AND order_id=? AND is_return=? AND id<>?");
+    dups.forEach(d => del.run(d.payout_request_id, d.order_id, d.is_return, d.keep));
+    // Суми запитів, у яких були дублі, перераховуємо під фактичні позиції.
+    const prIds = [...new Set(dups.map(d => d.payout_request_id))];
+    prIds.forEach(id => db.prepare(`UPDATE payout_requests SET total_amount=ROUND((SELECT COALESCE(SUM(amount),0) FROM payout_items WHERE payout_request_id=?),2) WHERE id=?`).run(id, id));
+    console.log("✅ Прибрано дублі позицій у виплатах: " + dups.length + " (запитів: " + prIds.length + ")");
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_payout_items_uniq ON payout_items(payout_request_id,order_id,is_return)");
+})();
 // Назви статусів після відправки мають збігатися з тим, що пише Нова Пошта:
 // раніше бейдж казав «Отримано», випадачка — «Доставлено», а НП — «Відправлення
 // отримано», і це був один і той самий стан. Разова міграція під прапорцем, щоб

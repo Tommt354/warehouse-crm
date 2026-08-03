@@ -84,10 +84,15 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
   <input type="date" id="stat-to" style="padding:6px 8px;font-size:11px;background:var(--input);border:1px solid rgba(124,134,255,.3);border-radius:6px;color:#fff;font-family:inherit;color-scheme:dark">
   <button class="btn btn-sm" style="font-size:11px;background:var(--acc);color:#0a0e17;border-color:var(--acc);font-weight:600" onclick="loadStats()">OK</button>
 </div>
-<div style="display:flex;gap:3px;justify-content:flex-end;margin-bottom:12px">
-  <button class="stab" id="sp-7" onclick="setStatPeriod(7)">7д</button>
-  <button class="stab" id="sp-15" onclick="setStatPeriod(15)">15д</button>
-  <button class="stab on" id="sp-30" onclick="setStatPeriod(30)">30д</button>
+<div style="display:flex;gap:6px;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+  <!-- Замовлення в дорозі ще не мають результату й розмивають % успішних
+       і середній прибуток — тумблер лишає тільки ті, що вже дійшли до кінця. -->
+  <button class="stab" id="stat-final" onclick="toggleStatFinal()">Тільки завершені</button>
+  <div style="display:flex;gap:3px">
+    <button class="stab" id="sp-7" onclick="setStatPeriod(7)">7д</button>
+    <button class="stab" id="sp-15" onclick="setStatPeriod(15)">15д</button>
+    <button class="stab on" id="sp-30" onclick="setStatPeriod(30)">30д</button>
+  </div>
 </div>
 <div id="stat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px"></div>
 <div id="stat-top"></div>
@@ -122,10 +127,10 @@ input[type="date"]{padding:8px 10px;font-size:12px;background:var(--bg-input);bo
 <div id="pay-balance-block" style="display:none"></div>
 <div id="pay-discounts-block" style="display:none"></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-  <div class="sc"><div class="sl">В роботі</div><div class="sv" style="color:var(--th)" id="pay-inwork">0</div><div class="sl" id="pay-inwork-c">0 замовл.</div></div>
-  <div class="sc"><div class="sl">Запит</div><div class="sv" style="color:var(--acc)" id="pay-request">0</div><div class="sl" id="pay-request-c">0 замовл.</div></div>
+  <div class="sc"><div class="sl">До виплати</div><div class="sv" style="color:var(--acc)" id="pay-inwork">0</div><div class="sl" id="pay-inwork-c">0 замовл.</div></div>
+  <div class="sc"><div class="sl">У запиті</div><div class="sv" style="color:var(--warn)" id="pay-request">0</div><div class="sl" id="pay-request-c">0 замовл.</div></div>
   <div class="sc"><div class="sl">Виплачено</div><div class="sv" style="color:var(--th)" id="pay-paid">0</div><div class="sl" id="pay-paid-c">0 замовл.</div></div>
-  <div class="sc"><div class="sl">Не виплачено</div><div class="sv" style="color:var(--red)" id="pay-unpaid-sum">0</div><div class="sl" id="pay-unpaid-c">0 замовл.</div></div>
+  <div class="sc"><div class="sl">Разом не виплачено</div><div class="sv" style="color:var(--red)" id="pay-unpaid-sum">0</div><div class="sl" id="pay-unpaid-c">0 замовл.</div></div>
 </div>
 <div id="pay-active-block"></div>
 <div style="margin-bottom:10px"><div class="fld"><label>Коментар до запиту</label><input id="pay-comment" placeholder="Коментар (необов'язково)"></div>
@@ -290,6 +295,12 @@ function goNav(p){
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────
+var statOnlyFinal=false;
+function toggleStatFinal(){
+  statOnlyFinal=!statOnlyFinal;
+  document.getElementById("stat-final").classList.toggle("on",statOnlyFinal);
+  loadStats();
+}
 function setStatPeriod(days){
   document.querySelectorAll('#sp-7,#sp-15,#sp-30').forEach(function(b){b.classList.remove("on")});
   var btn=document.getElementById("sp-"+days);if(btn)btn.classList.add("on");
@@ -300,7 +311,7 @@ async function loadStats(){
   if(!df){var d=new Date();d.setDate(d.getDate()-30);df=d.toISOString().slice(0,10);document.getElementById("stat-from").value=df}
   if(!dt){dt=new Date().toISOString().slice(0,10);document.getElementById("stat-to").value=dt}
   document.getElementById("stat-grid").innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite"></div></div>';
-  try{var r=await api("/api/stats/detailed?date_from="+df+"&date_to="+dt);
+  try{var r=await api("/api/stats/detailed?date_from="+df+"&date_to="+dt+(statOnlyFinal?"&only_final=1":""));
   var items=[
     {l:"Прибуток",v:r.profit.toFixed(2)+"₴",c:"var(--acc)"},
     {l:"Кільк. замовлень",v:r.total,c:"var(--th)"},
@@ -310,12 +321,15 @@ async function loadStats(){
     {l:"Повернення (збитки)",v:"-"+r.returnCost.toFixed(2)+"₴",c:"var(--red)"},
     {l:"Не успішно",v:r.failed,c:"var(--red)"},
     {l:"% успішних",v:r.successRate.toFixed(1)+"%",c:"var(--acc)"},
-    {l:"Виплачено",v:r.paid.toFixed(2)+"₴",c:"var(--td)"},
-    {l:"Не виплачено",v:(r.unpaid>0?r.unpaid.toFixed(2):"0")+"₴",c:"var(--warn)"},
+    {l:"Виплачено",v:money(r.paid)+"₴",c:"var(--td)"},
+    // Нараховано і ще не виплачено — з урахуванням повернень. Раніше тут
+    // від прибутку за період віднімалась виплачена сума за весь час.
+    {l:"До виплати",v:money(r.toPay)+"₴",c:"var(--acc)",sub:(r.toPayCount||0)+" замовл. · повернення −"+money(r.toPayReturns)+"₴"},
+    {l:"У запиті",v:money(r.requested)+"₴",c:"var(--warn)",sub:(r.requestedCount||0)+" замовл."},
     {l:"Накл. платіж",v:r.codTotal.toFixed(2)+"₴",c:"var(--th)"},
     {l:"Дроп ціна",v:r.dropTotal.toFixed(2)+"₴",c:"var(--td)"}
   ];
-  document.getElementById("stat-grid").innerHTML=items.map(function(i){return '<div class="sc"><div class="sl">'+i.l+'</div><div class="sv" style="color:'+i.c+';font-size:16px">'+i.v+'</div></div>'}).join("");
+  document.getElementById("stat-grid").innerHTML=items.map(function(i){return '<div class="sc"><div class="sl">'+i.l+'</div><div class="sv" style="color:'+i.c+';font-size:16px">'+i.v+'</div>'+(i.sub?'<div class="sl" style="font-size:9px">'+i.sub+'</div>':'')+'</div>'}).join("");
   // Your own best-selling products in the period.
   var tp=r.topProducts||[];
   document.getElementById("stat-top").innerHTML=tp.length?(
@@ -848,8 +862,17 @@ function payItemsHtml(items){
   var rets=(items||[]).filter(function(i){return i.is_return});
   var sSum=success.reduce(function(s,i){return s+i.amount},0);
   var rSum=rets.reduce(function(s,i){return s+Math.abs(i.amount)},0);
-  return (success.length?'<div style="font-size:10px;font-weight:600;color:var(--acc);margin-bottom:4px">Успішні (+'+money(sSum)+'₴):</div>'+success.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+(i.ttn?' <span style="color:var(--warn);font-family:JetBrains Mono,monospace">'+esc(i.ttn)+'</span>':'')+'</div><div style="color:var(--acc);font-weight:700;font-family:JetBrains Mono,monospace">+'+money(i.amount)+'₴</div></div>'}).join(""):"")+
-    (rets.length?'<div style="font-size:10px;font-weight:600;color:var(--red);margin:6px 0 4px">Повернення (-'+money(rSum)+'₴):</div>'+rets.map(function(i){return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;border-bottom:1px solid var(--brd)"><div style="color:var(--th)">#'+i.order_id+' '+esc(i.client_name)+'</div><div style="color:var(--red);font-weight:700;font-family:JetBrains Mono,monospace">'+money(i.amount)+'₴</div></div>'}).join(""):"");
+  // Рядок у виплаті клікається — відкриває картку замовлення, щоб було видно,
+  // за що саме нарахована ця сума.
+  var row=function(i,color,sign){
+    return '<div onclick="event.stopPropagation();viewOrder('+i.order_id+')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:11px;border-bottom:1px solid var(--brd);cursor:pointer">'+
+      '<div style="color:var(--th);min-width:0"><span style="color:var(--acc);font-weight:700">#'+i.order_id+'</span> '+esc(i.client_name)+
+      (i.ttn?' <span style="color:var(--warn);font-family:JetBrains Mono,monospace;font-size:10px">'+esc(i.ttn)+'</span>':'')+
+      (i.return_ttn?' <span style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:10px">'+Icon('undo2',10)+' '+esc(i.return_ttn)+'</span>':'')+'</div>'+
+      '<div style="color:'+color+';font-weight:700;font-family:JetBrains Mono,monospace;white-space:nowrap">'+sign+money(i.amount)+'₴</div></div>';
+  };
+  return (success.length?'<div style="font-size:10px;font-weight:600;color:var(--acc);margin-bottom:4px">Успішні (+'+money(sSum)+'₴):</div>'+success.map(function(i){return row(i,"var(--acc)","+")}).join(""):"")+
+    (rets.length?'<div style="font-size:10px;font-weight:600;color:var(--red);margin:6px 0 4px">Повернення (-'+money(rSum)+'₴):</div>'+rets.map(function(i){return row(i,"var(--red)","")}).join(""):"");
 }
 // Відсоток повернень у межах виплати — той самий розрахунок, що в адміна.
 function payRetPct(items){
@@ -871,21 +894,18 @@ async function loadPayouts(){
   loadMyDiscounts();
   try{
     var r=await api("/api/payouts/my");
-    var unpaidTotal=r.unpaid.reduce(function(s,o){return s+o.payout_amount},0);
-    var retTotal=r.returns.reduce(function(s,o){return s+(o.return_cost||0)},0);
-    var inWork=unpaidTotal-retTotal;
-    var reqTotal=r.active?r.active.total_amount:0;
-    var reqCount=r.activeItems?r.activeItems.length:0;
-    var paidTotal=r.history.filter(function(p){return p.status==="paid"}).reduce(function(s,p){return s+p.total_amount},0);
-    var paidCount=r.history.filter(function(p){return p.status==="paid"}).reduce(function(s,p){return s+(p.items?p.items.length:0)},0);
-    document.getElementById("pay-inwork").textContent=inWork.toFixed(2).replace(".",",");
-    document.getElementById("pay-inwork-c").textContent=(r.unpaid.length+r.returns.length)+" замовл.";
-    document.getElementById("pay-request").textContent=reqTotal.toFixed(2).replace(".",",");
-    document.getElementById("pay-request-c").textContent=reqCount+" замовл.";
-    document.getElementById("pay-paid").textContent=paidTotal.toFixed(2).replace(".",",");
-    document.getElementById("pay-paid-c").textContent=paidCount+" замовл.";
-    document.getElementById("pay-unpaid-sum").textContent=(unpaidTotal-retTotal-reqTotal>0?(unpaidTotal-retTotal-reqTotal).toFixed(2):"0").replace(".",",");
-    document.getElementById("pay-unpaid-c").textContent="0 замовл.";
+    // Усі суми рахує сервер одним розрахунком (payoutTotals) — раніше клієнт
+    // рахував їх сам і, зокрема, віднімав суму запиту з числа, яке її вже не
+    // містило, а лічильник «не виплачено» був узагалі захардкоджений нулем.
+    var t=r.totals||{to_pay:0,to_pay_count:0,requested:0,requested_count:0,paid:0,paid_count:0,to_pay_returns:0};
+    document.getElementById("pay-inwork").textContent=money(t.to_pay).replace(".",",");
+    document.getElementById("pay-inwork-c").textContent=t.to_pay_count+" замовл.";
+    document.getElementById("pay-request").textContent=money(t.requested).replace(".",",");
+    document.getElementById("pay-request-c").textContent=t.requested_count+" замовл.";
+    document.getElementById("pay-paid").textContent=money(t.paid).replace(".",",");
+    document.getElementById("pay-paid-c").textContent=t.paid_count+" замовл.";
+    document.getElementById("pay-unpaid-sum").textContent=money(t.to_pay+t.requested).replace(".",",");
+    document.getElementById("pay-unpaid-c").textContent=(t.to_pay_count+t.requested_count)+" замовл.";
     // Active request
     if(r.active){
       var aPct=payRetPct(r.activeItems);
@@ -898,7 +918,7 @@ async function loadPayouts(){
       '</div>';
     }else{document.getElementById("pay-active-block").innerHTML=""}
     // Unpaid orders
-    document.getElementById("pay-unpaid").innerHTML=r.unpaid.length?r.unpaid.map(function(o){return '<div class="pay-card"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.ttn||"без ТТН")+'</div></div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(2)+'₴</div></div>'}).join("")+(r.returns.length?'<div style="font-size:12px;font-weight:600;color:var(--red);margin:8px 0 4px">Повернення:</div>'+r.returns.map(function(o){return '<div class="pay-card" style="border-color:rgba(255,107,107,.2)"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--red)">Повернення</div>'+(o.return_ttn?'<div style="font-size:9px;color:var(--red);font-family:JetBrains Mono,monospace">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--red);font-weight:700">-'+(o.return_cost||0).toFixed(2)+'₴</div></div>'}).join(""):''):'<div style="color:var(--td);font-size:11px">Немає замовлень для виплати</div>';
+    document.getElementById("pay-unpaid").innerHTML=r.unpaid.length?r.unpaid.map(function(o){return '<div class="pay-card" style="cursor:pointer" onclick="viewOrder('+o.id+')"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--td)">'+(o.ttn||"без ТТН")+'</div></div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--acc);font-weight:700">+'+o.payout_amount.toFixed(2)+'₴</div></div>'}).join("")+(r.returns.length?'<div style="font-size:12px;font-weight:600;color:var(--red);margin:8px 0 4px">Повернення:</div>'+r.returns.map(function(o){return '<div class="pay-card" style="border-color:rgba(255,107,107,.2);cursor:pointer" onclick="viewOrder('+o.id+')"><div><div style="font-size:12px;font-weight:600;color:var(--th)">#'+o.id+' · '+esc(o.client_name)+'</div><div style="font-size:10px;color:var(--red)">Повернення</div>'+(o.return_ttn?'<div style="font-size:9px;color:var(--red);font-family:JetBrains Mono,monospace">'+Icon('undo2',10)+' '+esc(o.return_ttn)+'</div>':'')+'</div><div style="font-family:JetBrains Mono,monospace;font-size:14px;color:var(--red);font-weight:700">-'+(o.return_cost||0).toFixed(2)+'₴</div></div>'}).join(""):''):'<div style="color:var(--td);font-size:11px">Немає замовлень для виплати</div>';
     // History
     document.getElementById("pay-history").innerHTML=r.history.length?r.history.map(function(p){
       var success=(p.items||[]).filter(function(i){return !i.is_return});
