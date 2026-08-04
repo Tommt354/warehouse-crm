@@ -172,6 +172,27 @@ function register(app, { authMiddleware, requireRole }) {
     })();
     res.json({ ok: true });
   });
+
+  // Повернення грошей клієнту: мінус у касі й мінус у доході того дня, коли
+  // повернули, а не того, коли замовлення створювалось.
+  app.post("/api/finance/orders/:id/refund", ...adminOnly, (req, res) => {
+    const o = db.prepare("SELECT id,total_drop_price,refunded_amount FROM orders WHERE id=?").get(req.params.id);
+    if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму повернення" });
+    const date = db.prepare("SELECT date('now','localtime') d").get().d;
+    db.transaction(() => {
+      db.prepare("UPDATE orders SET refunded_amount=COALESCE(refunded_amount,0)+?,refunded_at=datetime('now','localtime') WHERE id=?")
+        .run(round2(amount), o.id);
+      // Одне замовлення можна повертати частинами, а унікальний індекс по ref
+      // пропустить лише перший рух — далі пишемо без прив'язки до замовлення,
+      // інакше друге часткове повернення мовчки загубилось би.
+      const had = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='refund' AND ref_id=?").get(o.id).c;
+      addCashMove({ date, amount: -amount, kind: "refund", ref_type: had ? "refund_extra" : "refund",
+        ref_id: had ? null : o.id, note: (req.body.note || "Повернення коштів") + " (замовлення #" + o.id + ")" });
+    })();
+    res.json({ ok: true });
+  });
 }
 
 // Дохід визнаємо в день, коли клієнт забрав посилку, і рівно один раз.
@@ -188,4 +209,22 @@ function onOrderDelivered(orderId) {
   addCashMove({ date: day, amount: o.total_drop_price, kind: "income", ref_type: "order", ref_id: orderId, note: "Замовлення #" + orderId });
 }
 
-module.exports = { register, addCashMove, onOrderDelivered };
+// Виплата дроперу — рух грошей, а не витрата: його частина вже виключена з
+// доходу тим, що доходом рахується дроп-ціна, а не наложка. Записати її ще й
+// витратою означало б відняти двічі.
+function onDropPayoutPaid(payoutRequestId) {
+  const pr = db.prepare("SELECT id,total_amount,paid_at FROM payout_requests WHERE id=?").get(payoutRequestId);
+  if (!pr || !pr.total_amount) return;
+  addCashMove({ date: (pr.paid_at || "").slice(0, 10) || db.prepare("SELECT date('now','localtime') d").get().d,
+    amount: -pr.total_amount, kind: "payout", ref_type: "payout", ref_id: pr.id, note: "Виплата дроперу" });
+}
+
+// Зарплата: у касу потрапляє факт виплати, а не нарахування.
+function onWorkerPayout(workerPayoutId) {
+  const p = db.prepare("SELECT wp.id, wp.amount, wp.created_at, w.name FROM worker_payouts wp JOIN workers w ON wp.worker_id=w.id WHERE wp.id=?").get(workerPayoutId);
+  if (!p || !p.amount) return;
+  addCashMove({ date: (p.created_at || "").slice(0, 10), amount: -p.amount, kind: "salary",
+    ref_type: "worker_payout", ref_id: p.id, note: "Зарплата: " + p.name });
+}
+
+module.exports = { register, addCashMove, onOrderDelivered, onDropPayoutPaid, onWorkerPayout };

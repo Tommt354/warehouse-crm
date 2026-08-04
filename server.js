@@ -3521,7 +3521,8 @@ app.post("/api/workers/:id/pay", authMiddleware, requireRole("admin"), (req, res
   const paid = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM worker_payouts WHERE worker_id=?").get(w.id).s;
   const balance = earned - paid;
   if (balance <= 0) return res.status(400).json({ error: "Нічого виплачувати" });
-  db.prepare("INSERT INTO worker_payouts(worker_id,amount)VALUES(?,?)").run(w.id, balance);
+  const wp = db.prepare("INSERT INTO worker_payouts(worker_id,amount)VALUES(?,?)").run(w.id, balance);
+  finance.onWorkerPayout(wp.lastInsertRowid);
   res.json({ ok: true, paid: balance });
 });
 
@@ -3937,6 +3938,7 @@ app.put("/api/payouts/:id/paid", authMiddleware, requireRole("admin"), (req, res
   if (pr.status === "pending") { try { db.transaction(() => syncPendingPayout(pr.id))(); } catch (e) { console.log("sync payout error:", e.message); } }
   pr.total_amount = db.prepare("SELECT total_amount FROM payout_requests WHERE id=?").get(pr.id).total_amount;
   db.prepare("UPDATE payout_requests SET status='paid',paid_at=datetime('now','localtime') WHERE id=?").run(req.params.id);
+  finance.onDropPayoutPaid(req.params.id);
   // Головна подія для дропера: гроші пішли. Сума — разом із заліком балансу,
   // тобто рівно те, що він отримає на реквізити.
   if (pr && pr.status !== "paid") {
