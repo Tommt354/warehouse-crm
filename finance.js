@@ -1,5 +1,18 @@
 const db = require("./db");
 
+function round2(v) { return Math.round((v || 0) * 100) / 100; }
+
+// Ідемпотентний запис руху грошей: подія може прийти повторно (трекінг НП,
+// повторне натискання кнопки), а рахунок від цього рухатись двічі не має.
+function addCashMove({ date, amount, kind, ref_type, ref_id, note }) {
+  if (ref_id) {
+    const exists = db.prepare("SELECT id FROM cash_moves WHERE kind=? AND ref_type=? AND ref_id=?").get(kind, ref_type || "", ref_id);
+    if (exists) return exists.id;
+  }
+  return db.prepare("INSERT INTO cash_moves(date,amount,kind,ref_type,ref_id,note)VALUES(?,?,?,?,?,?)")
+    .run(date, round2(amount), kind, ref_type || "", ref_id || null, note || "").lastInsertRowid;
+}
+
 // Фінансовий модуль тримаємо окремо від server.js: там уже 4000+ рядків, і
 // дописувати туди ще один домен означало б робити файл нечитабельним.
 function register(app, { authMiddleware, requireRole }) {
@@ -66,6 +79,75 @@ function register(app, { authMiddleware, requireRole }) {
     if (!name) return res.status(400).json({ error: "Вкажіть назву постачальника" });
     db.prepare("UPDATE suppliers SET name=?,note=?,active=? WHERE id=?")
       .run(name, req.body.note || "", req.body.active === 0 ? 0 : 1, req.params.id);
+    res.json({ ok: true });
+  });
+
+  const EXPENSE_ROWS = `SELECT e.*, c.name as category_name, c.is_goods, c.kind as category_kind, s.name as supplier_name,
+      (SELECT w.name FROM workshops w WHERE w.id=e.workshop_id) as workshop_name,
+      ROUND(COALESCE((SELECT SUM(p.amount) FROM expense_payments p WHERE p.expense_id=e.id),0),2) as paid_amount,
+      ROUND(e.amount - COALESCE((SELECT SUM(p.amount) FROM expense_payments p WHERE p.expense_id=e.id),0),2) as debt
+    FROM expenses e LEFT JOIN fin_categories c ON e.category_id=c.id LEFT JOIN suppliers s ON e.supplier_id=s.id`;
+
+  app.get("/api/finance/expenses", ...adminOnly, (req, res) => {
+    const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+    const to = req.query.to || db.prepare("SELECT date('now','localtime') d").get().d;
+    res.json({ expenses: db.prepare(EXPENSE_ROWS + " WHERE e.date BETWEEN ? AND ? ORDER BY e.date DESC, e.id DESC").all(from, to), from, to });
+  });
+
+  app.post("/api/finance/expenses", ...adminOnly, (req, res) => {
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму" });
+    if (!req.body.category_id) return res.status(400).json({ error: "Оберіть категорію" });
+    // Оплата пошиву без вказаного цеху зробила б неможливою звірку «скільки
+    // заплачено цеху проти скільки роботи від нього прийнято».
+    const cat = db.prepare("SELECT kind FROM fin_categories WHERE id=?").get(req.body.category_id);
+    if (cat && cat.kind === "sewing" && !req.body.workshop_id) return res.status(400).json({ error: "Оберіть цех" });
+    const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
+    let id;
+    db.transaction(() => {
+      id = db.prepare("INSERT INTO expenses(date,amount,category_id,supplier_id,workshop_id,note,created_by)VALUES(?,?,?,?,?,?,?)")
+        .run(date, round2(amount), req.body.category_id, req.body.supplier_id || null, req.body.workshop_id || null, req.body.note || "", req.user.id).lastInsertRowid;
+      // paid=1 — гроші пішли одразу; paid=0 — це борг постачальнику, каса не рухається.
+      if (req.body.paid) {
+        db.prepare("INSERT INTO expense_payments(expense_id,date,amount)VALUES(?,?,?)").run(id, date, round2(amount));
+        addCashMove({ date, amount: -amount, kind: "expense", ref_type: "expense", ref_id: id, note: req.body.note || "" });
+      }
+    })();
+    res.json({ ok: true, id });
+  });
+
+  app.put("/api/finance/expenses/:id", ...adminOnly, (req, res) => {
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму" });
+    const paid = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM expense_payments WHERE expense_id=?").get(req.params.id).s;
+    if (round2(amount) < round2(paid)) return res.status(400).json({ error: "Сума менша за вже оплачену (" + paid + "₴)" });
+    db.prepare("UPDATE expenses SET date=?,amount=?,category_id=?,supplier_id=?,note=? WHERE id=?")
+      .run(req.body.date, round2(amount), req.body.category_id, req.body.supplier_id || null, req.body.note || "", req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/finance/expenses/:id", ...adminOnly, (req, res) => {
+    db.transaction(() => {
+      db.prepare("DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id=?").run(req.params.id);
+      db.prepare("DELETE FROM cash_moves WHERE ref_type='expense_payment' AND ref_id IN (SELECT id FROM expense_payments WHERE expense_id=?)").run(req.params.id);
+      db.prepare("DELETE FROM expense_payments WHERE expense_id=?").run(req.params.id);
+      db.prepare("DELETE FROM expenses WHERE id=?").run(req.params.id);
+    })();
+    res.json({ ok: true });
+  });
+
+  app.post("/api/finance/expenses/:id/pay", ...adminOnly, (req, res) => {
+    const e = db.prepare("SELECT * FROM expenses WHERE id=?").get(req.params.id);
+    if (!e) return res.status(404).json({ error: "Витрату не знайдено" });
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму" });
+    const paid = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM expense_payments WHERE expense_id=?").get(e.id).s;
+    if (round2(paid + amount) > round2(e.amount)) return res.status(400).json({ error: "Більше, ніж залишок боргу (" + round2(e.amount - paid) + "₴)" });
+    const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
+    db.transaction(() => {
+      const pid = db.prepare("INSERT INTO expense_payments(expense_id,date,amount)VALUES(?,?,?)").run(e.id, date, round2(amount)).lastInsertRowid;
+      addCashMove({ date, amount: -amount, kind: "expense", ref_type: "expense_payment", ref_id: pid, note: "Оплата боргу" });
+    })();
     res.json({ ok: true });
   });
 }
