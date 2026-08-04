@@ -40,6 +40,20 @@ const today = new Date().toISOString().slice(0, 10);
   ok(row && row.paid_amount === 5000 && row.debt === 7000, "у списку видно оплачено й залишок");
   ok(row.is_goods === 1, "видно, що це вкладення в товар");
 
+  // часткове оновлення через PUT: передаємо лише суму — better-sqlite3
+  // кидає TypeError на undefined-параметрі, якщо date/category_id не мають
+  // дефолту, а без дефолту вони мовчки перетворились би на null
+  r = await api("/api/finance/expenses", { method: "POST", body: JSON.stringify({ date: today, amount: 300, category_id: opex, note: "__T4 часткове" }) });
+  ok(r.s === 200 && r.b.id, "витрата для перевірки часткового оновлення створена");
+  const e4 = r.b.id;
+  r = await api("/api/finance/expenses/" + e4, { method: "PUT", body: JSON.stringify({ amount: 350 }) });
+  ok(r.s === 200, "часткове оновлення (лише сума) не впало 500-кою (" + r.s + ")");
+  let row4 = db.prepare("SELECT date,amount,category_id,note FROM expenses WHERE id=?").get(e4);
+  ok(row4 && row4.amount === 350, "сума оновилась (" + (row4 && row4.amount) + ")");
+  ok(row4 && row4.date === today, "дата лишилась незмінною, а не перетворилась на null (" + (row4 && row4.date) + ")");
+  ok(row4 && row4.category_id === opex, "категорія лишилась незмінною (" + (row4 && row4.category_id) + ")");
+  ok(row4 && row4.note === "__T4 часткове", "нотатка лишилась незмінною (" + (row4 && row4.note) + ")");
+
   // витрата на пошив без цеху — заборонена, бо інакше неможлива звірка
   // «скільки заплачено цеху проти скільки роботи прийнято»
   let sewCat = cats.find(c => c.kind === "sewing");
@@ -60,8 +74,30 @@ const today = new Date().toISOString().slice(0, 10);
   r = await api("/api/finance/expenses", { method: "POST", body: JSON.stringify({ date: today, amount: 500, category_id: sewCat.id, workshop_id: ws.id, note: "__T4 пошив із цехом", paid: 1 }) });
   ok(r.s === 200 && r.b.id, "витрата на пошив із цехом створена");
   const e3 = r.b.id;
+
+  // той самий захист має діяти й через PUT: зняти цех із уже sewing-витрати не можна
+  r = await api("/api/finance/expenses/" + e3, { method: "PUT", body: JSON.stringify({ amount: 500, date: today, category_id: sewCat.id, workshop_id: null }) });
+  ok(r.s === 400, "зняти цех через PUT із sewing-витрати не можна (" + r.s + ")");
+
+  // редагування workshop_id працює: переносимо витрату на інший цех
+  const ws2Id = db.prepare("INSERT INTO workshops(name) VALUES ('__T4Цех2')").run().lastInsertRowid;
+  r = await api("/api/finance/expenses/" + e3, { method: "PUT", body: JSON.stringify({ amount: 500, date: today, category_id: sewCat.id, workshop_id: ws2Id }) });
+  ok(r.s === 200, "редагування workshop_id пройшло (" + r.s + ")");
+  let row3 = db.prepare("SELECT workshop_id FROM expenses WHERE id=?").get(e3);
+  ok(row3 && row3.workshop_id === ws2Id, "workshop_id справді змінився на новий цех (" + (row3 && row3.workshop_id) + ")");
+
+  // той самий захист і при зміні категорії на sewing (workshop_id узагалі не передаємо)
+  r = await api("/api/finance/expenses/" + e4, { method: "PUT", body: JSON.stringify({ amount: 350, category_id: sewCat.id }) });
+  ok(r.s === 400, "зміна категорії на sewing без цеху через PUT відхилена (" + r.s + ")");
+
+  // прибираємо все, що встиг створити POST/PUT для e3 — включно з рухом каси,
+  // який лишився б сиротою при прямому DELETE рядків із бази в обхід ендпоінта.
+  // Спершу саму витрату (вона зараз посилається на ws2Id), потім тимчасові
+  // цехи — інакше FOREIGN KEY не дасть видалити цех, поки на нього ще є посилання.
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id=?").run(e3);
   db.prepare("DELETE FROM expense_payments WHERE expense_id=?").run(e3);
   db.prepare("DELETE FROM expenses WHERE id=?").run(e3);
+  db.prepare("DELETE FROM workshops WHERE id=?").run(ws2Id);
   if (tmpWorkshopId) db.prepare("DELETE FROM workshops WHERE id=?").run(tmpWorkshopId);
   if (!cats.find(c => c.kind === "sewing")) db.prepare("DELETE FROM fin_categories WHERE id=?").run(sewCat.id);
 
@@ -69,8 +105,12 @@ const today = new Date().toISOString().slice(0, 10);
   r = await api("/api/finance/expenses/" + e1, { method: "DELETE" });
   ok(r.s === 200 && db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='expense' AND ref_id=?").get(e1).c === 0, "видалення прибрало рух каси");
 
-  db.prepare("DELETE FROM expense_payments WHERE expense_id=?").run(e2);
-  db.prepare("DELETE FROM expenses WHERE id IN (?,?)").run(e1, e2);
-  db.prepare("DELETE FROM cash_moves WHERE note LIKE '__T4%'").run();
+  // прибираємо рухи каси за зв'язком із витратами/оплатами, а не за текстом
+  // нотатки: рух від часткової оплати боргу (note="Оплата боргу", без
+  // префікса __T4) інакше лишився б сиротою в cash_moves назавжди
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id IN (?,?,?)").run(e1, e2, e4);
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense_payment' AND ref_id IN (SELECT id FROM expense_payments WHERE expense_id IN (?,?,?))").run(e1, e2, e4);
+  db.prepare("DELETE FROM expense_payments WHERE expense_id IN (?,?,?)").run(e1, e2, e4);
+  db.prepare("DELETE FROM expenses WHERE id IN (?,?,?)").run(e1, e2, e4);
   db.prepare("DELETE FROM suppliers WHERE id=?").run(sup);
 })();

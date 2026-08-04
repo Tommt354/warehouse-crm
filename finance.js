@@ -2,8 +2,12 @@ const db = require("./db");
 
 function round2(v) { return Math.round((v || 0) * 100) / 100; }
 
-// Ідемпотентний запис руху грошей: подія може прийти повторно (трекінг НП,
-// повторне натискання кнопки), а рахунок від цього рухатись двічі не має.
+// Ідемпотентний запис руху грошей: захист працює лише для подій зі
+// стабільним зовнішнім ref_id — трекінг НП знову й знову бачить те саме
+// забране замовлення, повторний виклик проведення виплати дроперу приносить
+// той самий ref_id. Для витрат і оплат ref_id — це наш власний
+// lastInsertRowid: повторний запит створює новий рядок з новим id, тож тут
+// захист не спрацьовує і спрацьовувати не повинен.
 function addCashMove({ date, amount, kind, ref_type, ref_id, note }) {
   if (ref_id) {
     const exists = db.prepare("SELECT id FROM cash_moves WHERE kind=? AND ref_type=? AND ref_id=?").get(kind, ref_type || "", ref_id);
@@ -94,14 +98,20 @@ function register(app, { authMiddleware, requireRole }) {
     res.json({ expenses: db.prepare(EXPENSE_ROWS + " WHERE e.date BETWEEN ? AND ? ORDER BY e.date DESC, e.id DESC").all(from, to), from, to });
   });
 
+  // Витрата з категорією типу sewing без цеху унеможливлює звірку «скільки
+  // заплачено цеху проти скільки роботи прийнято». Правило одне й те саме
+  // при створенні витрати і при редагуванні (зміна категорії на sewing,
+  // або зняття цеху з уже sewing-витрати) — тримаємо його в одному місці.
+  function sewingExpenseHasWorkshop(categoryId, workshopId) {
+    const cat = db.prepare("SELECT kind FROM fin_categories WHERE id=?").get(categoryId);
+    return !(cat && cat.kind === "sewing" && !workshopId);
+  }
+
   app.post("/api/finance/expenses", ...adminOnly, (req, res) => {
     const amount = parseFloat(req.body.amount);
     if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму" });
     if (!req.body.category_id) return res.status(400).json({ error: "Оберіть категорію" });
-    // Оплата пошиву без вказаного цеху зробила б неможливою звірку «скільки
-    // заплачено цеху проти скільки роботи від нього прийнято».
-    const cat = db.prepare("SELECT kind FROM fin_categories WHERE id=?").get(req.body.category_id);
-    if (cat && cat.kind === "sewing" && !req.body.workshop_id) return res.status(400).json({ error: "Оберіть цех" });
+    if (!sewingExpenseHasWorkshop(req.body.category_id, req.body.workshop_id)) return res.status(400).json({ error: "Оберіть цех" });
     const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
     let id;
     db.transaction(() => {
@@ -119,10 +129,22 @@ function register(app, { authMiddleware, requireRole }) {
   app.put("/api/finance/expenses/:id", ...adminOnly, (req, res) => {
     const amount = parseFloat(req.body.amount);
     if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму" });
+    const existing = db.prepare("SELECT * FROM expenses WHERE id=?").get(req.params.id);
+    if (!existing) return res.status(404).json({ error: "Витрату не знайдено" });
     const paid = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM expense_payments WHERE expense_id=?").get(req.params.id).s;
     if (round2(amount) < round2(paid)) return res.status(400).json({ error: "Сума менша за вже оплачену (" + paid + "₴)" });
-    db.prepare("UPDATE expenses SET date=?,amount=?,category_id=?,supplier_id=?,note=? WHERE id=?")
-      .run(req.body.date, round2(amount), req.body.category_id, req.body.supplier_id || null, req.body.note || "", req.params.id);
+    // Поле, якого немає в тілі запиту (undefined), — часткове оновлення,
+    // лишаємо як було; better-sqlite3 інакше впав би з TypeError на
+    // undefined-параметрі. Поле, передане явно як null/порожнє, — скидаємо,
+    // так само як це вже робилось для supplier_id і note.
+    const date = req.body.date !== undefined ? req.body.date : existing.date;
+    const category_id = req.body.category_id !== undefined ? req.body.category_id : existing.category_id;
+    const supplier_id = req.body.supplier_id !== undefined ? (req.body.supplier_id || null) : existing.supplier_id;
+    const workshop_id = req.body.workshop_id !== undefined ? (req.body.workshop_id || null) : existing.workshop_id;
+    const note = req.body.note !== undefined ? req.body.note : existing.note;
+    if (!sewingExpenseHasWorkshop(category_id, workshop_id)) return res.status(400).json({ error: "Оберіть цех" });
+    db.prepare("UPDATE expenses SET date=?,amount=?,category_id=?,supplier_id=?,workshop_id=?,note=? WHERE id=?")
+      .run(date, round2(amount), category_id, supplier_id, workshop_id, note, req.params.id);
     res.json({ ok: true });
   });
 
