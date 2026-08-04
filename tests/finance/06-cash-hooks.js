@@ -26,6 +26,27 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
   r = await api("/api/finance/orders/" + o.id + "/refund", { method: "POST", body: JSON.stringify({ amount: -5 }) });
   ok(r.s === 400, "від'ємна сума відхилена");
 
+  // випадковий повтор того самого запиту (подвійний клік/ретрай мережі):
+  // той самий виклик (сума 50), зроблений одразу після легітимного,
+  // не повинен ще раз рухати касу й нараховувати повернення
+  const orderTag = "(замовлення #" + o.id + ")";
+  const movesBefore = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='refund' AND note LIKE ?").get("%" + orderTag).c;
+  const refundedBefore = db.prepare("SELECT refunded_amount r FROM orders WHERE id=?").get(o.id).r;
+  r = await api("/api/finance/orders/" + o.id + "/refund", { method: "POST", body: JSON.stringify({ amount: 50, note: "__T6" }) });
+  ok(r.s === 409, "повтор того самого повернення (50) одразу відхилений з 409 (" + r.s + ")");
+  const movesAfterDup = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='refund' AND note LIKE ?").get("%" + orderTag).c;
+  ok(movesAfterDup === movesBefore, "відхилений повтор не додав рух каси (" + movesBefore + " -> " + movesAfterDup + ")");
+  const refundedAfterDup = db.prepare("SELECT refunded_amount r FROM orders WHERE id=?").get(o.id).r;
+  ok(refundedAfterDup === refundedBefore, "відхилений повтор не змінив refunded_amount (" + refundedBefore + " -> " + refundedAfterDup + ")");
+
+  // легітимне повернення на іншу суму одразу після — має пройти нормально,
+  // захист від дублю не має чіпати повернення з іншою сумою
+  r = await api("/api/finance/orders/" + o.id + "/refund", { method: "POST", body: JSON.stringify({ amount: 77, note: "__T6" }) });
+  ok(r.s === 200, "повернення на іншу суму (77) одразу після проходить нормально (" + r.s + ")");
+  const mv3 = db.prepare("SELECT * FROM cash_moves WHERE kind='refund' AND amount=-77 AND note LIKE ? ORDER BY id DESC LIMIT 1").get("%" + orderTag);
+  ok(mv3 && mv3.amount === -77, "рух на іншу суму лягла в касу (" + (mv3 && mv3.amount) + ")");
+  ok(db.prepare("SELECT refunded_amount r FROM orders WHERE id=?").get(o.id).r === 377, "сума третього повернення додалась до замовлення (" + db.prepare("SELECT refunded_amount r FROM orders WHERE id=?").get(o.id).r + ")");
+
   // виплата дроперу
   const pr = db.prepare("SELECT id,total_amount FROM payout_requests WHERE status!='paid' ORDER BY id DESC LIMIT 1").get();
   if (pr) {

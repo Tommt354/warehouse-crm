@@ -181,6 +181,24 @@ function register(app, { authMiddleware, requireRole }) {
     const amount = parseFloat(req.body.amount);
     if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму повернення" });
     const date = db.prepare("SELECT date('now','localtime') d").get().d;
+    const orderTag = "(замовлення #" + o.id + ")";
+    // Захист від випадкового повтору того самого запиту (подвійний клік,
+    // ретрай мережі). Унікальний індекс cash_moves_ref_uniq рятує лише перше
+    // повернення по замовленню (воно одне пишеться з ref_id=замовлення) —
+    // друге й наступні легітимні часткові повернення навмисно йдуть без
+    // ref_id нижче, інакше друге часткове мовчки загубилось би через той
+    // самий індекс. Тому дубль ловимо тут окремо, за сумою й ноткою: рух
+    // повернення на ту саму суму по тому самому замовленню, створений щойно,
+    // майже напевно і є той самий клік/ретрай, а не нове рішення повернути
+    // ще раз рівно стільки ж. 5 хвилин — із запасом більше за будь-який
+    // реалістичний ретрай мережі чи паузу подвійного кліку, але коротше за
+    // час, за який людина встигла б усвідомлено вирішити повернути ще раз
+    // ту саму суму.
+    const DUPLICATE_WINDOW_MIN = 5;
+    const dup = db.prepare(`SELECT id FROM cash_moves WHERE kind='refund' AND amount=? AND note LIKE ?
+        AND created_at >= datetime('now','localtime','-${DUPLICATE_WINDOW_MIN} minutes')`)
+      .get(round2(-amount), "%" + orderTag);
+    if (dup) return res.status(409).json({ error: "Таке саме повернення щойно вже проведено — повторний запит відхилено" });
     db.transaction(() => {
       db.prepare("UPDATE orders SET refunded_amount=COALESCE(refunded_amount,0)+?,refunded_at=datetime('now','localtime') WHERE id=?")
         .run(round2(amount), o.id);
@@ -189,7 +207,7 @@ function register(app, { authMiddleware, requireRole }) {
       // інакше друге часткове повернення мовчки загубилось би.
       const had = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='refund' AND ref_id=?").get(o.id).c;
       addCashMove({ date, amount: -amount, kind: "refund", ref_type: had ? "refund_extra" : "refund",
-        ref_id: had ? null : o.id, note: (req.body.note || "Повернення коштів") + " (замовлення #" + o.id + ")" });
+        ref_id: had ? null : o.id, note: (req.body.note || "Повернення коштів") + " " + orderTag });
     })();
     res.json({ ok: true });
   });
