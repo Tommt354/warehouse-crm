@@ -8,12 +8,32 @@ const today = new Date().toISOString().slice(0, 10);
 // залежала від того, порожній день чи ні, беремо звіт "до" фікстур і
 // звіряємо різницю "після мінус до" з очікуваним внеском фікстур, а не
 // абсолютні числа.
-(async () => {
-  await login("admin");
+
+// Прибирання фікстур цього файлу, спільне для старту (лишки від зірваного
+// попереднього прогону) і завершення. Порядок важливий: рухи каси, прив'язані
+// до оплат витрат, видаляємо ДО видалення самих expense_payments — інакше
+// підзапит по expense_id вже нічого не знайде.
+function cleanupT7() {
   db.prepare("DELETE FROM cash_moves WHERE note LIKE '__T7%'").run();
+  db.prepare(`DELETE FROM cash_moves WHERE ref_type='expense_payment' AND ref_id IN
+    (SELECT id FROM expense_payments WHERE expense_id IN (SELECT id FROM expenses WHERE note LIKE '__T7%'))`).run();
+  db.prepare(`DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id IN
+    (SELECT id FROM expenses WHERE note LIKE '__T7%')`).run();
+  db.prepare("DELETE FROM expense_payments WHERE expense_id IN (SELECT id FROM expenses WHERE note LIKE '__T7%')").run();
   db.prepare("DELETE FROM expenses WHERE note LIKE '__T7%'").run();
   db.prepare("DELETE FROM manager_rates WHERE name='__T7 Діана'").run();
   db.prepare("DELETE FROM cash_checks WHERE note='__T7'").run();
+}
+
+(async () => {
+  await login("admin");
+
+  // Стартовий залишок — глобальна настройка, а не фікстура під нотою __T7:
+  // зберігаємо, що там було, і повертаємо наприкінці, інакше тест підмінює
+  // її назавжди для всієї бази.
+  const prevSettings = (await api("/api/finance/settings")).b;
+
+  cleanupT7();
 
   await api("/api/finance/settings", { method: "PUT", body: JSON.stringify({ cash_opening_balance: 10000, cash_opening_date: today }) });
 
@@ -36,12 +56,43 @@ const today = new Date().toISOString().slice(0, 10);
   ok(round2(r1.cash_delta - r0.cash_delta) === 2000, "рух каси +2000 (" + round2(r1.cash_delta - r0.cash_delta) + ")");
   ok(round2(r1.opex_spent - r0.opex_spent) === 2000 && round2(r1.goods_spent - r0.goods_spent) === 8000,
     "розподіл витрата/товар: +" + round2(r1.opex_spent - r0.opex_spent) + " / +" + round2(r1.goods_spent - r0.goods_spent));
-  ok(round2(r1.debts_total - r0.debts_total) === 3000, "борг періоду +3000 (" + round2(r1.debts_total - r0.debts_total) + ")");
+  ok(round2(r1.debts_total - r0.debts_total) === 3000, "борг +3000 від неоплаченої витрати в періоді (" + round2(r1.debts_total - r0.debts_total) + ")");
   ok(round2(r1.balance - r0.balance) === 2000, "розрахунковий залишок зріс на 2000 (" + round2(r1.balance - r0.balance) + ")");
 
   const catBefore = (r0.by_category.find(c => c.name === goods.name) || { amount: 0 }).amount;
   const catAfter = (r1.by_category.find(c => c.name === goods.name) || { amount: 0 }).amount;
   ok(round2(catAfter - catBefore) === 8000, "по категорії «" + goods.name + "» +8000 (" + round2(catAfter - catBefore) + ")");
+
+  // debts_total — поточне сальдо боргу постачальникам, а не борг, нарахований
+  // саме в обраному періоді (звіт беремо за "сьогодні", from=to=today). Витрата
+  // датована вчорашнім днем — поза періодом звіту — і має однаково увійти
+  // в debts_total, бо гроші винні незалежно від того, коли їх позичили.
+  const yesterday = db.prepare("SELECT date(?,'-1 day') d").get(today).d;
+  const rBeforeOldDebt = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
+
+  const oldDebtRes = await api("/api/finance/expenses", { method: "POST", body: JSON.stringify({ date: yesterday, amount: 4000, category_id: goods.id, note: "__T7 старий борг", paid: 0 }) });
+  const oldDebtId = oldDebtRes.b.id;
+
+  const rAfterOldDebt = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
+  ok(round2(rAfterOldDebt.debts_total - rBeforeOldDebt.debts_total) === 4000,
+    "борг, нарахований до обраного періоду, входить у поточне сальдо боргу (+4000, отримано " + round2(rAfterOldDebt.debts_total - rBeforeOldDebt.debts_total) + ")");
+
+  // часткова оплата зменшує сальдо боргу
+  await api("/api/finance/expenses/" + oldDebtId + "/pay", { method: "POST", body: JSON.stringify({ amount: 1500 }) });
+  const rAfterPay1 = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
+  ok(round2(rAfterOldDebt.debts_total - rAfterPay1.debts_total) === 1500,
+    "часткова оплата зменшує сальдо боргу на 1500 (" + round2(rAfterOldDebt.debts_total - rAfterPay1.debts_total) + ")");
+
+  // друга часткова оплата по тій самій витраті — пастка наївного JOIN
+  // expenses+expense_payments: він задвоїв би нараховану суму витрати на
+  // кожен рядок оплати. Перевіряємо, що сальдо зменшується рівно на суму
+  // другої оплати, а не стрибає через задвоєння нарахування.
+  await api("/api/finance/expenses/" + oldDebtId + "/pay", { method: "POST", body: JSON.stringify({ amount: 1000 }) });
+  const rAfterPay2 = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
+  ok(round2(rAfterPay1.debts_total - rAfterPay2.debts_total) === 1000,
+    "друга часткова оплата зменшує ще на 1000, без задвоєння (" + round2(rAfterPay1.debts_total - rAfterPay2.debts_total) + ")");
+  ok(round2(rAfterPay2.debts_total - rBeforeOldDebt.debts_total) === 1500,
+    "підсумок: +4000 нараховано − 1500 − 1000 оплачено = +1500 до сальдо боргу (" + round2(rAfterPay2.debts_total - rBeforeOldDebt.debts_total) + ")");
 
   // менеджер: відсоток від прибутку за формулою власника (дохід мінус усі
   // витрати періоду). Перевіряємо саму формулу й реакцію на зміну прибутку,
@@ -69,9 +120,9 @@ const today = new Date().toISOString().slice(0, 10);
   const r2 = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
   ok(r2.last_check && round2(r2.last_check.diff) === -500, "остання звірка видно у звіті");
 
-  db.prepare("DELETE FROM cash_moves WHERE note LIKE '__T7%'").run();
-  db.prepare("DELETE FROM expense_payments WHERE expense_id IN (SELECT id FROM expenses WHERE note LIKE '__T7%')").run();
-  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id IN (SELECT id FROM expenses WHERE note LIKE '__T7%')").run();
-  db.prepare("DELETE FROM expenses WHERE note LIKE '__T7%'").run();
-  db.prepare("DELETE FROM cash_checks WHERE note='__T7'").run();
+  cleanupT7();
+
+  await api("/api/finance/settings", { method: "PUT", body: JSON.stringify({
+    cash_opening_balance: prevSettings.cash_opening_balance, cash_opening_date: prevSettings.cash_opening_date
+  }) });
 })();

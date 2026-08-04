@@ -60,11 +60,24 @@ function register(app, { authMiddleware, requireRole }) {
     res.json({ ok: true, hidden: !!used });
   });
 
+  // Борг = нараховано мінус оплачено, для довільного зрізу витрат. Одне
+  // визначення на весь модуль: і борг постачальника (GET /api/finance/suppliers),
+  // і сумарне сальдо боргу на сьогодні (GET /api/finance/report, debts_total)
+  // будуються з нього — зміна формули боргу тоді не вимагає правити два місця.
+  // Оплати рахуємо окремим підзапитом по id відповідних витрат, а не через
+  // JOIN expenses-payments напряму: такий JOIN задвоїв би суму нарахувань,
+  // коли по одній витраті є кілька часткових оплат (кожен збіг рядка витрати
+  // з рядком оплати в JOIN дав би ще одне додавання e.amount).
+  function debtBalanceSql(expenseWhere) {
+    const filter = expenseWhere ? `WHERE ${expenseWhere}` : "";
+    return `(COALESCE((SELECT SUM(e.amount) FROM expenses e ${filter}),0) -
+      COALESCE((SELECT SUM(p.amount) FROM expense_payments p WHERE p.expense_id IN (SELECT id FROM expenses e ${filter})),0))`;
+  }
+
   // Борг по постачальнику = скільки йому нарахували мінус скільки заплатили.
   // Рахуємо на льоту, а не окремою колонкою: колонка розійшлася б із фактами
   // при першій же правці витрати.
-  const SUPPLIER_DEBT_SQL = `COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.supplier_id=s.id),0)
-    - COALESCE((SELECT SUM(p.amount) FROM expense_payments p JOIN expenses e2 ON p.expense_id=e2.id WHERE e2.supplier_id=s.id),0)`;
+  const SUPPLIER_DEBT_SQL = debtBalanceSql("e.supplier_id=s.id");
 
   app.get("/api/finance/suppliers", ...adminOnly, (req, res) => {
     res.json({ suppliers: db.prepare(`SELECT s.*, ROUND(${SUPPLIER_DEBT_SQL},2) as debt
@@ -274,14 +287,17 @@ function register(app, { authMiddleware, requireRole }) {
     const goodsSpent = round2(byCategory.filter(c => c.is_goods).reduce((s, c) => s + c.amount, 0));
     const opexSpent = round2(byCategory.filter(c => !c.is_goods).reduce((s, c) => s + c.amount, 0));
 
-    // Борг періоду: скільки з нарахованих у періоді витрат досі не оплачено
-    // (може бути й без постачальника — «__T7 борг» узятий просто так, без
-    // формальної картки постачальника). Рахуємо за датою нарахування витрати,
-    // а не за датою оплати, з тих самих міркувань, що й розріз по категоріях:
-    // борг належить періоду, в якому виникла витрата, і зменшується коли б
-    // не прийшла оплата, навіть пізніше.
-    const debtsTotal = sum(`SELECT COALESCE(SUM(e.amount - COALESCE((SELECT SUM(p.amount) FROM expense_payments p WHERE p.expense_id=e.id),0)),0) s
-      FROM expenses e WHERE e.date BETWEEN ? AND ?`, from, to);
+    // Борг на сьогодні, а не борг за період: скільки зараз винні
+    // постачальникам загалом — те саме сальдо, що для окремого постачальника
+    // (debtBalanceSql), але без фільтра, тож ідуть УСІ неоплачені залишки
+    // витрат, навіть якщо власник не вказав постачальника («__T7 борг» узятий
+    // просто так, без картки постачальника — гроші однаково чужі). Показник
+    // навмисно не залежить від from/to: він стоїть поруч із залишком на
+    // рахунку і відповідає на «скільки з того, що я бачу, насправді чуже» —
+    // якби рахувати лише витрати, нараховані в обраному періоді, то в
+    // спокійний тиждень без нових закупівель показник ішов би в нуль, хоча
+    // борг у десятки тисяч нікуди не подівся.
+    const debtsTotal = sum(`SELECT ${debtBalanceSql()} s`);
 
     // Прибуток за формулою власника: дохід мінус усі витрати періоду, включно
     // із закупівлями. Саме від нього рахується відсоток менеджера — це
