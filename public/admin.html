@@ -334,6 +334,7 @@
   <div class="sc"><div class="sv" style="color:var(--warn)" id="ret-transit">0</div><div class="sl">в дорозі</div></div>
   <div class="sc"><div class="sv" style="color:var(--acc)" id="ret-processed">0</div><div class="sl">на складі</div></div>
   <div class="sc"><div class="sv" style="color:var(--red)" id="ret-unreceived">0</div><div class="sl">не отримано</div></div>
+  <div class="sc"><div class="sv" style="color:var(--red);font-size:18px" id="ret-unrec-cost">0₴</div><div class="sl">собівартість не отриманих</div></div>
 </div>
 <div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
   <button class="stab on" style="border-color:rgba(255,107,107,.4)" onclick="retFilter='unreceived';loadAdmReturns();this.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));this.classList.add('on')"><i data-icon="alertTriangle" data-size="13"></i> Не отримано <span id="ret-unrec-tab-badge" style="background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
@@ -862,7 +863,9 @@ async function refreshCC(){const[a,b,c,d,e,f,g]=await Promise.all([api("/api/col
 // ── Dashboard ────────────────────────────────────────────────────
 async function loadDash(){
   const d=await api("/api/dashboard?stock_view="+dashStockView);
-  document.getElementById("dash-s").innerHTML=`<div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div><div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div><div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div><div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div><div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_today||0}</div><div class="sl">замовлень сьогодні</div></div><div class="sc"><div class="sv" style="color:var(--td)">${d.orders_yesterday||0}</div><div class="sl">замовлень вчора</div></div>`;
+  document.getElementById("dash-s").innerHTML=`<div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div><div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div><div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div><div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div><div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_today||0}</div><div class="sl">замовлень сьогодні</div></div><div class="sc"><div class="sv" style="color:var(--td)">${d.orders_yesterday||0}</div><div class="sl">замовлень вчора</div></div>`+
+    `<div class="sc" style="cursor:pointer" onclick="document.querySelector('a[data-p=\\'adm-returns\\']').click()"><div class="sv" style="color:var(--red)">${d.unreceived_orders||0}</div><div class="sl">не отримано</div></div>`+
+    `<div class="sc" style="cursor:pointer" onclick="document.querySelector('a[data-p=\\'adm-returns\\']').click()"><div class="sv" style="color:var(--red);font-size:18px">${fmtMoney(d.unreceived_cost||0)}₴</div><div class="sl">собівартість не отриманих</div></div>`;
   renderDashStock(d);
   loadDashCharts();
   loadDashPopularity();
@@ -2756,7 +2759,10 @@ async function loadAdmReturns(){
     var r=await api("/api/returns");allReturns=r.orders;
     var transit=allReturns.filter(function(o){return o.status==="return_transit"}).length;
     var stocked=allReturns.filter(function(o){return o.items.every(function(i){return i.returned_to_stock})}).length;
-    var unreceived=allReturns.filter(function(o){return !o.return_received}).length;
+    var unrecOrders=allReturns.filter(function(o){return !o.return_received});
+    var unreceived=unrecOrders.length;
+    var unrecCost=unrecOrders.reduce(function(s,o){return s+o.items.reduce(function(x,i){return x+i.quantity*(i.cost_price||0)},0)},0);
+    document.getElementById("ret-unrec-cost").textContent=fmtMoney(unrecCost)+"₴";
     document.getElementById("ret-total").textContent=allReturns.length;
     document.getElementById("ret-transit").textContent=transit;
     document.getElementById("ret-processed").textContent=stocked;

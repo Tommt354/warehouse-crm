@@ -3737,8 +3737,12 @@ app.get("/api/returns", authMiddleware, (req, res) => {
     // Де саме зараз їде повернення: у дорозі чи вже лежить у відділенні —
     // видно прямо у списку, без відкривання кожного замовлення.
     o.np_group = npGroupFor(o);
-    o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,bp.photo as bp_photo,p.photo as print_photo,s.name as size_name,oi.returned_to_stock
-      FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id JOIN base_products bp ON v.base_product_id=bp.id
+    // cost_price — щоб у вкладці рахувалась собівартість того, що зависло:
+    // «12 не отримано» нічого не каже про масштаб, а «12 на 8 400₴» каже.
+    o.items = db.prepare(`SELECT oi.*,v.name as var_name,v.photo as var_photo,v.print_id,bp.photo as bp_photo,p.photo as print_photo,s.name as size_name,oi.returned_to_stock,
+      COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0) as cost_price
+      FROM order_items oi JOIN variations v ON oi.variation_id=v.id JOIN sizes s ON oi.size_id=s.id LEFT JOIN prints p ON v.print_id=p.id
+      JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id
       WHERE oi.order_id=?`).all(o.id);
   });
   res.json({ orders });
@@ -3967,6 +3971,14 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
       orders_today: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime')").get().c,
       orders_yesterday: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at)=date('now','localtime','-1 day')").get().c,
       orders_new: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status='new'").get().c,
+      // Не отримані повернення — це товар, який фізично не в нас і не в клієнта:
+      // висить у дорозі або лежить у відділенні. Кількість не показує ваги
+      // проблеми, тому поруч сума собівартості — скільки грошей зараз висить.
+      unreceived_orders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status IN ('refused','return_transit') AND COALESCE(return_received,0)=0").get().c,
+      unreceived_cost: db.prepare(`SELECT COALESCE(SUM(oi.quantity * COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0)),0) as s
+        FROM order_items oi JOIN orders o ON oi.order_id=o.id
+        JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id
+        WHERE o.status IN ('refused','return_transit') AND COALESCE(o.return_received,0)=0`).get().s,
       low_stock: lowStock,
       out_stock: outStock,
       stock_view: req.query.stock_view === "alloc" ? "alloc" : "fact",
