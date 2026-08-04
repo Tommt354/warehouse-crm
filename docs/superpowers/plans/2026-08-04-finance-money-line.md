@@ -61,9 +61,9 @@ const db = require("../../node_modules/better-sqlite3")(process.env.DB_PATH || "
 const need = {
   fin_categories: ["id","name","kind","is_goods","sort_order","active"],
   suppliers: ["id","name","note","active"],
-  expenses: ["id","date","amount","category_id","supplier_id","note","created_by","created_at"],
+  expenses: ["id","date","amount","category_id","supplier_id","workshop_id","note","created_by","created_at"],
   expense_payments: ["id","expense_id","date","amount","created_at"],
-  cash_moves: ["id","date","amount","kind","ref_type","ref_id","note","created_at"],
+  cash_moves: ["id","date","amount","kind","ref_type","ref_id","wholesale_id","note","created_at"],
   cash_checks: ["id","date","actual_balance","calc_balance","diff","note","created_at"]
 };
 let bad = 0;
@@ -76,6 +76,10 @@ for (const [t, cols] of Object.entries(need)) {
 const ord = db.prepare("PRAGMA table_info(orders)").all().map(r => r.name);
 ["delivered_at","refunded_amount","refunded_at"].forEach(c => {
   const ok = ord.includes(c); console.log((ok ? "✅" : "❌") + " orders." + c); if (!ok) bad++;
+});
+const mgr = db.prepare("PRAGMA table_info(manager_rates)").all().map(r => r.name);
+["id","name","percent","from_date"].forEach(c => {
+  const okc = mgr.includes(c); console.log((okc ? "✅" : "❌") + " manager_rates." + c); if (!okc) bad++;
 });
 const cats = db.prepare("SELECT COUNT(*) c FROM fin_categories").get().c;
 const goods = db.prepare("SELECT COUNT(*) c FROM fin_categories WHERE is_goods=1").get().c;
@@ -140,11 +144,14 @@ cd /Users/artemkravcov/Desktop/projeckt/warehouse-crm && node tests/finance/01-s
     amount REAL NOT NULL,
     category_id INTEGER,
     supplier_id INTEGER,
+    workshop_id INTEGER,
+    wholesale_id INTEGER,
     note TEXT DEFAULT '',
     created_by INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (category_id) REFERENCES fin_categories(id),
-    FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+    FOREIGN KEY (workshop_id) REFERENCES workshops(id)
   );
 
   CREATE TABLE IF NOT EXISTS expense_payments (
@@ -166,11 +173,24 @@ cd /Users/artemkravcov/Desktop/projeckt/warehouse-crm && node tests/finance/01-s
     kind TEXT NOT NULL,
     ref_type TEXT DEFAULT '',
     ref_id INTEGER,
+    wholesale_id INTEGER,
     note TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
   CREATE UNIQUE INDEX IF NOT EXISTS cash_moves_ref_uniq
     ON cash_moves(kind, ref_type, ref_id) WHERE ref_id IS NOT NULL;
+
+  -- Менеджер отримує відсоток від прибутку. Ставку зберігаємо історією, а не
+  -- одним числом у налаштуваннях: змінивши відсоток, не можна перерахувати
+  -- заднім числом уже закриті місяці — людині вже заплачено за домовленістю,
+  -- яка діяла тоді.
+  CREATE TABLE IF NOT EXISTS manager_rates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    percent REAL NOT NULL DEFAULT 0,
+    from_date TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
 
   CREATE TABLE IF NOT EXISTS cash_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,10 +222,13 @@ addCol("orders","refunded_at","TEXT DEFAULT ''");
 // видалене.
 if (!db.prepare("SELECT COUNT(*) c FROM fin_categories").get().c) {
   const insCat = db.prepare("INSERT INTO fin_categories(name,kind,is_goods,sort_order)VALUES(?,?,?,?)");
-  [["Оренда","expense"],["Комуналка","expense"],["Бензин","expense"],["Зарплата","expense"],
-   ["Реклама","expense"],["Доставка","expense"],["Оренда цеху","expense"],["Інше","expense"],
-   ["Тканина","material"],["Фурнітура","material"],
-   ["Пошив у цеху","sewing"],["Закупка товару","purchase"]]
+  // Назви взяті з таблиці, яку власник веде зараз, щоб він відкрив вкладку і
+  // побачив звичні колонки, а не порожній список.
+  [["Оренда","expense"],["Комуналка","expense"],["Реклама","expense"],["Повернення НП","expense"],
+   ["Форс-мажор","expense"],["PK-CRM","expense"],["Бензин","expense"],["Браки","expense"],["Інше","expense"],
+   ["Тканина","material"],["Фурнітура","material"],["Матеріали","material"],
+   ["Пошив у цеху","sewing"],["Принт","sewing"],
+   ["Базар","purchase"]]
     .forEach((r,i) => insCat.run(r[0], r[1], r[1] === "expense" ? 0 : 1, i));
 }
 
@@ -594,7 +617,8 @@ function addCashMove({ date, amount, kind, ref_type, ref_id, note }) {
 Усередині `register()`:
 
 ```js
-  const EXPENSE_ROWS = `SELECT e.*, c.name as category_name, c.is_goods, s.name as supplier_name,
+  const EXPENSE_ROWS = `SELECT e.*, c.name as category_name, c.is_goods, c.kind as category_kind, s.name as supplier_name,
+      (SELECT w.name FROM workshops w WHERE w.id=e.workshop_id) as workshop_name,
       ROUND(COALESCE((SELECT SUM(p.amount) FROM expense_payments p WHERE p.expense_id=e.id),0),2) as paid_amount,
       ROUND(e.amount - COALESCE((SELECT SUM(p.amount) FROM expense_payments p WHERE p.expense_id=e.id),0),2) as debt
     FROM expenses e LEFT JOIN fin_categories c ON e.category_id=c.id LEFT JOIN suppliers s ON e.supplier_id=s.id`;
@@ -609,11 +633,15 @@ function addCashMove({ date, amount, kind, ref_type, ref_id, note }) {
     const amount = parseFloat(req.body.amount);
     if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму" });
     if (!req.body.category_id) return res.status(400).json({ error: "Оберіть категорію" });
+    // Оплата пошиву без вказаного цеху зробила б неможливою звірку «скільки
+    // заплачено цеху проти скільки роботи від нього прийнято».
+    const cat = db.prepare("SELECT kind FROM fin_categories WHERE id=?").get(req.body.category_id);
+    if (cat && cat.kind === "sewing" && !req.body.workshop_id) return res.status(400).json({ error: "Оберіть цех" });
     const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
     let id;
     db.transaction(() => {
-      id = db.prepare("INSERT INTO expenses(date,amount,category_id,supplier_id,note,created_by)VALUES(?,?,?,?,?,?)")
-        .run(date, round2(amount), req.body.category_id, req.body.supplier_id || null, req.body.note || "", req.user.id).lastInsertRowid;
+      id = db.prepare("INSERT INTO expenses(date,amount,category_id,supplier_id,workshop_id,note,created_by)VALUES(?,?,?,?,?,?,?)")
+        .run(date, round2(amount), req.body.category_id, req.body.supplier_id || null, req.body.workshop_id || null, req.body.note || "", req.user.id).lastInsertRowid;
       // paid=1 — гроші пішли одразу; paid=0 — це борг постачальнику, каса не рухається.
       if (req.body.paid) {
         db.prepare("INSERT INTO expense_payments(expense_id,date,amount)VALUES(?,?,?)").run(id, date, round2(amount));
@@ -1025,6 +1053,17 @@ const today = new Date().toISOString().slice(0, 10);
   const cat = r.b.by_category.find(c => c.name === goods.name);
   ok(cat && cat.amount === 8000, "по категорії «" + goods.name + "» 8000 (" + (cat && cat.amount) + ")");
 
+  // менеджер: відсоток від прибутку за формулою власника
+  await api("/api/finance/manager-rate", { method: "POST", body: JSON.stringify({ name: "__T7 Діана", percent: 7, from_date: "2000-01-01" }) });
+  const r3 = await api("/api/finance/report?from=" + today + "&to=" + today);
+  ok(r3.b.profit_cash === 0, "прибуток за формулою власника 9000 − 2000 − 8000 = 0 (" + r3.b.profit_cash + ")");
+  ok(r3.b.manager && r3.b.manager.percent === 7 && r3.b.manager.amount === 0, "менеджер рахується від нього: " + JSON.stringify(r3.b.manager));
+  db.prepare("INSERT INTO cash_moves(date,amount,kind,ref_type,note)VALUES(?,?,?,?,?)").run(today, 1000, "income", "", "__T7 ще дохід");
+  const r4 = await api("/api/finance/report?from=" + today + "&to=" + today);
+  ok(r4.b.profit_cash === 1000 && r4.b.manager.amount === 70, "з прибутку 1000 менеджеру 70 (" + r4.b.manager.amount + ")");
+  ok(r4.b.profit_after_manager === 930, "прибуток після менеджера 930 (" + r4.b.profit_after_manager + ")");
+  db.prepare("DELETE FROM manager_rates WHERE name='__T7 Діана'").run();
+
   const ch = await api("/api/finance/cash-check", { method: "POST", body: JSON.stringify({ actual_balance: 11500, note: "__T7" }) });
   ok(ch.s === 200 && ch.b.diff === -500, "звірка показала розбіжність −500 (" + ch.b.diff + ")");
   const r2 = await api("/api/finance/report?from=" + today + "&to=" + today);
@@ -1061,8 +1100,21 @@ cd /Users/artemkravcov/Desktop/projeckt/warehouse-crm && node tests/finance/07-r
   app.get("/api/finance/settings", ...adminOnly, (req, res) => {
     res.json({
       cash_opening_balance: parseFloat(getSetting("cash_opening_balance", 0)) || 0,
-      cash_opening_date: getSetting("cash_opening_date", "") || ""
+      cash_opening_date: getSetting("cash_opening_date", "") || "",
+      manager_rates: db.prepare("SELECT * FROM manager_rates ORDER BY from_date DESC, id DESC").all()
     });
+  });
+
+  // Нова ставка менеджера — новий рядок історії, а не правка старого: місяці,
+  // за які вже заплачено, мають лишитись порахованими за тодішнім відсотком.
+  app.post("/api/finance/manager-rate", ...adminOnly, (req, res) => {
+    const name = (req.body.name || "").trim();
+    const percent = parseFloat(req.body.percent);
+    if (!name) return res.status(400).json({ error: "Вкажіть ім'я менеджера" });
+    if (isNaN(percent) || percent < 0 || percent > 100) return res.status(400).json({ error: "Відсоток має бути від 0 до 100" });
+    const from = req.body.from_date || db.prepare("SELECT date('now','localtime') d").get().d;
+    db.prepare("INSERT INTO manager_rates(name,percent,from_date)VALUES(?,?,?)").run(name, percent, from);
+    res.json({ ok: true });
   });
 
   app.put("/api/finance/settings", ...adminOnly, (req, res) => {
@@ -1103,12 +1155,22 @@ cd /Users/artemkravcov/Desktop/projeckt/warehouse-crm && node tests/finance/07-r
     const debtsTotal = sum(`SELECT COALESCE(SUM(e.amount),0) - COALESCE((SELECT SUM(p.amount) FROM expense_payments p JOIN expenses e2 ON p.expense_id=e2.id WHERE e2.supplier_id IS NOT NULL),0) s
       FROM expenses e WHERE e.supplier_id IS NOT NULL`);
 
+    // Прибуток за формулою власника: дохід мінус усі витрати періоду, включно
+    // із закупівлями. Саме від нього рахується відсоток менеджера — це
+    // домовленість із людиною, і міняти базу під нову модель обліку не можна.
+    const profitCash = round2(income - opexSpent - goodsSpent);
+    const mgr = db.prepare("SELECT * FROM manager_rates WHERE from_date<=? ORDER BY from_date DESC, id DESC LIMIT 1").get(to) || null;
+    const managerAmount = mgr ? round2(profitCash * mgr.percent / 100) : 0;
+
     res.json({
       from, to, income, expenses_paid: expensesPaid, cash_delta: cashDelta,
       opening_balance: parseFloat(getSetting("cash_opening_balance", 0)) || 0,
       balance: calcBalance(),
       by_category: byCategory, goods_spent: goodsSpent, opex_spent: opexSpent,
       debts_total: debtsTotal,
+      profit_cash: profitCash,
+      manager: mgr ? { name: mgr.name, percent: mgr.percent, amount: managerAmount } : null,
+      profit_after_manager: round2(profitCash - managerAmount),
       last_check: db.prepare("SELECT * FROM cash_checks ORDER BY id DESC LIMIT 1").get() || null
     });
   });
@@ -1278,6 +1340,9 @@ function renderFinSummary(){
     +tile("Різниця по касі",finMoney(r.cash_delta)+"₴",r.cash_delta<0?"var(--red)":"var(--acc)")
     +tile("Має бути на рахунку",finMoney(r.balance)+"₴")
     +tile("Борги постачальникам",finMoney(r.debts_total)+"₴",r.debts_total?"var(--warn)":"var(--th)")
+    +tile("Прибуток за період",finMoney(r.profit_cash)+"₴",r.profit_cash<0?"var(--red)":"var(--acc)")
+    +(r.manager?tile(esc(r.manager.name)+" "+r.manager.percent+"%",finMoney(r.manager.amount)+"₴"):"")
+    +(r.manager?tile("Прибуток після виплати",finMoney(r.profit_after_manager)+"₴",r.profit_after_manager<0?"var(--red)":"var(--acc)"):"")
     +'</div>'
     +'<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
     +'<button class="btn btn-sm" onclick="openFinCheck()">Звірити з банком</button>'
