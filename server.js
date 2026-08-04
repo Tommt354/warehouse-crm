@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const db = require("./db");
 const { createToken, authMiddleware, requireRole } = require("./auth");
+const finance = require("./finance");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -2475,6 +2476,9 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
     // списаною. Списана кількість тут не чіпається: вона зменшилась ще при
     // створенні замовлення.
     if (PULLED_STATUSES.includes(status)) pullOrderStockOnce(db, req.params.id);
+
+    // Забрана посилка — це дохід дня отримання, а не дня створення замовлення.
+    if (status === "delivered") finance.onOrderDelivered(req.params.id);
   })();
 
   // Дропер бачить у себе в сповіщеннях кожну реальну зміну статусу свого
@@ -3256,6 +3260,7 @@ async function trackOneOrder(apiKey, o) {
   if (ns === "shipped") {
     db.prepare("UPDATE orders SET shipped_at=datetime('now','localtime') WHERE id=? AND (shipped_at IS NULL OR shipped_at='')").run(o.id);
   }
+  if (ns === "delivered") finance.onOrderDelivered(o.id);
   if (ns === "refused" || ns === "return_transit" || o.status === "refused" || o.status === "return_transit") {
     db.prepare("UPDATE orders SET return_flagged_at=datetime('now','localtime') WHERE id=? AND (return_flagged_at IS NULL OR return_flagged_at='')").run(o.id);
     if (st.LastCreatedOnTheBasisNumber) {
@@ -4106,7 +4111,7 @@ app.get("/staff",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.joi
 
 // Реєструємо ДО catch-all нижче: інакше "*" перехопить будь-який невідомий
 // цьому файлу маршрут /api/finance/* раніше, ніж до нього дійде фінмодуль.
-require("./finance").register(app, { authMiddleware, requireRole });
+finance.register(app, { authMiddleware, requireRole });
 
 app.get("*",(req,res)=>{if(req.path.startsWith("/api/"))return res.status(404).json({error:"Not found"});res.redirect("/login")});
 

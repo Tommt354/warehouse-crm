@@ -174,4 +174,18 @@ function register(app, { authMiddleware, requireRole }) {
   });
 }
 
-module.exports = { register };
+// Дохід визнаємо в день, коли клієнт забрав посилку, і рівно один раз.
+// Доходом вважається дроп-ціна, а не наложка: наложка приходить цілком, але
+// різниця йде дроперу, тож заробіток складу — саме дроп-ціна.
+function onOrderDelivered(orderId) {
+  const o = db.prepare("SELECT id,total_drop_price,delivered_at FROM orders WHERE id=?").get(orderId);
+  if (!o) return;
+  if (!o.delivered_at) {
+    db.prepare("UPDATE orders SET delivered_at=datetime('now','localtime') WHERE id=? AND COALESCE(delivered_at,'')=''").run(orderId);
+  }
+  const day = (db.prepare("SELECT delivered_at d FROM orders WHERE id=?").get(orderId).d || "").slice(0, 10);
+  if (!o.total_drop_price) return;
+  addCashMove({ date: day, amount: o.total_drop_price, kind: "income", ref_type: "order", ref_id: orderId, note: "Замовлення #" + orderId });
+}
+
+module.exports = { register, addCashMove, onOrderDelivered };
