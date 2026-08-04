@@ -680,6 +680,12 @@ if (addCol("orders","stock_pulled","INTEGER DEFAULT 0")) {
 addCol("stock_returns","in_at","TEXT DEFAULT NULL");
 // Переоблік складу повернень ведеться по варіації (вона несе принт), а не по
 // базовому товару, тож позиція історії має вміти зберігати і те, і те.
+// Скільки розмірів і скільки штук реально перерахували у цьому завданні.
+// Без цих двох чисел знаменник для розбіжності взяти нізвідки: recount_items
+// пишеться тільки для позицій, які розійшлись, а ті, що зійшлися, не лишають
+// сліду — і виходило б, що розбіжність завжди 100%.
+addCol("cycle_tasks","positions_counted","INTEGER DEFAULT 0");
+addCol("cycle_tasks","units_counted","INTEGER DEFAULT 0");
 addCol("recount_items","variation_id","INTEGER DEFAULT 0");
 addCol("recount_sessions","scope","TEXT DEFAULT 'base'");
 db.exec(`

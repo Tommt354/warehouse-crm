@@ -1265,7 +1265,10 @@ app.post("/api/cycle-count/submit", authMiddleware, (req, res) => {
       db.prepare("UPDATE stock_base SET recount_session_id=NULL WHERE recount_session_id=?").run(task.session_id);
       db.prepare("UPDATE recount_sessions SET status='saved',finished_at=datetime('now','localtime') WHERE id=?").run(task.session_id);
     }
-    db.prepare("UPDATE cycle_tasks SET status='done',finished_at=datetime('now','localtime'),finished_by=? WHERE id=?").run(req.user.id, task.id);
+    // Скільки розмірів і штук пройшло через руки — знаменник для розбіжності.
+    const unitsCounted = adjustments.reduce((s, a) => s + a.actual_quantity, 0);
+    db.prepare("UPDATE cycle_tasks SET status='done',finished_at=datetime('now','localtime'),finished_by=?,positions_counted=?,units_counted=? WHERE id=?")
+      .run(req.user.id, adjustments.length, unitsCounted, task.id);
   })();
   res.json({ ok: true });
 });
@@ -1287,14 +1290,21 @@ app.get("/api/cycle-count/stats", authMiddleware, requireRole("admin"), (req, re
     WHERE ri.session_id=? AND ri.diff!=0 ORDER BY bp.name, s.sort_order`);
   const assignedQ = db.prepare(`SELECT bp.id, bp.name FROM cycle_task_items cti JOIN base_products bp ON cti.base_product_id=bp.id
     WHERE cti.task_id=? ORDER BY bp.name`);
+  // Розбіжність міряємо по розмірах і в штуках, а не по товарах: товар, де не
+  // зійшовся один розмір із п'яти, і товар, де не зійшлись усі п'ять, — це
+  // різні за вагою події, а в підрахунку по товарах вони важили однаково.
   const countedProducts = new Set(), divergedProducts = new Set();
   let shortageUnits = 0, surplusUnits = 0, shortageCost = 0, surplusCost = 0;
+  let countedPositions = 0, countedUnits = 0, divergedPositions = 0;
   const days = tasks.map(t => {
     const assigned = assignedQ.all(t.id);
     const items = t.session_id ? itemsQ.all(t.session_id) : [];
     const diverged = new Set();
+    let dayShortUnits = 0, daySurplusUnits = 0, dayCost = 0;
     items.forEach(i => {
       diverged.add(i.base_product_id);
+      if (i.diff < 0) dayShortUnits += -i.diff; else daySurplusUnits += i.diff;
+      dayCost += i.diff * i.cost_price;
       if (t.status === "done") {
         if (i.diff < 0) { shortageUnits += -i.diff; shortageCost += -i.diff * i.cost_price; }
         else { surplusUnits += i.diff; surplusCost += i.diff * i.cost_price; }
@@ -1303,23 +1313,43 @@ app.get("/api/cycle-count/stats", authMiddleware, requireRole("admin"), (req, re
     if (t.status === "done") {
       assigned.forEach(a => countedProducts.add(a.id));
       diverged.forEach(id => divergedProducts.add(id));
+      countedPositions += t.positions_counted || 0;
+      countedUnits += t.units_counted || 0;
+      divergedPositions += items.length;
     }
     return {
       id: t.id, date: t.task_date, warehouse: t.warehouse, status: t.status,
       user_name: t.user_name || "", finished_at: t.finished_at,
       assigned: assigned.map(a => a.name), positions: assigned.length,
+      positions_counted: t.positions_counted || 0, units_counted: t.units_counted || 0,
+      diverged_positions: items.length,
+      shortage_units: dayShortUnits, surplus_units: daySurplusUnits,
+      cost_diff: Math.round(dayCost * 100) / 100,
       items: items.map(i => ({ ...i, cost_diff: i.diff * i.cost_price }))
     };
   });
   const totalProducts = db.prepare(`SELECT COUNT(*) c FROM base_products bp JOIN models m ON bp.model_id=m.id
     WHERE bp.active=1 AND m.active=1`).get().c;
+  const expectedUnits = countedUnits - surplusUnits + shortageUnits;
   res.json({
     from, to, started,
     total_products: totalProducts,
     counted_products: countedProducts.size,
     coverage_pct: totalProducts ? Math.round(countedProducts.size / totalProducts * 1000) / 10 : 0,
     diverged_products: divergedProducts.size,
-    divergence_pct: countedProducts.size ? Math.round(divergedProducts.size / countedProducts.size * 1000) / 10 : 0,
+    // Розмірів перевірено / з них розійшлось, і те саме у штуках. «Точність» —
+    // головне число: скільки одиниць складу лежало саме так, як каже система.
+    counted_positions: countedPositions,
+    diverged_positions: divergedPositions,
+    position_divergence_pct: countedPositions ? Math.round(divergedPositions / countedPositions * 1000) / 10 : 0,
+    counted_units: countedUnits,
+    // Знаменник у штуках — не те, що нарахували, а те, скільки одиниць мало
+    // лежати за системою (Σ before). Інакше «порахував 0 замість 50» давало б
+    // нуль у знаменнику і бездоганну точність замість повного провалу.
+    expected_units: expectedUnits,
+    diff_units: shortageUnits + surplusUnits,
+    unit_divergence_pct: expectedUnits ? Math.round((shortageUnits + surplusUnits) / expectedUnits * 1000) / 10 : 0,
+    accuracy_pct: expectedUnits ? Math.max(0, Math.round((1 - (shortageUnits + surplusUnits) / expectedUnits) * 1000) / 10) : 100,
     shortage_units: shortageUnits, surplus_units: surplusUnits,
     shortage_cost: Math.round(shortageCost * 100) / 100,
     surplus_cost: Math.round(surplusCost * 100) / 100,
