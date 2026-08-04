@@ -517,6 +517,97 @@ db.exec(`
     FOREIGN KEY (base_product_id) REFERENCES base_products(id) ON DELETE CASCADE
   );
 
+  -- Фінансовий модуль. Категорії заводить власник сам, і логіка живе саме в
+  -- категорії — обравши її, він більше нічого не вказує. kind:
+  --   expense  — гроші згоріли (бензин, оренда, реклама)
+  --   material — пішли в матеріали (тканина, фурнітура)
+  --   sewing   — оплата роботи цеху
+  --   purchase — закупка готового товару
+  -- is_goods — похідний прапорець (kind != 'expense') для звітів, пишеться
+  -- автоматично: у звітах потрібен саме поділ «згоріло / лежить у товарі».
+  CREATE TABLE IF NOT EXISTS fin_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    kind TEXT DEFAULT 'expense',
+    is_goods INTEGER DEFAULT 0,
+    sort_order INTEGER DEFAULT 0,
+    active INTEGER DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS suppliers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    active INTEGER DEFAULT 1
+  );
+
+  -- Витрата — це факт «ми винні або заплатили». Скільки з неї реально пішло
+  -- з рахунку, живе в expense_payments: постачальники дають у борг, і
+  -- неоплачений залишок — це і є борг.
+  CREATE TABLE IF NOT EXISTS expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    category_id INTEGER,
+    supplier_id INTEGER,
+    workshop_id INTEGER,
+    wholesale_id INTEGER,
+    note TEXT DEFAULT '',
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (category_id) REFERENCES fin_categories(id),
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+    FOREIGN KEY (workshop_id) REFERENCES workshops(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS expense_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expense_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE
+  );
+
+  -- Єдине джерело правди по рахунку: кожен рух грошей — рядок. ref_type/ref_id
+  -- вказують на подію-джерело, а унікальний індекс не дає записати той самий
+  -- рух двічі (трекінг НП ходить кожні 15 хв і бачить те саме замовлення).
+  CREATE TABLE IF NOT EXISTS cash_moves (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    kind TEXT NOT NULL,
+    ref_type TEXT DEFAULT '',
+    ref_id INTEGER,
+    wholesale_id INTEGER,
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS cash_moves_ref_uniq
+    ON cash_moves(kind, ref_type, ref_id) WHERE ref_id IS NOT NULL;
+
+  -- Менеджер отримує відсоток від прибутку. Ставку зберігаємо історією, а не
+  -- одним числом у налаштуваннях: змінивши відсоток, не можна перерахувати
+  -- заднім числом уже закриті місяці — людині вже заплачено за домовленістю,
+  -- яка діяла тоді.
+  CREATE TABLE IF NOT EXISTS manager_rates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    percent REAL NOT NULL DEFAULT 0,
+    from_date TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
+  CREATE TABLE IF NOT EXISTS cash_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    actual_balance REAL NOT NULL,
+    calc_balance REAL NOT NULL,
+    diff REAL NOT NULL,
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -717,6 +808,36 @@ addCol("orders","parcel_length","REAL DEFAULT 0");
 // вже є в CREATE TABLE вище з DEFAULT 0, тож у старих замовлень там нуль —
 // це і означає «коду немає», група НП тоді виводиться з внутрішнього статусу.
 addCol("orders","np_status_code","INTEGER DEFAULT 0");
+
+// День, коли клієнт забрав посилку. Досі його брали з updated_at, який
+// змінюється від будь-якої дії із замовленням, через що виручка повзла
+// заднім числом. Ставиться один раз і більше не рухається.
+if (addCol("orders","delivered_at","TEXT DEFAULT ''")) {
+  db.exec("UPDATE orders SET delivered_at=updated_at WHERE status='delivered' AND COALESCE(delivered_at,'')=''");
+}
+addCol("orders","refunded_amount","REAL DEFAULT 0");
+addCol("orders","refunded_at","TEXT DEFAULT ''");
+
+// Стартовий набір категорій, щоб було з чого почати. Далі власник додає й
+// перейменовує свої; сідимо лише на порожній таблиці, щоб не воскрешати
+// видалене.
+if (!db.prepare("SELECT COUNT(*) c FROM fin_categories").get().c) {
+  const insCat = db.prepare("INSERT INTO fin_categories(name,kind,is_goods,sort_order)VALUES(?,?,?,?)");
+  // Назви взяті з таблиці, яку власник веде зараз, щоб він відкрив вкладку і
+  // побачив звичні колонки, а не порожній список.
+  [["Оренда","expense"],["Комуналка","expense"],["Реклама","expense"],["Повернення НП","expense"],
+   ["Форс-мажор","expense"],["PK-CRM","expense"],["Бензин","expense"],["Браки","expense"],["Інше","expense"],
+   ["Тканина","material"],["Фурнітура","material"],["Матеріали","material"],
+   ["Пошив у цеху","sewing"],["Принт","sewing"],
+   ["Базар","purchase"]]
+    .forEach((r,i) => insCat.run(r[0], r[1], r[1] === "expense" ? 0 : 1, i));
+}
+
+// Свій цех платить швачкам зарплатою, чужий — платежем за рахунком. Ставка за
+// пошив одиниці однакова в обох випадках і вводиться в крої; is_own лише
+// каже системі, звідки вийдуть гроші.
+addCol("workshops","is_own","INTEGER DEFAULT 1");
+
 addCol("workers","use_daily_rate","INTEGER DEFAULT 1");
 addCol("worker_payroll","task_id","INTEGER DEFAULT NULL");
 // Payroll operation counts now live on the print/patch itself (not on the
