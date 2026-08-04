@@ -4103,6 +4103,11 @@ app.get("/drop",pageAuth,pageRole("dropshipper"),(req,res)=>res.sendFile(path.jo
 app.get("/warehouse",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","warehouse.html")));
 app.get("/finalizer",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","finalizer.html")));
 app.get("/staff",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.join(__dirname,"public","staff.html")));
+
+// Реєструємо ДО catch-all нижче: інакше "*" перехопить будь-який невідомий
+// цьому файлу маршрут /api/finance/* раніше, ніж до нього дійде фінмодуль.
+require("./finance").register(app, { authMiddleware, requireRole });
+
 app.get("*",(req,res)=>{if(req.path.startsWith("/api/"))return res.status(404).json({error:"Not found"});res.redirect("/login")});
 
 // Auto-track NP statuses every 15 minutes
