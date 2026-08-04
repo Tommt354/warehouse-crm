@@ -42,6 +42,32 @@ function register(app, { authMiddleware, requireRole }) {
     else db.prepare("DELETE FROM fin_categories WHERE id=?").run(req.params.id);
     res.json({ ok: true, hidden: !!used });
   });
+
+  // Борг по постачальнику = скільки йому нарахували мінус скільки заплатили.
+  // Рахуємо на льоту, а не окремою колонкою: колонка розійшлася б із фактами
+  // при першій же правці витрати.
+  const SUPPLIER_DEBT_SQL = `COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.supplier_id=s.id),0)
+    - COALESCE((SELECT SUM(p.amount) FROM expense_payments p JOIN expenses e2 ON p.expense_id=e2.id WHERE e2.supplier_id=s.id),0)`;
+
+  app.get("/api/finance/suppliers", ...adminOnly, (req, res) => {
+    res.json({ suppliers: db.prepare(`SELECT s.*, ROUND(${SUPPLIER_DEBT_SQL},2) as debt
+      FROM suppliers s WHERE s.active=1 ORDER BY s.name`).all() });
+  });
+
+  app.post("/api/finance/suppliers", ...adminOnly, (req, res) => {
+    const name = (req.body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Вкажіть назву постачальника" });
+    const r = db.prepare("INSERT INTO suppliers(name,note)VALUES(?,?)").run(name, req.body.note || "");
+    res.json({ ok: true, id: r.lastInsertRowid });
+  });
+
+  app.put("/api/finance/suppliers/:id", ...adminOnly, (req, res) => {
+    const name = (req.body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Вкажіть назву постачальника" });
+    db.prepare("UPDATE suppliers SET name=?,note=?,active=? WHERE id=?")
+      .run(name, req.body.note || "", req.body.active === 0 ? 0 : 1, req.params.id);
+    res.json({ ok: true });
+  });
 }
 
 module.exports = { register };
