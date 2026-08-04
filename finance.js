@@ -211,6 +211,109 @@ function register(app, { authMiddleware, requireRole }) {
     })();
     res.json({ ok: true });
   });
+
+  // Стартовий залишок: система не знає, скільки було на рахунку до її появи,
+  // тож власник вводить це число один раз, і від нього рахується баланс.
+  const getSetting = (k, d) => {
+    const r = db.prepare("SELECT value FROM settings WHERE key=?").get(k);
+    return r === undefined ? d : r.value;
+  };
+
+  app.get("/api/finance/settings", ...adminOnly, (req, res) => {
+    res.json({
+      cash_opening_balance: parseFloat(getSetting("cash_opening_balance", 0)) || 0,
+      cash_opening_date: getSetting("cash_opening_date", "") || "",
+      manager_rates: db.prepare("SELECT * FROM manager_rates ORDER BY from_date DESC, id DESC").all()
+    });
+  });
+
+  // Нова ставка менеджера — новий рядок історії, а не правка старого: місяці,
+  // за які вже заплачено, мають лишитись порахованими за тодішнім відсотком.
+  app.post("/api/finance/manager-rate", ...adminOnly, (req, res) => {
+    const name = (req.body.name || "").trim();
+    const percent = parseFloat(req.body.percent);
+    if (!name) return res.status(400).json({ error: "Вкажіть ім'я менеджера" });
+    if (isNaN(percent) || percent < 0 || percent > 100) return res.status(400).json({ error: "Відсоток має бути від 0 до 100" });
+    const from = req.body.from_date || db.prepare("SELECT date('now','localtime') d").get().d;
+    db.prepare("INSERT INTO manager_rates(name,percent,from_date)VALUES(?,?,?)").run(name, percent, from);
+    res.json({ ok: true });
+  });
+
+  app.put("/api/finance/settings", ...adminOnly, (req, res) => {
+    const st = db.prepare("INSERT OR REPLACE INTO settings(key,value)VALUES(?,?)");
+    if (req.body.cash_opening_balance !== undefined) st.run("cash_opening_balance", String(parseFloat(req.body.cash_opening_balance) || 0));
+    if (req.body.cash_opening_date !== undefined) st.run("cash_opening_date", String(req.body.cash_opening_date || ""));
+    res.json({ ok: true });
+  });
+
+  function calcBalance() {
+    const opening = parseFloat(getSetting("cash_opening_balance", 0)) || 0;
+    const since = getSetting("cash_opening_date", "") || "";
+    const moves = since
+      ? db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE date>=?").get(since).s
+      : db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves").get().s;
+    return round2(opening + moves);
+  }
+
+  app.get("/api/finance/report", ...adminOnly, (req, res) => {
+    const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+    const to = req.query.to || db.prepare("SELECT date('now','localtime') d").get().d;
+    const sum = (sql, ...p) => round2(db.prepare(sql).get(...p).s);
+
+    const income = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE kind='income' AND date BETWEEN ? AND ?", from, to);
+    const cashDelta = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE date BETWEEN ? AND ?", from, to);
+    const expensesPaid = sum("SELECT COALESCE(SUM(amount),0) s FROM expense_payments WHERE date BETWEEN ? AND ?", from, to);
+
+    // Розріз по категоріях беремо за нарахованими витратами, а не за оплатами:
+    // «скільки я витратив на тканину цього місяця» — це про витрату, навіть
+    // якщо частину взяв у борг.
+    const byCategory = db.prepare(`SELECT c.name, c.is_goods, ROUND(SUM(e.amount),2) as amount
+      FROM expenses e LEFT JOIN fin_categories c ON e.category_id=c.id
+      WHERE e.date BETWEEN ? AND ? GROUP BY e.category_id ORDER BY amount DESC`).all(from, to);
+
+    const goodsSpent = round2(byCategory.filter(c => c.is_goods).reduce((s, c) => s + c.amount, 0));
+    const opexSpent = round2(byCategory.filter(c => !c.is_goods).reduce((s, c) => s + c.amount, 0));
+
+    // Борг періоду: скільки з нарахованих у періоді витрат досі не оплачено
+    // (може бути й без постачальника — «__T7 борг» узятий просто так, без
+    // формальної картки постачальника). Рахуємо за датою нарахування витрати,
+    // а не за датою оплати, з тих самих міркувань, що й розріз по категоріях:
+    // борг належить періоду, в якому виникла витрата, і зменшується коли б
+    // не прийшла оплата, навіть пізніше.
+    const debtsTotal = sum(`SELECT COALESCE(SUM(e.amount - COALESCE((SELECT SUM(p.amount) FROM expense_payments p WHERE p.expense_id=e.id),0)),0) s
+      FROM expenses e WHERE e.date BETWEEN ? AND ?`, from, to);
+
+    // Прибуток за формулою власника: дохід мінус усі витрати періоду, включно
+    // із закупівлями. Саме від нього рахується відсоток менеджера — це
+    // домовленість із людиною, і міняти базу під нову модель обліку не можна.
+    const profitCash = round2(income - opexSpent - goodsSpent);
+    const mgr = db.prepare("SELECT * FROM manager_rates WHERE from_date<=? ORDER BY from_date DESC, id DESC LIMIT 1").get(to) || null;
+    const managerAmount = mgr ? round2(profitCash * mgr.percent / 100) : 0;
+
+    res.json({
+      from, to, income, expenses_paid: expensesPaid, cash_delta: cashDelta,
+      opening_balance: parseFloat(getSetting("cash_opening_balance", 0)) || 0,
+      balance: calcBalance(),
+      by_category: byCategory, goods_spent: goodsSpent, opex_spent: opexSpent,
+      debts_total: debtsTotal,
+      profit_cash: profitCash,
+      manager: mgr ? { name: mgr.name, percent: mgr.percent, amount: managerAmount } : null,
+      profit_after_manager: round2(profitCash - managerAmount),
+      last_check: db.prepare("SELECT * FROM cash_checks ORDER BY id DESC LIMIT 1").get() || null
+    });
+  });
+
+  // Звірка: власник вводить, скільки реально на рахунку, система показує
+  // різницю з розрахунковим. Розбіжність означає, що якийсь рух не записано.
+  app.post("/api/finance/cash-check", ...adminOnly, (req, res) => {
+    const actual = parseFloat(req.body.actual_balance);
+    if (isNaN(actual)) return res.status(400).json({ error: "Вкажіть фактичний залишок" });
+    const calc = calcBalance();
+    const diff = round2(actual - calc);
+    db.prepare("INSERT INTO cash_checks(date,actual_balance,calc_balance,diff,note)VALUES(date('now','localtime'),?,?,?,?)")
+      .run(round2(actual), calc, diff, req.body.note || "");
+    res.json({ ok: true, calc_balance: calc, diff });
+  });
 }
 
 // Дохід визнаємо в день, коли клієнт забрав посилку, і рівно один раз.
