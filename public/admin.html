@@ -29,6 +29,7 @@
 </style>
 <script src="/public/icons.js"></script>
 <script src="/public/calendar.js"></script>
+<script src="/public/finance.js"></script>
 </head>
 <body>
 <div class="app">
@@ -58,6 +59,7 @@
     <a data-p="recount"><i data-icon="checkCheck" data-size="15"></i> Переоблік</a>
     <a data-p="cyclecount"><i data-icon="clipboard" data-size="15"></i> Щоденний переоблік</a>
     <a data-p="accounting"><i data-icon="banknote" data-size="15"></i> Бухгалтерія</a>
+    <a data-p="fin"><i data-icon="wallet" data-size="15"></i> Гроші</a>
     <a data-p="settings"><i data-icon="settings" data-size="15"></i> Налаштування</a>
   </div>
   <div class="side-bottom"><div class="side-user"><b id="u-name">—</b></div><button class="btn-out" onclick="logout()">Вийти</button></div>
@@ -427,6 +429,45 @@
 </div>
 <div id="accounting-list"></div>
 </div>
+
+<div class="page" id="pg-fin"><div class="pt"><i data-icon="wallet" data-size="17"></i> Гроші</div>
+<div class="acts">
+  <button class="stab" id="fin-7" onclick="setFinPeriod(7)">7д</button>
+  <button class="stab on" id="fin-30" onclick="setFinPeriod(30)">30д</button>
+  <button class="stab" id="fin-90" onclick="setFinPeriod(90)">90д</button>
+  <input type="date" id="fin-df"><input type="date" id="fin-dt">
+  <button class="btn btn-sm btn-p" onclick="loadFinance()">OK</button>
+  <button class="btn btn-sm" onclick="openFinExpense()"><i data-icon="plus" data-size="13"></i> Додати витрату</button>
+</div>
+<div id="fin-summary" style="margin-bottom:12px"></div>
+<div class="stabs" style="margin-bottom:10px">
+  <button class="stab on" id="fintab-list" onclick="showFinTab('list')">Витрати</button>
+  <button class="stab" id="fintab-debts" onclick="showFinTab('debts')">Борги</button>
+  <button class="stab" id="fintab-cats" onclick="showFinTab('cats')">Категорії</button>
+</div>
+<div id="fin-v-list"></div>
+<div id="fin-v-debts" style="display:none"></div>
+<div id="fin-v-cats" style="display:none"></div>
+</div>
+
+<div class="modal-bg" id="fin-exp-modal"><div class="modal" style="max-width:420px"><h3><i data-icon="plus" data-size="16"></i> Витрата</h3>
+<div class="fld"><label>Дата</label><input type="date" id="fe-date"></div>
+<div class="fld"><label>Сума ₴</label><input type="number" id="fe-amount" step="0.01"></div>
+<div class="fld"><label>Категорія</label><select id="fe-cat" onchange="onFinCatChange()"></select></div>
+<div class="fld" id="fe-workshop-fld" style="display:none"><label>Цех</label><select id="fe-workshop"></select></div>
+<div class="fld"><label>Постачальник (не обов'язково)</label><select id="fe-sup"></select></div>
+<div class="fld"><label>Коментар</label><input id="fe-note"></div>
+<div class="fld"><label><input type="checkbox" id="fe-paid" checked> Оплачено з рахунку (інакше — в борг)</label></div>
+<div id="fe-err" style="display:none;color:var(--red);font-size:11px;margin-bottom:6px"></div>
+<div style="display:flex;gap:6px"><button class="btn btn-p" onclick="saveFinExpense(this)">Зберегти</button><button class="btn" onclick="closeM('fin-exp-modal')">Скасувати</button></div>
+</div></div>
+
+<div class="modal-bg" id="fin-check-modal"><div class="modal" style="max-width:380px"><h3><i data-icon="check" data-size="16"></i> Звірка з банком</h3>
+<div id="fc-calc" style="font-size:12px;color:var(--td);margin-bottom:8px"></div>
+<div class="fld"><label>Скільки реально на рахунку ₴</label><input type="number" id="fc-actual" step="0.01"></div>
+<div id="fc-res" style="font-size:12px;margin-bottom:8px"></div>
+<div style="display:flex;gap:6px"><button class="btn btn-p" onclick="saveFinCheck(this)">Звірити</button><button class="btn" onclick="closeM('fin-check-modal')">Закрити</button></div>
+</div></div>
 
 <div class="page" id="pg-settings"><div class="pt"><i data-icon="settings" data-size="17"></i> Налаштування</div>
 <div style="max-width:420px">
@@ -852,7 +893,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,defect:loadAdmDefect,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},cyclecount:loadCycleCount,accounting:loadAccounting,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,defect:loadAdmDefect,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},cyclecount:loadCycleCount,accounting:loadAccounting,fin:loadFinance,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
@@ -3597,6 +3638,8 @@ RangePicker.init("ac-df", "ac-dt", {presets:[7,15,30], quick:false});
 setAccPeriod(30);
 RangePicker.init("cc-df", "cc-dt", {presets:[7,30,90], quick:false, onApply:function(){loadCycleCount()}});
 setCcPeriod(30);
+RangePicker.init("fin-df", "fin-dt", {presets:[7,30,90], quick:false, onApply:function(){loadFinance()}});
+setFinPeriod(30);
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>
