@@ -2045,6 +2045,11 @@ app.post("/api/orders", authMiddleware, (req, res) => {
   try { result = createOrderTx(); }
   catch (e) { return res.status(400).json({ error: e.message || "Не вдалося створити замовлення" }); }
 
+  // Повна передоплата — гроші приходять на рахунок наперед, у день створення
+  // замовлення, а не в день отримання клієнтом (onOrderCreated сам пропускає
+  // paid_from_balance — там реальних грошей у цей момент не надходить).
+  if (result.is_prepaid) finance.onOrderCreated(result.order_id);
+
 // Auto-generate TTN for COD orders (not prepaid, not self-pickup)
   if (!result.is_prepaid && result.order_id && deliveryType !== "pickup") {
     try {
@@ -2672,6 +2677,9 @@ app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) =
     affected.forEach(id => recalcPayout(id));
     refundOrderBalance(o, req.user.id);
     db.prepare("UPDATE balance_transactions SET order_id=NULL WHERE order_id=?").run(o.id);
+    // Замовлення видаляється — його рухи каси (наложка/передоплата,
+    // повернення) інакше лишаються сиротами: рух є, а orders-рядка вже нема.
+    finance.removeCashMovesForOrder(o.id);
     db.prepare("DELETE FROM orders WHERE id=?").run(o.id);
   })();
   res.json({ ok: true });
@@ -4029,8 +4037,12 @@ app.get("/api/dashboard/popularity", authMiddleware, requireRole("admin"), (req,
 app.get("/api/dashboard/accounting", authMiddleware, requireRole("admin"), (req, res) => {
   const df = req.query.date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const dt = req.query.date_to || new Date().toISOString().slice(0, 10);
-  const delivered = db.prepare(`SELECT date(updated_at) as day, COUNT(*) as c, COALESCE(SUM(cod_amount),0) as cod, COALESCE(SUM(total_drop_price),0) as drop_sum
-    FROM orders WHERE status='delivered' AND date(updated_at) BETWEEN ? AND ? GROUP BY day`).all(df, dt);
+  // Групуємо по delivered_at, а не updated_at: останній зсувається від будь-
+  // якої правки замовлення (зміна ТТН, ручний edit), через що вкладка
+  // «Бухгалтерія» показувала інший день, ніж день фактичного отримання.
+  // delivered_at ставиться один раз і більше не рухається (див. db.js).
+  const delivered = db.prepare(`SELECT date(delivered_at) as day, COUNT(*) as c, COALESCE(SUM(cod_amount),0) as cod, COALESCE(SUM(total_drop_price),0) as drop_sum
+    FROM orders WHERE status='delivered' AND delivered_at!='' AND date(delivered_at) BETWEEN ? AND ? GROUP BY day`).all(df, dt);
   const refused = db.prepare(`SELECT date(updated_at) as day, COUNT(*) as c
     FROM orders WHERE status IN ('refused','cancelled') AND date(updated_at) BETWEEN ? AND ? GROUP BY day`).all(df, dt);
   const shipped = db.prepare(`SELECT date(created_at) as day, COUNT(*) as c

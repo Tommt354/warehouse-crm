@@ -193,6 +193,13 @@ function register(app, { authMiddleware, requireRole }) {
     if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
     const amount = parseFloat(req.body.amount);
     if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму повернення" });
+    // Стеля повернення: без неї зайвий нуль у полі суми знищує залишок, а
+    // виправити з інтерфейсу нема як — повернути можна не більше, ніж
+    // клієнт фактично заплатив за замовлення (дроп-ціна мінус уже повернене).
+    const maxRefund = round2((o.total_drop_price || 0) - (o.refunded_amount || 0));
+    if (round2(amount) > maxRefund) {
+      return res.status(400).json({ error: "Сума перевищує залишок, доступний до повернення (" + maxRefund + "₴)" });
+    }
     const date = db.prepare("SELECT date('now','localtime') d").get().d;
     const orderTag = "(замовлення #" + o.id + ")";
     // Захист від випадкового повтору того самого запиту (подвійний клік,
@@ -273,7 +280,15 @@ function register(app, { authMiddleware, requireRole }) {
     const to = req.query.to || db.prepare("SELECT date('now','localtime') d").get().d;
     const sum = (sql, ...p) => round2(db.prepare(sql).get(...p).s);
 
-    const income = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE kind='income' AND date BETWEEN ? AND ?", from, to);
+    // Дохід рахуємо із замовлень, а не з каси: каса тепер показує реальні
+    // рухи рахунку (наложка/передоплата/виплата), а не заробіток складу.
+    // Дохід — це дроп-ціна замовлень, забраних у періоді (delivered_at),
+    // мінус повернення коштів клієнту, зроблені в цьому ж періоді (рухи
+    // amount у cash_moves уже від'ємні, тож додаємо їх напряму) — інакше
+    // прибуток був би завищений на суму грошей, які вже повернули клієнту.
+    const deliveredIncome = sum("SELECT COALESCE(SUM(total_drop_price),0) s FROM orders WHERE delivered_at!='' AND date(delivered_at) BETWEEN ? AND ?", from, to);
+    const refundsInPeriod = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE kind IN ('refund','refund_extra') AND date BETWEEN ? AND ?", from, to);
+    const income = round2(deliveredIncome + refundsInPeriod);
     const cashDelta = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE date BETWEEN ? AND ?", from, to);
     const expensesPaid = sum("SELECT COALESCE(SUM(amount),0) s FROM expense_payments WHERE date BETWEEN ? AND ?", from, to);
 
@@ -304,7 +319,10 @@ function register(app, { authMiddleware, requireRole }) {
     // домовленість із людиною, і міняти базу під нову модель обліку не можна.
     const profitCash = round2(income - opexSpent - goodsSpent);
     const mgr = db.prepare("SELECT * FROM manager_rates WHERE from_date<=? ORDER BY from_date DESC, id DESC LIMIT 1").get(to) || null;
-    const managerAmount = mgr ? round2(profitCash * mgr.percent / 100) : 0;
+    // Рішення власника: у збитковий період менеджер нічого не винен складу —
+    // нарахування зануляється, а не йде в мінус. profit_after_manager тоді
+    // дорівнює самому прибутку (Math.max(0,...) саме це й дає при amount=0).
+    const managerAmount = mgr ? round2(Math.max(0, profitCash) * mgr.percent / 100) : 0;
 
     res.json({
       from, to, income, expenses_paid: expensesPaid, cash_delta: cashDelta,
@@ -332,28 +350,62 @@ function register(app, { authMiddleware, requireRole }) {
   });
 }
 
-// Дохід визнаємо в день, коли клієнт забрав посилку, і рівно один раз.
-// Доходом вважається дроп-ціна, а не наложка: наложка приходить цілком, але
-// різниця йде дроперу, тож заробіток складу — саме дроп-ціна.
+// Каса тепер відображає реальні рухи рахунку, «як у банку» — не заробіток
+// складу. Нова Пошта переказує на рахунок ВСЮ наложку, а не дроп-ціну; частку
+// дропера склад віддає йому окремим рухом (onDropPayoutPaid). Записувати сюди
+// дроп-ціну замість наложки означало б віднімати частку дропера двічі: раз
+// тим, що в касу й так потрапляє менше за наложку, і ще раз — виплатою.
+// Дохід для звіту (яким звик оперувати власник — дроп-ціна забраних посилок)
+// рахується окремо, із самих замовлень: GET /api/finance/report.
 function onOrderDelivered(orderId) {
-  const o = db.prepare("SELECT id,total_drop_price,delivered_at FROM orders WHERE id=?").get(orderId);
+  const o = db.prepare("SELECT id,cod_amount,is_prepaid,delivered_at FROM orders WHERE id=?").get(orderId);
   if (!o) return;
   if (!o.delivered_at) {
     db.prepare("UPDATE orders SET delivered_at=datetime('now','localtime') WHERE id=? AND COALESCE(delivered_at,'')=''").run(orderId);
   }
   const day = (db.prepare("SELECT delivered_at d FROM orders WHERE id=?").get(orderId).d || "").slice(0, 10);
+  // Повна передоплата йде без наложки — гроші за таке замовлення вже
+  // потрапили в касу при створенні (onOrderCreated), тут рухати нічого.
+  if (o.is_prepaid || !o.cod_amount) return;
+  addCashMove({ date: day, amount: o.cod_amount, kind: "cod", ref_type: "order", ref_id: orderId, note: "Наложка, замовлення #" + orderId });
+}
+
+// Повна передоплата: дропер платить наперед, до відправки, і гроші приходять
+// на рахунок у день створення замовлення, а не в день отримання клієнтом.
+// Замовлення, оплачене з балансу дропера (paid_from_balance) — виняток:
+// баланс це внутрішній облік, реальних грошей на рахунок у цей момент не
+// надходить, тож рух каси тут не пишемо.
+function onOrderCreated(orderId) {
+  const o = db.prepare("SELECT id,total_drop_price,is_prepaid,paid_from_balance,created_at FROM orders WHERE id=?").get(orderId);
+  if (!o || !o.is_prepaid || o.paid_from_balance) return;
   if (!o.total_drop_price) return;
-  addCashMove({ date: day, amount: o.total_drop_price, kind: "income", ref_type: "order", ref_id: orderId, note: "Замовлення #" + orderId });
+  const day = (o.created_at || "").slice(0, 10) || db.prepare("SELECT date('now','localtime') d").get().d;
+  addCashMove({ date: day, amount: o.total_drop_price, kind: "prepaid", ref_type: "order", ref_id: orderId, note: "Передоплата, замовлення #" + orderId });
 }
 
 // Виплата дроперу — рух грошей, а не витрата: його частина вже виключена з
-// доходу тим, що доходом рахується дроп-ціна, а не наложка. Записати її ще й
-// витратою означало б відняти двічі.
+// каси тим, що в касу за наложкою потрапляє менше, ніж дроп-ціна. З рахунку
+// реально виходить не тільки total_amount заявки, а й залік балансу
+// (balance_applied) — та сама сума, яку бачить дропер у сповіщенні про
+// виплату (POST /api/payouts/:id/paid), тож рахуємо однаково.
 function onDropPayoutPaid(payoutRequestId) {
-  const pr = db.prepare("SELECT id,total_amount,paid_at FROM payout_requests WHERE id=?").get(payoutRequestId);
-  if (!pr || !pr.total_amount) return;
+  const pr = db.prepare("SELECT id,total_amount,balance_applied,paid_at FROM payout_requests WHERE id=?").get(payoutRequestId);
+  if (!pr) return;
+  const amount = round2((pr.total_amount || 0) + (pr.balance_applied || 0));
+  if (!amount) return;
   addCashMove({ date: (pr.paid_at || "").slice(0, 10) || db.prepare("SELECT date('now','localtime') d").get().d,
-    amount: -pr.total_amount, kind: "payout", ref_type: "payout", ref_id: pr.id, note: "Виплата дроперу" });
+    amount: -amount, kind: "payout", ref_type: "payout", ref_id: pr.id, note: "Виплата дроперу" });
+}
+
+// Видалення замовлення не має лишати його рухи каси сиротами. Часткові
+// повернення (kind='refund_extra') не мають ref_id — унікальний індекс
+// cash_moves_ref_uniq дозволяє прив'язати до замовлення лише перший рух
+// повернення, наступні пишуться без ref, тож для них шукаємо по мітці
+// "(замовлення #N)" у нотатці, так само як /refund вирішує, який це рух.
+function removeCashMovesForOrder(orderId) {
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id=?").run(orderId);
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='refund' AND ref_id=?").run(orderId);
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='refund_extra' AND note LIKE ?").run("%(замовлення #" + orderId + ")");
 }
 
 // Зарплата: у касу потрапляє факт виплати, а не нарахування.
@@ -364,4 +416,4 @@ function onWorkerPayout(workerPayoutId) {
     ref_type: "worker_payout", ref_id: p.id, note: "Зарплата: " + p.name });
 }
 
-module.exports = { register, addCashMove, onOrderDelivered, onDropPayoutPaid, onWorkerPayout };
+module.exports = { register, addCashMove, onOrderCreated, onOrderDelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder };

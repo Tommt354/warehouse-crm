@@ -818,6 +818,21 @@ if (addCol("orders","delivered_at","TEXT DEFAULT ''")) {
 addCol("orders","refunded_amount","REAL DEFAULT 0");
 addCol("orders","refunded_at","TEXT DEFAULT ''");
 
+// Модель каси змінилась на «як у банку»: рух каси — це реальні гроші на
+// рахунку (наложка/передоплата/виплата), а не заробіток складу. Раніше сюди
+// писалась дроп-ціна під kind='income', і окремим рухом ще й віднімалась
+// виплата дроперу — тобто його частка віднімалась двічі, а розрахунковий
+// залишок накопичувально занижувався на суму всіх виплат. Дохід тепер
+// рахується зі замовлень (GET /api/finance/report), а не з каси, тож старі
+// рухи income лишились би задвоєним доходом поруч із новими cod/prepaid —
+// прибираємо їх один раз, під прапорцем, щоб не чіпати рухи, які власник
+// міг завести вручну після цієї міграції.
+if (!db.prepare("SELECT value FROM settings WHERE key='cash_income_kind_removed_v1'").get()) {
+  const removed = db.prepare("DELETE FROM cash_moves WHERE kind='income'").run().changes;
+  db.prepare("INSERT OR REPLACE INTO settings(key,value)VALUES('cash_income_kind_removed_v1','1')").run();
+  if (removed) console.log("✅ Прибрано застарілих рухів каси kind=income: " + removed + " (дохід тепер рахується зі замовлень)");
+}
+
 // Стартовий набір категорій, щоб було з чого почати. Далі власник додає й
 // перейменовує свої; сідимо лише на порожній таблиці, щоб не воскрешати
 // видалене.
