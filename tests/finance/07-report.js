@@ -130,17 +130,23 @@ function cleanupT7() {
   ok(round2(rAfterPay2.debts_total - rBeforeOldDebt.debts_total) === 1500,
     "підсумок: +4000 нараховано − 1500 − 1000 оплачено = +1500 до сальдо боргу (" + round2(rAfterPay2.debts_total - rBeforeOldDebt.debts_total) + ")");
 
-  // ── менеджер: пункт 7 — у збитковий період нарахування зануляється ─
+  // ── менеджер: пункт 7 — у збитковий період нарахування йде в мінус ─
   // Сьогоднішній період уже збитковий: дохід (9000−1500 повернення=7500 з
-  // фікстури) менший за витрати дня (2000+5000+3000=10000).
+  // фікстури) менший за витрати дня (2000+5000+3000=10000). Власник скасував
+  // обнуління: нарахування — це просто відсоток від прибутку, без обмеження
+  // знизу, як і в його власній таблиці.
   await api("/api/finance/manager-rate", { method: "POST", body: JSON.stringify({ name: "__T7 Діана", percent: 7, from_date: "2000-01-01" }) });
   const r3 = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
   ok(round2(r3.profit_cash) === round2(r1b.income - r1b.opex_spent - r1b.goods_spent), "прибуток = дохід − витрати періоду (" + r3.profit_cash + ")");
   if (r3.profit_cash < 0) {
-    ok(r3.manager && r3.manager.amount === 0, "збитковий період: менеджеру нараховується 0, а не мінус (" + JSON.stringify(r3.manager) + ", прибуток " + r3.profit_cash + ")");
-    ok(round2(r3.profit_after_manager) === round2(r3.profit_cash), "прибуток після менеджера = сам прибуток, коли нарахування нульове (" + r3.profit_after_manager + ")");
+    ok(r3.manager && round2(r3.manager.amount) === round2(r3.profit_cash * 7 / 100),
+      "збитковий період: менеджеру нараховується відсоток від збитку, тобто мінус (" + JSON.stringify(r3.manager) + ", прибуток " + r3.profit_cash + ")");
+    ok(r3.manager.amount < 0, "нарахування менеджера від'ємне в збиток (" + r3.manager.amount + ")");
+    ok(round2(r3.profit_after_manager) === round2(r3.profit_cash - r3.manager.amount),
+      "прибуток після менеджера = прибуток − нарахування (тут більший за прибуток, бо нарахування від'ємне) (" + r3.profit_after_manager + ")");
+    ok(r3.profit_after_manager > r3.profit_cash, "прибуток після менеджера перевищує сам прибуток у збиток (" + r3.profit_after_manager + " > " + r3.profit_cash + ")");
   } else {
-    console.log("⚠️ сьогоднішній період неочікувано не збитковий (" + r3.profit_cash + ") — перевірку нуля менеджера в збиток пропущено, її дублює перевірка на позитивному прибутку нижче");
+    console.log("⚠️ сьогоднішній період неочікувано не збитковий (" + r3.profit_cash + ") — перевірку від'ємного нарахування в збиток пропущено, її дублює перевірка на позитивному прибутку нижче");
   }
 
   // ── менеджер: позитивний прибуток — відсоток рахується як і раніше ─

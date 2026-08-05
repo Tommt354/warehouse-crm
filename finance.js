@@ -319,10 +319,10 @@ function register(app, { authMiddleware, requireRole }) {
     // домовленість із людиною, і міняти базу під нову модель обліку не можна.
     const profitCash = round2(income - opexSpent - goodsSpent);
     const mgr = db.prepare("SELECT * FROM manager_rates WHERE from_date<=? ORDER BY from_date DESC, id DESC LIMIT 1").get(to) || null;
-    // Рішення власника: у збитковий період менеджер нічого не винен складу —
-    // нарахування зануляється, а не йде в мінус. profit_after_manager тоді
-    // дорівнює самому прибутку (Math.max(0,...) саме це й дає при amount=0).
-    const managerAmount = mgr ? round2(Math.max(0, profitCash) * mgr.percent / 100) : 0;
+    // Рішення власника: у збитковий період нарахування лишається від'ємним —
+    // це той самий відсоток від прибутку, без обмеження знизу, бо саме так
+    // рахує його власна таблиця.
+    const managerAmount = mgr ? round2(profitCash * mgr.percent / 100) : 0;
 
     res.json({
       from, to, income, expenses_paid: expensesPaid, cash_delta: cashDelta,
