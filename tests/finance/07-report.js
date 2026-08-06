@@ -164,7 +164,12 @@ function cleanupT7() {
   const rYestAfter = (await api("/api/finance/report?from=" + yesterday + "&to=" + yesterday)).b;
   ok(round2(rYestAfter.income - rYestBefore.income) === 10000, "дохід вчорашнього періоду +10000 від замовлення, забраного вчора (" + round2(rYestAfter.income - rYestBefore.income) + ")");
   ok(rYestAfter.profit_cash > 0, "вчорашній період прибутковий, як і задумано (" + rYestAfter.profit_cash + ")");
-  ok(rYestAfter.manager && round2(rYestAfter.manager.amount) === round2(Math.max(0, rYestAfter.profit_cash) * 7 / 100),
+  // Math.max(0, ...) тут навмисно не пишемо: profit_cash > 0 щойно
+  // перевірено рядком вище, тож обгортка нічого не стверджувала б понад
+  // просте profit_cash — це був залишок від скасованого правила "менеджер
+  // не йде в мінус" (протилежний, збитковий випадок перевірено вище,
+  // рядки 141-150, де тепер очікується саме від'ємне нарахування).
+  ok(rYestAfter.manager && round2(rYestAfter.manager.amount) === round2(rYestAfter.profit_cash * 7 / 100),
     "на позитивному прибутку менеджер рахується як звичайний відсоток, не нуль (" + JSON.stringify(rYestAfter.manager) + ")");
   ok(round2(rYestAfter.profit_after_manager) === round2(rYestAfter.profit_cash - rYestAfter.manager.amount),
     "прибуток після менеджера = прибуток − сума менеджера (" + rYestAfter.profit_after_manager + ")");
@@ -190,6 +195,31 @@ function cleanupT7() {
   ok(ch.s === 200 && round2(ch.b.diff) === -500, "звірка показала розбіжність −500 (" + ch.b.diff + ")");
   const r2 = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
   ok(r2.last_check && round2(r2.last_check.diff) === -500, "остання звірка видно у звіті");
+
+  // ── I1: замовлення, що вийшло зі статусу delivered (НП повернула
+  // посилку), однаково зникає з доходу і на /api/finance/report, і на
+  // /api/dashboard/accounting — обидва тепер рахують за одним правилом
+  // (status='delivered' AND delivered_at!=''), а вихід зі статусу delivered
+  // чистить delivered_at (див. finance.onOrderUndelivered).
+  const prodI1r = createTestProduct(333);
+  const createI1r = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodI1r.varId, size_id: prodI1r.sizeId, quantity: 1 }],
+    client_name: "__T7 Повернуте", client_phone: "+380501130005", client_city: "Київ", client_warehouse: "Відділення №1",
+    cod_amount: 400, note: "__T7"
+  }) });
+  const i1rOrderId = createI1r.b.order_id;
+  await api("/api/orders/" + i1rOrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
+  const rBeforeReturn = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
+  const dashBeforeReturn = (await api("/api/dashboard/accounting?date_from=" + today + "&date_to=" + today)).b;
+  await api("/api/orders/" + i1rOrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "return_transit" }) });
+  const rAfterReturn = (await api("/api/finance/report?from=" + today + "&to=" + today)).b;
+  const dashAfterReturn = (await api("/api/dashboard/accounting?date_from=" + today + "&date_to=" + today)).b;
+  ok(round2(rAfterReturn.income - rBeforeReturn.income) === -333,
+    "дохід звіту /finance/report зменшився на дроп-ціну повернутого замовлення, а не лишився завищеним (" + round2(rAfterReturn.income - rBeforeReturn.income) + ")");
+  const dashDayBefore = (dashBeforeReturn.days || []).find(d => d.day === today) || { drop_sum: 0 };
+  const dashDayAfter = (dashAfterReturn.days || []).find(d => d.day === today) || { drop_sum: 0 };
+  ok(round2((dashDayAfter.drop_sum || 0) - (dashDayBefore.drop_sum || 0)) === -333,
+    "«Бухгалтерія» /dashboard/accounting так само перестала рахувати повернуте замовлення — узгоджено з /finance/report (" + round2((dashDayAfter.drop_sum || 0) - (dashDayBefore.drop_sum || 0)) + ")");
 
   // ── пункт 6: «Бухгалтерія» групує по delivered_at, не по updated_at ─
   // Вчорашній день уже має власні "отримані" фікстури (yestOrderId і

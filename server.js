@@ -2305,6 +2305,10 @@ app.post("/api/order-items/:id/swap-product", authMiddleware, requireRole("admin
     const newTotal = Math.round((db.prepare("SELECT COALESCE(SUM(drop_price*quantity),0) as t FROM order_items WHERE order_id=?").get(item.order_id).t) * 100) / 100;
     const payout = item.is_prepaid ? 0 : Math.round(((item.cod_amount || 0) - newTotal) * 100) / 100;
     db.prepare("UPDATE orders SET total_drop_price=?,payout_amount=? WHERE id=?").run(newTotal, payout, item.order_id);
+    // Передоплачене замовлення могло вже мати прихід каси (kind='prepaid'),
+    // записаний зі старою total_drop_price при створенні — приводимо його
+    // до нової суми замість того, щоб рух каси лишався неправдою.
+    finance.syncOrderCashMove(item.order_id);
 
     let balanceDelta = 0;
     if (item.paid_from_balance) {
@@ -2368,6 +2372,9 @@ app.post("/api/orders/:id/items", authMiddleware, requireRole("admin","warehouse
     const newWeight = Math.round(((o.weight || 0) + (nv.m_weight || 0.3) * qty) * 100) / 100;
     db.prepare("UPDATE orders SET total_drop_price=?,payout_amount=?,weight=?,updated_at=datetime('now','localtime') WHERE id=?")
       .run(newTotal, payout, newWeight, o.id);
+    // Те саме, що й у swap-product: передоплачене замовлення могло вже
+    // мати прихід каси зі старою total_drop_price — синхронізуємо.
+    finance.syncOrderCashMove(o.id);
 
     // Замовлення, оплачене з балансу: доплату списуємо одразу.
     let balanceDelta = 0;
@@ -2482,6 +2489,13 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
     // створенні замовлення.
     if (PULLED_STATUSES.includes(status)) pullOrderStockOnce(db, req.params.id);
 
+    // Вихід зі статусу delivered (НП повернула посилку — refused/
+    // return_transit, або статус відкотили вручну) знімає прихід наложкою
+    // і delivered_at: інакше дохід звіту лишається завищеним на посилку,
+    // яку клієнт так і не забрав, а повторне отримання того самого
+    // замовлення (нижче) мовчки нічого не зробило б через уже виставлений
+    // delivered_at.
+    if (existing.status === "delivered" && status !== "delivered") finance.onOrderUndelivered(req.params.id);
     // Забрана посилка — це дохід дня отримання, а не дня створення замовлення.
     if (status === "delivered") finance.onOrderDelivered(req.params.id);
   })();
@@ -2636,6 +2650,11 @@ app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehous
     db.prepare("DELETE FROM payout_items WHERE order_id=? AND payout_request_id IN (SELECT id FROM payout_requests WHERE status='pending')").run(o.id);
     affectedPr.forEach(id => recalcPayout(id));
     refundOrderBalance(o, req.user.id);
+    // Скасоване передоплачене замовлення повертає гроші дроперу (вище), тож
+    // прихід каси, записаний при створенні (kind='prepaid'), більше не
+    // відповідає дійсності — на відміну від DELETE, тут це раніше не
+    // прибиралось, і рух лишався в касі назавжди.
+    finance.removeCashMovesForOrder(o.id);
     // Товар повернувся на полицю, тож замовлення знову "не зняте". Інакше,
     // якщо скасоване замовлення повернути в роботу ручною випадачкою, повторне
     // "Готово" не списало б залишок — речі пішли б зі складу непоміченими.
@@ -3268,6 +3287,11 @@ async function trackOneOrder(apiKey, o) {
   if (ns === "shipped") {
     db.prepare("UPDATE orders SET shipped_at=datetime('now','localtime') WHERE id=? AND (shipped_at IS NULL OR shipped_at='')").run(o.id);
   }
+  // Той самий відкат, що й у ручному PUT /api/orders/:id/status: трекінг НП
+  // сам переводить delivered → refused/return_transit, коли посилку
+  // повернули, і без цього прихід наложкою та delivered_at так само
+  // лишились би застряглими на "забраній" посилці.
+  if (o.status === "delivered" && ns && ns !== "delivered") finance.onOrderUndelivered(o.id);
   if (ns === "delivered") finance.onOrderDelivered(o.id);
   if (ns === "refused" || ns === "return_transit" || o.status === "refused" || o.status === "return_transit") {
     db.prepare("UPDATE orders SET return_flagged_at=datetime('now','localtime') WHERE id=? AND (return_flagged_at IS NULL OR return_flagged_at='')").run(o.id);
@@ -3945,6 +3969,15 @@ app.put("/api/payouts/:id/paid", authMiddleware, requireRole("admin"), (req, res
   // запиті встигло змінити стан, сума має це врахувати, а не платити старе.
   if (pr.status === "pending") { try { db.transaction(() => syncPendingPayout(pr.id))(); } catch (e) { console.log("sync payout error:", e.message); } }
   pr.total_amount = db.prepare("SELECT total_amount FROM payout_requests WHERE id=?").get(pr.id).total_amount;
+  // Підсумок виплати — total_amount заявки плюс залік балансу, той самий,
+  // що йде в касу мінусом (onDropPayoutPaid). Якщо борг дропера (від'ємний
+  // баланс) більший за суму заявки, підсумок від'ємний — реально ніхто
+  // нікому нічого не переказує, тож проводити таку виплату не можна: у касу
+  // потрапив би плюс замість очікуваного мінуса (фантомний прихід).
+  const payoutFinalTotal = round2((pr.total_amount || 0) + (pr.balance_applied || 0));
+  if (payoutFinalTotal < 0) {
+    return res.status(400).json({ error: "Підсумок виплати від'ємний (борг дропера більший за суму до виплати) — зменшіть залік балансу перед проведенням" });
+  }
   db.prepare("UPDATE payout_requests SET status='paid',paid_at=datetime('now','localtime') WHERE id=?").run(req.params.id);
   finance.onDropPayoutPaid(req.params.id);
   // Головна подія для дропера: гроші пішли. Сума — разом із заліком балансу,
@@ -4040,7 +4073,13 @@ app.get("/api/dashboard/accounting", authMiddleware, requireRole("admin"), (req,
   // Групуємо по delivered_at, а не updated_at: останній зсувається від будь-
   // якої правки замовлення (зміна ТТН, ручний edit), через що вкладка
   // «Бухгалтерія» показувала інший день, ніж день фактичного отримання.
-  // delivered_at ставиться один раз і більше не рухається (див. db.js).
+  // status='delivered' AND delivered_at!='' — те саме правило доходу, що й
+  // у GET /api/finance/report (finance.js): вихід зі статусу delivered
+  // (НП повернула посилку) чистить delivered_at через
+  // finance.onOrderUndelivered, тож обидві умови на новому коді збігаються;
+  // фільтр по статусу лишаємо явним, щоб два екрани доходу гарантовано не
+  // розійшлись, навіть якщо колись з'явиться шлях, що зсуває delivered_at
+  // повз цей хук.
   const delivered = db.prepare(`SELECT date(delivered_at) as day, COUNT(*) as c, COALESCE(SUM(cod_amount),0) as cod, COALESCE(SUM(total_drop_price),0) as drop_sum
     FROM orders WHERE status='delivered' AND delivered_at!='' AND date(delivered_at) BETWEEN ? AND ? GROUP BY day`).all(df, dt);
   const refused = db.prepare(`SELECT date(updated_at) as day, COUNT(*) as c
@@ -4076,6 +4115,11 @@ app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), async (req
       parcel_height!==undefined?(parseFloat(parcel_height)||0):o.parcel_height,
       parcel_length!==undefined?(parseFloat(parcel_length)||0):o.parcel_length,
       o.id);
+
+  // Наложку могли правити на вже доставленому замовленні, чий прихід каси
+  // (kind='cod') уже записаний зі старою сумою — приводимо його до нової,
+  // щоб розрахунковий залишок не розійшовся з банківською випискою.
+  finance.syncOrderCashMove(o.id);
 
   // Recipient data on an already-issued TTN can't just be changed in place —
   // the label's name/phone/address is fixed at NP's end. If anything that

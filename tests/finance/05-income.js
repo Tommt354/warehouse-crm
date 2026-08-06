@@ -23,6 +23,24 @@ const today = db.prepare("SELECT date('now','localtime') d").get().d;
   const drop = db.prepare("SELECT id,balance_enabled FROM users WHERE role='dropshipper' ORDER BY id LIMIT 1").get();
   ok(!!drop, "є дропер для перевірки");
 
+  // Тест C нижче вимагає balance_enabled=1 у дропера — не покладаємось на
+  // те, що вже стоїть у копії бази, а вмикаємо його явно через реальний
+  // ендпоінт (PUT віддає й перезаписує решту полів користувача, тож спершу
+  // читаємо їх, щоб не занулити ім'я/телефон/знижки фікстурі дропера).
+  // Прапорець повертаємо назад наприкінці, якщо він був вимкнений.
+  const dropFull = (await api("/api/users/" + drop.id)).b.user;
+  const restoreBalanceFields = () => ({
+    name: dropFull.name, phone: dropFull.phone, email: dropFull.email, telegram: dropFull.telegram,
+    discount_percent: dropFull.discount_percent, discount_fixed: dropFull.discount_fixed,
+    worker_role: dropFull.worker_role, worker_rate: dropFull.worker_rate, active: dropFull.active,
+    assigned_warehouse: dropFull.assigned_warehouse
+  });
+  if (!dropFull.balance_enabled) {
+    const enableRes = await api("/api/users/" + drop.id, { method: "PUT", body: JSON.stringify({ ...restoreBalanceFields(), balance_enabled: true }) });
+    ok(enableRes.s === 200, "балансовий режим дропера увімкнено фікстурою (" + JSON.stringify(enableRes.b) + ")");
+    drop.balance_enabled = 1;
+  }
+
   // ── A: COD-замовлення — прихід за наложкою, не за дроп-ціною ──────
   const prodA = createTestProduct(200);
   const createA = await api("/api/orders", { method: "POST", body: JSON.stringify({
@@ -106,6 +124,11 @@ const today = db.prepare("SELECT date('now','localtime') d").get().d;
   ok(!!flagRow, "прапорець одноразової міграції виставлено");
 
   // ── прибирання фікстур ─────────────────────────────────────────
+  // Якщо балансовий режим вмикали фікстурою вище — вимикаємо назад, щоб
+  // тест не лишав дропера в іншому стані, ніж застав.
+  if (!dropFull.balance_enabled) {
+    await api("/api/users/" + drop.id, { method: "PUT", body: JSON.stringify({ ...restoreBalanceFields(), balance_enabled: false }) });
+  }
   // Замовлення C списало собівартість із балансу дропера при створенні —
   // повертаємо баланс назад, інакше він назавжди просяде на 120₴.
   const balTx = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM balance_transactions WHERE order_id=?").get(orderC).s;

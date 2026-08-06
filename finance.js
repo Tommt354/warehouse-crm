@@ -286,8 +286,22 @@ function register(app, { authMiddleware, requireRole }) {
     // мінус повернення коштів клієнту, зроблені в цьому ж періоді (рухи
     // amount у cash_moves уже від'ємні, тож додаємо їх напряму) — інакше
     // прибуток був би завищений на суму грошей, які вже повернули клієнту.
-    const deliveredIncome = sum("SELECT COALESCE(SUM(total_drop_price),0) s FROM orders WHERE delivered_at!='' AND date(delivered_at) BETWEEN ? AND ?", from, to);
-    const refundsInPeriod = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE kind IN ('refund','refund_extra') AND date BETWEEN ? AND ?", from, to);
+    // status='delivered' — навмисний дубль до delivered_at!='': вихід зі
+    // статусу delivered (НП повернула посилку — refused/return_transit)
+    // чистить delivered_at (finance.onOrderUndelivered), тож на новому коді
+    // обидві умови й так збігаються. Лишаємо статус явним фільтром на
+    // випадок старих рядків до цього фіксу чи майбутнього шляху, який
+    // рухне delivered_at повз ці хуки — те саме правило, що й у
+    // GET /api/dashboard/accounting (server.js), щоб два екрани доходу
+    // ніколи не розходились між собою.
+    const deliveredIncome = sum("SELECT COALESCE(SUM(total_drop_price),0) s FROM orders WHERE status='delivered' AND delivered_at!='' AND date(delivered_at) BETWEEN ? AND ?", from, to);
+    // Повернення коштів завжди пишуться з kind='refund' — 'refund_extra' це
+    // значення ref_type (друге й наступні часткові повернення без ref_id,
+    // див. addCashMove у POST /api/finance/orders/:id/refund), а не kind.
+    // Раніше тут стояло kind IN ('refund','refund_extra') — 'refund_extra'
+    // ніколи не збігалось із kind, тож умова була дублем kind='refund' і
+    // працювала правильно лише випадково.
+    const refundsInPeriod = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE kind='refund' AND date BETWEEN ? AND ?", from, to);
     const income = round2(deliveredIncome + refundsInPeriod);
     const cashDelta = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE date BETWEEN ? AND ?", from, to);
     const expensesPaid = sum("SELECT COALESCE(SUM(amount),0) s FROM expense_payments WHERE date BETWEEN ? AND ?", from, to);
@@ -370,6 +384,44 @@ function onOrderDelivered(orderId) {
   addCashMove({ date: day, amount: o.cod_amount, kind: "cod", ref_type: "order", ref_id: orderId, note: "Наложка, замовлення #" + orderId });
 }
 
+// Суми замовлення (наложка, дроп-ціна передоплати) інколи міняються вже
+// ПІСЛЯ того, як каса записала прихід за старою сумою — адмін править
+// наложку доставленого замовлення (PUT /api/orders/:id/edit), або хтось
+// додає позицію чи міняє товар у передоплаченому замовленні, чия
+// передоплата вже влетіла в касу при створенні. Рух каси має лишатись
+// правдою про рахунок, а не другим записом поруч зі старим: приводимо вже
+// записаний рух до нової суми. UPDATE торкається лише kind/ref_type/ref_id,
+// що вже існують — якщо руху ще нема (наложка ще не доставлена, або
+// передоплата йде з балансу дропера й у касу взагалі не пишеться), UPDATE
+// нічого не знаходить і мовчки нічого не робить, що й треба: рух з'явиться
+// сам, коли настане його момент (onOrderDelivered), уже з правильною сумою.
+function syncOrderCashMove(orderId) {
+  const o = db.prepare("SELECT id,cod_amount,total_drop_price,is_prepaid,paid_from_balance FROM orders WHERE id=?").get(orderId);
+  if (!o) return;
+  if (!o.is_prepaid) {
+    db.prepare("UPDATE cash_moves SET amount=? WHERE kind='cod' AND ref_type='order' AND ref_id=?")
+      .run(round2(o.cod_amount || 0), orderId);
+  } else if (!o.paid_from_balance) {
+    db.prepare("UPDATE cash_moves SET amount=? WHERE kind='prepaid' AND ref_type='order' AND ref_id=?")
+      .run(round2(o.total_drop_price || 0), orderId);
+  }
+}
+
+// Замовлення, що стало delivered, а потім вийшло з цього статусу — НП
+// повернула посилку (refused/return_transit) чи хтось відкотив статус
+// вручну — більше не має рахуватись як забране: прихід наложкою, який
+// onOrderDelivered записав, знімаємо, а delivered_at чистимо, інакше дохід
+// звіту (рахується по delivered_at) назавжди лишається завищеним на цю
+// посилку. Чистий delivered_at заразом означає, що повторне отримання
+// того самого замовлення (onOrderDelivered перевіряє COALESCE(delivered_at,
+// '')='') спрацює знову як уперше, без задвоєння руху каси — addCashMove
+// сам це гарантує через unique-індекс (kind,ref_type,ref_id), але лише
+// якщо старого рядка вже нема.
+function onOrderUndelivered(orderId) {
+  db.prepare("DELETE FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").run(orderId);
+  db.prepare("UPDATE orders SET delivered_at='' WHERE id=?").run(orderId);
+}
+
 // Повна передоплата: дропер платить наперед, до відправки, і гроші приходять
 // на рахунок у день створення замовлення, а не в день отримання клієнтом.
 // Замовлення, оплачене з балансу дропера (paid_from_balance) — виняток:
@@ -416,4 +468,4 @@ function onWorkerPayout(workerPayoutId) {
     ref_type: "worker_payout", ref_id: p.id, note: "Зарплата: " + p.name });
 }
 
-module.exports = { register, addCashMove, onOrderCreated, onOrderDelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder };
+module.exports = { register, addCashMove, onOrderCreated, onOrderDelivered, onOrderUndelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder, syncOrderCashMove };
