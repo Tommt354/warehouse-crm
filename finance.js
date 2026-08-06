@@ -369,6 +369,42 @@ function register(app, { authMiddleware, requireRole }) {
     });
   });
 
+  // Розшифровка плитки «Надходження»: власник бачить суму, але не бачить,
+  // з яких саме посилок вона складається. Правило добору замовлень — СЛОВО В
+  // СЛОВО те саме, що deliveredIncome у GET /api/finance/report вище
+  // (status='delivered' AND delivered_at!='' AND date(delivered_at) в
+  // періоді) — інакше список і плитка розійшлися б при першій же зміні
+  // одного з двох місць.
+  app.get("/api/finance/delivered", ...adminOnly, (req, res) => {
+    const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+    const to = req.query.to || db.prepare("SELECT date('now','localtime') d").get().d;
+    const orders = db.prepare(`SELECT o.id, o.ttn, o.delivered_at, o.total_drop_price, o.cod_amount, o.refunded_amount,
+        u.name as drop_name
+      FROM orders o JOIN users u ON o.dropshipper_id=u.id
+      WHERE o.status='delivered' AND o.delivered_at!='' AND date(o.delivered_at) BETWEEN ? AND ?
+      ORDER BY o.delivered_at DESC, o.id DESC`).all(from, to);
+    const dropPriceSum = round2(orders.reduce((s, o) => s + (o.total_drop_price || 0), 0));
+    const codSum = round2(orders.reduce((s, o) => s + (o.cod_amount || 0), 0));
+    // Повернення коштів, зроблені в цьому періоді — той самий підзапит, що й
+    // refundsInPeriod у GET /api/finance/report. Повернення необов'язково
+    // прив'язане до замовлення зі списку вище (гроші можна повернути іншого
+    // дня, ніж забрали посилку), тож рахуємо його окремо, а не по рядках
+    // orders.refunded_amount: сумувати останні означало б і чужі періоди.
+    const refundsInPeriod = round2(db.prepare(
+      "SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE kind='refund' AND date BETWEEN ? AND ?"
+    ).get(from, to).s);
+    res.json({
+      from, to, orders,
+      count: orders.length,
+      drop_price_sum: dropPriceSum,
+      cod_sum: codSum,
+      refunds_in_period: refundsInPeriod,
+      // Має точно збігатись із income з GET /api/finance/report за той самий
+      // період — це і є перевірка, яку бачить власник у підсумковому рядку.
+      income_check: round2(dropPriceSum + refundsInPeriod)
+    });
+  });
+
   // Звірка: власник вводить, скільки реально на рахунку, система показує
   // різницю з розрахунковим. Розбіжність означає, що якийсь рух не записано.
   app.post("/api/finance/cash-check", ...adminOnly, (req, res) => {

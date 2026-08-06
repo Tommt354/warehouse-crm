@@ -1,7 +1,7 @@
 // Вкладка «Гроші»: журнал витрат, борги постачальникам, звірка з банком.
 // Логіку тримаємо окремим файлом — admin.html уже завеликий.
 var finCats = [], finSups = [], finReport = null, finWorkshops = [];
-var finExpenses = [], finSettings = null;
+var finExpenses = [], finSettings = null, finDelivered = null;
 // id витрати, яку зараз редагують у fin-exp-modal; null = форма додавання.
 var finEditExpenseId = null;
 // id категорії/постачальника, рядок якого зараз розкритий на редагування.
@@ -27,7 +27,7 @@ function setFinPeriod(days){
 }
 
 function showFinTab(t){
-  ["list","debts","cats","mgr"].forEach(function(x){
+  ["list","delivered","debts","cats","mgr"].forEach(function(x){
     document.getElementById("fin-v-"+x).style.display=x===t?"":"none";
     document.getElementById("fintab-"+x).classList.toggle("on",x===t);
   });
@@ -43,7 +43,8 @@ async function loadFinance(){
     finSettings=await api("/api/finance/settings");
     finReport=await api("/api/finance/report?from="+f+"&to="+t);
     finExpenses=(await api("/api/finance/expenses?from="+f+"&to="+t)).expenses;
-    renderFinSummary(); renderFinList(finExpenses); renderFinDebts(); renderFinCats(); renderFinMgr();
+    finDelivered=await api("/api/finance/delivered?from="+f+"&to="+t);
+    renderFinSummary(); renderFinList(finExpenses); renderFinDelivered(); renderFinDebts(); renderFinCats(); renderFinMgr();
   }catch(e){}
 }
 
@@ -85,6 +86,42 @@ function renderFinList(exp){
       +'</div></div>';
   }).join("");
   document.getElementById("fin-v-list").innerHTML='<div style="margin-bottom:8px">'+byCat+'</div>'+(rows||'<div class="empty">Витрат за період немає</div>');
+}
+
+// Розшифровка плитки «Надходження»: кожне забране за період замовлення
+// (delivered_at у діапазоні, status='delivered' — те саме правило, що й на
+// бекенді GET /api/finance/delivered/GET /api/finance/report). Сума дроп-цін
+// тут навмисно звірена в підсумковому рядку з income звіту, щоб розходження
+// між двома екранами було одразу видно, а не ховалось мовчки.
+function renderFinDelivered(){
+  var d=finDelivered;
+  var el=document.getElementById("fin-v-delivered");
+  if(!d||!d.orders||!d.orders.length){el.innerHTML='<div class="empty">За обраний період немає забраних замовлень</div>';return}
+  function tile(l,v,c){return '<div style="flex:1;min-width:130px;background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:10px"><div style="font-size:10px;color:var(--td);margin-bottom:4px">'+l+'</div><div style="font-size:16px;font-weight:700;color:'+(c||"var(--th)")+'">'+v+'</div></div>'}
+  var summary='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">'
+    +tile("Посилок",d.count)
+    +tile("Сума дроп-цін",finMoney(d.drop_price_sum)+"₴","var(--acc)")
+    +tile("Сума наложок",finMoney(d.cod_sum)+"₴")
+    +'</div>';
+  // Без повернень у періоді сума дроп-цін збігається з «Надходження» звіту
+  // напряму. З поверненнями — пояснюємо різницю рядком, а не лишаємо власника
+  // гадати, чому два числа не рівні.
+  summary+='<div style="font-size:11px;color:var(--td);margin-bottom:10px">'
+    +(Math.abs(d.refunds_in_period)>0.001
+      ? ('Сума дроп-цін '+finMoney(d.drop_price_sum)+'₴ мінус повернення коштів клієнтам у цьому періоді '+finMoney(-d.refunds_in_period)+'₴ = '+finMoney(d.income_check)+'₴ — це і є «Надходження» зі звіту.')
+      : ('Сума дроп-цін тут — це і є «Надходження» зі звіту ('+finMoney(d.income_check)+'₴).'))
+    +'</div>';
+  var rows=d.orders.map(function(o){
+    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--brd);font-size:12px">'
+      +'<div><b style="color:var(--th)">Замовлення #'+o.id+'</b>'+(o.ttn?' <span style="font-size:10px;color:var(--td)">ТТН '+esc(o.ttn)+'</span>':'')
+      +'<div style="font-size:10px;color:var(--td)">'+esc((o.delivered_at||"").slice(0,10))+' · '+esc(o.drop_name||"—")+'</div></div>'
+      +'<div style="text-align:right;white-space:nowrap">'
+      +'<div>'+finMoney(o.total_drop_price)+'₴ <span style="font-size:10px;color:var(--td)">дроп</span></div>'
+      +'<div style="font-size:10px;color:var(--td)">наложка '+finMoney(o.cod_amount)+'₴</div>'
+      +(o.refunded_amount>0?'<div style="font-size:10px;color:var(--red)">повернено '+finMoney(o.refunded_amount)+'₴</div>':'')
+      +'</div></div>';
+  }).join("");
+  el.innerHTML=summary+rows;
 }
 
 function renderFinDebts(){
