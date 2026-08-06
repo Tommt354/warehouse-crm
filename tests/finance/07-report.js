@@ -199,8 +199,10 @@ function cleanupT7() {
   // ── I1: замовлення, що вийшло зі статусу delivered (НП повернула
   // посилку), однаково зникає з доходу і на /api/finance/report, і на
   // /api/dashboard/accounting — обидва тепер рахують за одним правилом
-  // (status='delivered' AND delivered_at!=''), а вихід зі статусу delivered
-  // чистить delivered_at (див. finance.onOrderUndelivered).
+  // (status='delivered' AND delivered_at!=''). delivered_at при цьому НЕ
+  // чиститься (finance.onOrderUndelivered лишає дату — інакше повторне
+  // отримання проставило б сьогоднішню замість вихідного дня отримання),
+  // тож саме статус тут відсікає повернену посилку з доходу.
   const prodI1r = createTestProduct(333);
   const createI1r = await api("/api/orders", { method: "POST", body: JSON.stringify({
     dropshipper_id: drop.id, items: [{ variation_id: prodI1r.varId, size_id: prodI1r.sizeId, quantity: 1 }],

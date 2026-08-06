@@ -1,5 +1,11 @@
 const { api, ok, login, createTestProduct, removeTestProduct } = require("./_helpers");
 const db = require("../../node_modules/better-sqlite3")(process.env.DB_PATH || "/tmp/fin-test.db");
+// Прямий require фінмодуля — потрібен лише для мінор-перевірки
+// onDropPayoutPaid напряму (нижче): маршрут сам не пускає туди від'ємну
+// суму, тож перевірити захист хелпера можна лише в обхід маршруту.
+// _helpers.js уже виставив DB_PATH до цього рядка, тож finance.js
+// підхопить той самий тестовий файл, а не живу crm.db.
+const finance = require("../../finance");
 const round2 = v => Math.round((v || 0) * 100) / 100;
 
 (async () => {
@@ -150,8 +156,96 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
   ok(prepaidAfterSwap.length === 1 && prepaidAfterSwap[0].amount === swapRes.b.total_drop,
     "рух каси передоплати синхронізувався після заміни товару (" + (prepaidAfterSwap[0] && prepaidAfterSwap[0].amount) + " = " + swapRes.b.total_drop + ")");
 
-  // ── C2: скасування передоплаченого замовлення прибирає прихід каси ────
-  // (на відміну від видалення, скасування раніше рухів каси не чіпало)
+  // ── E1: правка замовлення через /edit БЕЗ поля наложки не має обнуляти
+  // записаний прихід (пункт 1) — parseFloat(undefined) ?? o.cod_amount раніше
+  // повертав NaN (?? не ловить NaN, лише null/undefined), і UPDATE записував
+  // NaN/0 у cod_amount та payout_amount, а finance.syncOrderCashMove слідом
+  // переписував рух каси на 0 ─────────────────────────────────────────────
+  const prodE1 = createTestProduct(120);
+  const orderE1 = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodE1.varId, size_id: prodE1.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт13", client_phone: "+380501120013", client_city: "Київ", client_warehouse: "Відділення №1",
+    cod_amount: 500, note: "__T6"
+  }) });
+  const e1OrderId = orderE1.b.order_id;
+  await api("/api/orders/" + e1OrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
+  const e1Before = db.prepare("SELECT cod_amount,payout_amount FROM orders WHERE id=?").get(e1OrderId);
+  ok(e1Before.cod_amount === 500, "наложка фікстури 500 перед правкою (" + e1Before.cod_amount + ")");
+
+  const e1EditNote = await api("/api/orders/" + e1OrderId + "/edit", { method: "PUT", body: JSON.stringify({ note: "__T6 тільки нотатка" }) });
+  ok(e1EditNote.s === 200, "правка без поля наложки пройшла (" + JSON.stringify(e1EditNote.b) + ")");
+  const e1AfterNote = db.prepare("SELECT cod_amount,payout_amount,note FROM orders WHERE id=?").get(e1OrderId);
+  ok(e1AfterNote.cod_amount === 500, "наложка НЕ обнулилась, коли поле не передане (" + e1AfterNote.cod_amount + ")");
+  ok(e1AfterNote.payout_amount === e1Before.payout_amount, "виплата дроперу не зʼїхала разом із наложкою (" + e1AfterNote.payout_amount + " = " + e1Before.payout_amount + ")");
+  ok(e1AfterNote.note === "__T6 тільки нотатка", "нотатка все ж оновилась — правка не проігнорована повністю");
+  const e1CodMoveAfterNote = db.prepare("SELECT amount FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").get(e1OrderId);
+  ok(e1CodMoveAfterNote && e1CodMoveAfterNote.amount === 500, "рух каси наложки лишився на 500, не переписаний на 0 (" + (e1CodMoveAfterNote && e1CodMoveAfterNote.amount) + ")");
+
+  // те саме нечисловим значенням поля (порожній рядок з форми) — інший шлях
+  // до того самого NaN, має так само не обнуляти
+  const e1EditEmpty = await api("/api/orders/" + e1OrderId + "/edit", { method: "PUT", body: JSON.stringify({ cod_amount: "", note: "__T6" }) });
+  ok(e1EditEmpty.s === 200, "правка з порожнім полем наложки пройшла (" + JSON.stringify(e1EditEmpty.b) + ")");
+  const e1AfterEmpty = db.prepare("SELECT cod_amount FROM orders WHERE id=?").get(e1OrderId);
+  ok(e1AfterEmpty.cod_amount === 500, "наложка не обнулилась і від порожнього рядка (" + e1AfterEmpty.cod_amount + ")");
+
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id=?").run(e1OrderId);
+  db.prepare("DELETE FROM order_items WHERE order_id=?").run(e1OrderId);
+  db.prepare("DELETE FROM orders WHERE id=?").run(e1OrderId);
+  removeTestProduct(prodE1);
+
+  // ── E2: правка передоплаченого замовлення через /edit — окремий явний
+  // сценарій (не swap-product/додавання позиції, як C1b/C1c вище): /edit не
+  // чіпає total_drop_price, тож рух каси передоплати (kind='prepaid') після
+  // synOrderCashMove(o.id), викликаного тепер всередині транзакції маршруту,
+  // має лишитись без змін ────────────────────────────────────────────────
+  const prodE2 = createTestProduct(250);
+  const orderE2 = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodE2.varId, size_id: prodE2.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт14", client_phone: "+380501120014", client_city: "Київ", client_warehouse: "Відділення №1",
+    is_prepaid: true, receipt_photo: "__T6.jpg", note: "__T6"
+  }) });
+  const e2OrderId = orderE2.b.order_id;
+  const e2PrepaidBefore = db.prepare("SELECT amount FROM cash_moves WHERE kind='prepaid' AND ref_type='order' AND ref_id=?").get(e2OrderId);
+  ok(e2PrepaidBefore && e2PrepaidBefore.amount === 250, "передоплата фікстури 250 записана в касу (" + (e2PrepaidBefore && e2PrepaidBefore.amount) + ")");
+
+  const e2Edit = await api("/api/orders/" + e2OrderId + "/edit", { method: "PUT", body: JSON.stringify({ note: "__T6 правка передоплаченого", weight: 0.4 }) });
+  ok(e2Edit.s === 200, "правка передоплаченого замовлення через /edit пройшла (" + JSON.stringify(e2Edit.b) + ")");
+  const e2PrepaidAfter = db.prepare("SELECT amount FROM cash_moves WHERE kind='prepaid' AND ref_type='order' AND ref_id=?").get(e2OrderId);
+  ok(e2PrepaidAfter && e2PrepaidAfter.amount === 250, "рух каси передоплати не зʼїхав від правки, що не міняла суму (" + (e2PrepaidAfter && e2PrepaidAfter.amount) + ")");
+  ok(db.prepare("SELECT payout_amount FROM orders WHERE id=?").get(e2OrderId).payout_amount === 0, "виплата передоплаченого замовлення лишилась 0 (передоплата — без наложки)");
+
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id=?").run(e2OrderId);
+  db.prepare("DELETE FROM order_items WHERE order_id=?").run(e2OrderId);
+  db.prepare("DELETE FROM orders WHERE id=?").run(e2OrderId);
+  removeTestProduct(prodE2);
+
+  // ── E3 (мінор): наложку правкою звели до нуля — рух каси має зникнути,
+  // а не лишитись рядком на 0₴ (при створенні нульова наложка руху й так
+  // не породжує, синхронізація має приводити до того самого стану) ──────
+  const prodE3 = createTestProduct(90);
+  const orderE3 = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodE3.varId, size_id: prodE3.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт15", client_phone: "+380501120015", client_city: "Київ", client_warehouse: "Відділення №1",
+    cod_amount: 300, note: "__T6"
+  }) });
+  const e3OrderId = orderE3.b.order_id;
+  await api("/api/orders/" + e3OrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
+  ok(!!db.prepare("SELECT 1 FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").get(e3OrderId), "рух каси наложки є перед зведенням до нуля");
+
+  const e3EditZero = await api("/api/orders/" + e3OrderId + "/edit", { method: "PUT", body: JSON.stringify({ cod_amount: 0, note: "__T6" }) });
+  ok(e3EditZero.s === 200, "наложку зведено до 0 (" + JSON.stringify(e3EditZero.b) + ")");
+  const e3MoveAfterZero = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").get(e3OrderId).c;
+  ok(e3MoveAfterZero === 0, "рух каси наложки прибраний, а не лишений на 0₴ (" + e3MoveAfterZero + ")");
+
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id=?").run(e3OrderId);
+  db.prepare("DELETE FROM order_items WHERE order_id=?").run(e3OrderId);
+  db.prepare("DELETE FROM orders WHERE id=?").run(e3OrderId);
+  removeTestProduct(prodE3);
+
+  // ── C2: скасування передоплаченого замовлення КОМПЕНСУЄ прихід зустрічним
+  // розходом, а не стирає рух каси (пункт 2 — попередній раунд помилково
+  // підключив сюди removeCashMovesForOrder, яка стирала заразом і реальні
+  // повернення коштів клієнту) ────────────────────────────────────────────
   const prodC2 = createTestProduct(700);
   const orderC2 = await api("/api/orders", { method: "POST", body: JSON.stringify({
     dropshipper_id: drop.id, items: [{ variation_id: prodC2.varId, size_id: prodC2.sizeId, quantity: 1 }],
@@ -164,11 +258,48 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
 
   const cancelRes = await api("/api/orders/" + c2OrderId + "/cancel", { method: "POST", body: JSON.stringify({}) });
   ok(cancelRes.s === 200, "передоплачене замовлення скасовано (" + JSON.stringify(cancelRes.b) + ")");
-  const prepaidAfterCancel = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='order' AND ref_id=?").get(c2OrderId).c;
-  ok(prepaidAfterCancel === 0, "рух каси приходу прибраний після скасування (" + prepaidAfterCancel + ")");
+  const prepaidAfterCancel = db.prepare("SELECT amount FROM cash_moves WHERE kind='prepaid' AND ref_type='order' AND ref_id=?").get(c2OrderId);
+  ok(prepaidAfterCancel && prepaidAfterCancel.amount === 700, "прихід передоплати НЕ стерто — лишається правдою про рахунок (" + (prepaidAfterCancel && prepaidAfterCancel.amount) + ")");
+  const cancelRefundMove = db.prepare("SELECT amount FROM cash_moves WHERE kind='cancel_refund' AND ref_type='order' AND ref_id=?").get(c2OrderId);
+  ok(cancelRefundMove && cancelRefundMove.amount === -700, "зустрічний розхід на всю суму передоплати записаний, а не стирання (" + (cancelRefundMove && cancelRefundMove.amount) + ")");
+  const c2NetEffect = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE ref_type='order' AND ref_id=?").get(c2OrderId).s;
+  ok(round2(c2NetEffect) === 0, "сумарний вплив скасованого передоплаченого замовлення на касу — рівно нуль, гроші повернулись (" + c2NetEffect + ")");
 
-  // ── I1: вихід зі статусу delivered відкочує наложку й delivered_at,
-  // а повторне отримання того самого замовлення знову працює коректно ──
+  // ── C2b: скасування звичайного COD-замовлення (наложка ще не могла
+  // прийти — статуси, які можна скасувати, завжди передують отриманню), по
+  // якому вже зроблено повернення клієнту (гроші реально вийшли з рахунку)
+  // — рух повернення має лишитись як є, і жодного зустрічного розходу
+  // додаватись не повинно, бо приходу за це замовлення в касі нема ───────
+  const prodC2b = createTestProduct(300);
+  const orderC2b = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodC2b.varId, size_id: prodC2b.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт16", client_phone: "+380501120016", client_city: "Київ", client_warehouse: "Відділення №1",
+    cod_amount: 300, note: "__T6"
+  }) });
+  const c2bOrderId = orderC2b.b.order_id;
+  ok(!db.prepare("SELECT 1 FROM cash_moves WHERE ref_type='order' AND ref_id=?").get(c2bOrderId),
+    "у COD-замовлення до отримання ще нема приходу в касі (наложка приходить лише при onOrderDelivered)");
+
+  const c2bRefund = await api("/api/finance/orders/" + c2bOrderId + "/refund", { method: "POST", body: JSON.stringify({ amount: 100, note: "__T6" }) });
+  ok(c2bRefund.s === 200, "повернення 100 по ще не отриманому COD-замовленню проведено (" + JSON.stringify(c2bRefund.b) + ")");
+
+  const c2bCancelRes = await api("/api/orders/" + c2bOrderId + "/cancel", { method: "POST", body: JSON.stringify({}) });
+  ok(c2bCancelRes.s === 200, "COD-замовлення з уже зробленим поверненням скасовано (" + JSON.stringify(c2bCancelRes.b) + ")");
+  const c2bRefundMove = db.prepare("SELECT amount FROM cash_moves WHERE kind='refund' AND ref_type='refund' AND ref_id=?").get(c2bOrderId);
+  ok(c2bRefundMove && c2bRefundMove.amount === -100, "рух реального повернення коштів лишився в касі після скасування, не стертий (" + (c2bRefundMove && c2bRefundMove.amount) + ")");
+  const c2bCompensatingCount = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='cancel_refund' AND ref_type='order' AND ref_id=?").get(c2bOrderId).c;
+  ok(c2bCompensatingCount === 0, "зустрічний розхід НЕ додався — приходу за це замовлення в касі не було (" + c2bCompensatingCount + ")");
+
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='refund' AND ref_id=?").run(c2bOrderId);
+  db.prepare("DELETE FROM order_items WHERE order_id=?").run(c2bOrderId);
+  db.prepare("DELETE FROM orders WHERE id=?").run(c2bOrderId);
+  removeTestProduct(prodC2b);
+
+  // ── I1: вихід зі статусу delivered прибирає прихід наложкою, а
+  // delivered_at НЕ чиститься (пункт 3 — попередній раунд чистив дату, тож
+  // круговий рейс delivered → refused → delivered знову проставляв
+  // delivered_at СЬОГОДНІШНІМ днем замість дня, коли посилку справді забрали,
+  // і тихо переносив дохід/касу в інший, можливо вже закритий місяць) ────
   const prodI1 = createTestProduct(220);
   const orderI1 = await api("/api/orders", { method: "POST", body: JSON.stringify({
     dropshipper_id: drop.id, items: [{ variation_id: prodI1.varId, size_id: prodI1.sizeId, quantity: 1 }],
@@ -177,8 +308,17 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
   }) });
   const i1OrderId = orderI1.b.order_id;
   await api("/api/orders/" + i1OrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
-  const beforeUndeliver = db.prepare("SELECT delivered_at FROM orders WHERE id=?").get(i1OrderId);
-  ok(!!beforeUndeliver.delivered_at, "delivered_at проставлено перед перевіркою відкату");
+
+  // Відсуваємо день отримання в минуле (посилку нібито забрали більше
+  // місяця тому — уже закритий звітний період) ПРЯМО в БД, так само
+  // зсуваючи дату вже записаного руху каси: інакше "сьогодні" в тесті й
+  // "сьогодні", яке помилково проставив би регрес, збіглись би, і перевірка
+  // нічого не довела б.
+  const pastDeliveredAt = db.prepare("SELECT datetime('now','localtime','-35 days') d").get().d;
+  const pastDay = pastDeliveredAt.slice(0, 10);
+  db.prepare("UPDATE orders SET delivered_at=? WHERE id=?").run(pastDeliveredAt, i1OrderId);
+  db.prepare("UPDATE cash_moves SET date=? WHERE kind='cod' AND ref_type='order' AND ref_id=?").run(pastDay, i1OrderId);
+
   const codBeforeUndeliver = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").get(i1OrderId).c;
   ok(codBeforeUndeliver === 1, "рух каси наложки є перед відкатом");
 
@@ -186,18 +326,22 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
   const backToRefused = await api("/api/orders/" + i1OrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "refused" }) });
   ok(backToRefused.s === 200, "статус повернуто на refused (НП повернула посилку)");
   const afterUndeliver = db.prepare("SELECT delivered_at FROM orders WHERE id=?").get(i1OrderId);
-  ok(afterUndeliver.delivered_at === "", "delivered_at скинуто після виходу зі статусу delivered (" + JSON.stringify(afterUndeliver.delivered_at) + ")");
+  ok(afterUndeliver.delivered_at === pastDeliveredAt,
+    "delivered_at НЕ скидається при виході зі статусу delivered, лишається вихідною датою отримання (" + JSON.stringify(afterUndeliver.delivered_at) + " = " + pastDeliveredAt + ")");
   const codAfterUndeliver = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").get(i1OrderId).c;
   ok(codAfterUndeliver === 0, "рух каси наложки прибраний після виходу зі статусу delivered (" + codAfterUndeliver + ")");
 
-  // напрямок 2: те саме замовлення отримують повторно — має спрацювати
-  // так само коректно, як уперше, без задвоєння
+  // напрямок 2: те саме замовлення отримують повторно — має спрацювати без
+  // задвоєння І без переносу дати на сьогодні (пункт 3, головна перевірка)
   const redeliver = await api("/api/orders/" + i1OrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
   ok(redeliver.s === 200, "повторне отримання проведено");
   const afterRedeliver = db.prepare("SELECT delivered_at FROM orders WHERE id=?").get(i1OrderId);
-  ok(!!afterRedeliver.delivered_at, "delivered_at знову проставлено при повторному отриманні (" + afterRedeliver.delivered_at + ")");
+  ok(afterRedeliver.delivered_at === pastDeliveredAt,
+    "delivered_at при повторному отриманні лишився вихідною датою, а не переїхав на сьогодні (" + afterRedeliver.delivered_at + " = " + pastDeliveredAt + ")");
   const codAfterRedeliver = db.prepare("SELECT * FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").all(i1OrderId);
   ok(codAfterRedeliver.length === 1 && codAfterRedeliver[0].amount === 480, "рух каси наложки знову записаний, один, на правильну суму (" + JSON.stringify(codAfterRedeliver) + ")");
+  ok(codAfterRedeliver[0] && codAfterRedeliver[0].date === pastDay,
+    "рух каси наложки відновлений на вихідну дату отримання, а не на сьогодні (" + (codAfterRedeliver[0] && codAfterRedeliver[0].date) + " = " + pastDay + ")");
   // Так само прибираємо одразу: замовлення знову delivered з ненульовим
   // payout_amount, і секція виплати дроперу нижче використовує того самого
   // дропера — мусить бачити тільки свою власну фікстуру (payOrderId).
@@ -236,8 +380,11 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
   ok(pm && Math.abs(pm.amount + 375) < 0.01,
     "виплата в касі = total_amount(300) + balance_applied(75) = 375, мінусом (" + (pm && pm.amount) + ")");
 
-  // ── I2: виплата з відʼємним підсумком (борг дропера більший за суму до
-  // виплати) не має проводитись і не має лишати фантомний прихід у касі.
+  // ── I2a: apply-balance більше не заводить у глухий кут (пункт 4).
+  // Раніше сюди йшов увесь борг як є — якщо він більший за суму заявки,
+  // підсумок ставав від'ємним, і виплату вже неможливо було провести
+  // (balance_applied пише лише цей маршрут, і лише додаванням — відкату
+  // нема). Тепер залік обмежується тим, що заявка фактично може покрити.
   // Борг дроперу і залік у виплату йдуть через реальні ендпоінти
   // (POST /api/users/:id/balance, POST /api/payouts/:id/apply-balance), а
   // не прямим UPDATE payout_requests — інакше перевірка не гарантує, що
@@ -263,28 +410,91 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
   await api("/api/orders/" + negOrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
 
   const negReq = await api("/api/payouts/request", { method: "POST", body: JSON.stringify({ dropshipper_id: dropForNeg.id }) });
-  ok(negReq.s === 200 && negReq.b.request_id, "запит на виплату для перевірки I2 сформовано (" + JSON.stringify(negReq.b) + ")");
+  ok(negReq.s === 200 && negReq.b.request_id, "запит на виплату для перевірки I2a сформовано (" + JSON.stringify(negReq.b) + ")");
   const negPrId = negReq.b.request_id;
+  const negPrBefore = db.prepare("SELECT total_amount FROM payout_requests WHERE id=?").get(negPrId);
+  ok(negPrBefore && negPrBefore.total_amount === 100, "сума заявки I2a = 100 (150 наложка − 50 дроп-ціна) (" + (negPrBefore && negPrBefore.total_amount) + ")");
 
   const applyRes = await api("/api/payouts/" + negPrId + "/apply-balance", { method: "POST" });
   ok(applyRes.s === 200, "борг зараховано у виплату через реальний ендпоінт apply-balance (" + JSON.stringify(applyRes.b) + ")");
-  ok(applyRes.b.final_total < 0, "підсумок виплати від'ємний після заліку боргу (" + applyRes.b.final_total + ")");
+  ok(round2(applyRes.b.balance_applied) === -100, "залік обмежений сумою заявки (−100), а не всім боргом (−1000) (" + applyRes.b.balance_applied + ")");
+  ok(round2(applyRes.b.final_total) === 0, "підсумок виплати рівно нуль, у мінус більше не йде (" + applyRes.b.final_total + ")");
+  const balanceAfterApply = db.prepare("SELECT balance FROM users WHERE id=?").get(dropForNeg.id).balance;
+  ok(round2(balanceAfterApply) === -900, "решта боргу (−900) лишилась на балансі дропера, не пропала і не заведена в мінус заявки (" + balanceAfterApply + ")");
 
+  // повторний залік на заявку, вже повністю покриту боргом — нема що заводити
+  const applyAgainRes = await api("/api/payouts/" + negPrId + "/apply-balance", { method: "POST" });
+  ok(applyAgainRes.s === 400, "повторний залік на заявку, вже повністю покриту боргом, відхилений (" + applyAgainRes.s + ", " + JSON.stringify(applyAgainRes.b) + ")");
+
+  // виплату з підсумком 0 тепер можна провести (раніше — глухий кут);
+  // гроші фактично нікуди не йдуть, тож рух каси не з'являється
   const movesBeforePay = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='payout' AND ref_id=?").get(negPrId).c;
   const payNegRes = await api("/api/payouts/" + negPrId + "/paid", { method: "PUT", body: JSON.stringify({}) });
-  ok(payNegRes.s === 400, "проведення виплати з від'ємним підсумком відхилене (" + payNegRes.s + ", " + JSON.stringify(payNegRes.b) + ")");
+  ok(payNegRes.s === 200, "виплату з нульовим підсумком проведено, глухого кута більше нема (" + payNegRes.s + ", " + JSON.stringify(payNegRes.b) + ")");
   const statusAfterNeg = db.prepare("SELECT status FROM payout_requests WHERE id=?").get(negPrId).status;
-  ok(statusAfterNeg === "pending", "запит лишився pending, не позначений paid (" + statusAfterNeg + ")");
+  ok(statusAfterNeg === "paid", "запит позначений paid (" + statusAfterNeg + ")");
   const movesAfterPay = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='payout' AND ref_id=?").get(negPrId).c;
-  ok(movesAfterPay === movesBeforePay, "фантомний прихід у касу не з'явився (" + movesBeforePay + " -> " + movesAfterPay + ")");
+  ok(movesAfterPay === movesBeforePay, "нульова виплата не лишила фантомного руху каси (" + movesBeforePay + " -> " + movesAfterPay + ")");
 
-  // прибирання фікстур I2
-  db.prepare("DELETE FROM payout_items WHERE payout_request_id=?").run(negPrId);
-  db.prepare("DELETE FROM payout_requests WHERE id=?").run(negPrId);
-  db.prepare("DELETE FROM order_items WHERE order_id=?").run(negOrderId);
-  db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id=?").run(negOrderId);
-  db.prepare("DELETE FROM orders WHERE id=?").run(negOrderId);
+  // ── I2b: страховка з попереднього раунду (блокування від'ємного
+  // підсумку) лишається потрібною на залишковий випадок — сума заявки
+  // зменшилась ПІСЛЯ заліку (замовлення перестало бути delivered до того,
+  // як виплату провели). Відкотити вже зроблений залік нічим, тож
+  // перевіряємо нове, дієве формулювання помилки (не "зменшіть залік",
+  // якого адмін виконати не може) ─────────────────────────────────────
+  const prodNeg2 = createTestProduct(60);
+  const orderNeg2 = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: dropForNeg.id, items: [{ variation_id: prodNeg2.varId, size_id: prodNeg2.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт17", client_phone: "+380501120017", client_city: "Київ", client_warehouse: "Відділення №1",
+    cod_amount: 200, note: "__T6"
+  }) });
+  const negOrderId2 = orderNeg2.b.order_id;
+  await api("/api/orders/" + negOrderId2 + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
+  const negReq2 = await api("/api/payouts/request", { method: "POST", body: JSON.stringify({ dropshipper_id: dropForNeg.id }) });
+  ok(negReq2.s === 200 && negReq2.b.request_id, "запит на виплату для I2b сформовано (" + JSON.stringify(negReq2.b) + ")");
+  const negPrId2 = negReq2.b.request_id;
+  const negPr2Before = db.prepare("SELECT total_amount FROM payout_requests WHERE id=?").get(negPrId2);
+  ok(negPr2Before && negPr2Before.total_amount === 140, "сума заявки I2b = 140 (200 наложка − 60 дроп-ціна) (" + (negPr2Before && negPr2Before.total_amount) + ")");
+
+  const apply2Res = await api("/api/payouts/" + negPrId2 + "/apply-balance", { method: "POST" });
+  ok(apply2Res.s === 200 && round2(apply2Res.b.final_total) === 0, "залік знову обмежений сумою заявки, підсумок 0 (" + JSON.stringify(apply2Res.b) + ")");
+
+  // Замовлення, яке дало суму заявки, "повертають" — статус більше не
+  // delivered. total_amount у payout_requests лишається старим, поки
+  // заявку не синхронізують — це станеться всередині /paid.
+  const revertRes = await api("/api/orders/" + negOrderId2 + "/status", { method: "PUT", body: JSON.stringify({ status: "refused" }) });
+  ok(revertRes.s === 200, "замовлення заявки I2b відкочене зі статусу delivered (" + JSON.stringify(revertRes.b) + ")");
+
+  const pay2Res = await api("/api/payouts/" + negPrId2 + "/paid", { method: "PUT", body: JSON.stringify({}) });
+  ok(pay2Res.s === 400, "виплата з підсумком, що пішов у мінус ПІСЛЯ заліку, і далі блокується (" + pay2Res.s + ", " + JSON.stringify(pay2Res.b) + ")");
+  const msg2 = (pay2Res.b && pay2Res.b.error) || "";
+  ok(!/зменшіть залік/i.test(msg2), "текст помилки більше не радить неможливу дію \"зменшіть залік\" (" + msg2 + ")");
+  ok(/доставлять|нових замовлень|заявк/i.test(msg2), "текст помилки вказує на дію, яку адмін реально може виконати (" + msg2 + ")");
+  const statusAfterNeg2 = db.prepare("SELECT status FROM payout_requests WHERE id=?").get(negPrId2).status;
+  ok(statusAfterNeg2 === "pending", "запит I2b лишився pending, не позначений paid (" + statusAfterNeg2 + ")");
+  const movesAfterPay2 = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='payout' AND ref_id=?").get(negPrId2).c;
+  ok(movesAfterPay2 === 0, "фантомний прихід у касу не з'явився (" + movesAfterPay2 + ")");
+
+  // ── мінор: onDropPayoutPaid має власний захисний ранній вихід на
+  // від'ємну суму, не покладаючись лише на блокування в /paid — маршрут
+  // сам туди від'ємну суму не пускає, тож перевіряємо хелпер напряму на
+  // штучно зведеному запиті (в обхід маршруту) ─────────────────────────
+  const guardPrId = db.prepare(`INSERT INTO payout_requests(dropshipper_id,status,total_amount,balance_applied,paid_at)
+    VALUES(?,'paid',50,-200,datetime('now','localtime'))`).run(dropForNeg.id).lastInsertRowid;
+  finance.onDropPayoutPaid(guardPrId);
+  const guardMoveCount = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='payout' AND ref_id=?").get(guardPrId).c;
+  ok(guardMoveCount === 0, "onDropPayoutPaid не пише рух каси для штучно зведеного від'ємного підсумку, навіть в обхід маршруту (" + guardMoveCount + ")");
+  db.prepare("DELETE FROM payout_requests WHERE id=?").run(guardPrId);
+
+  // прибирання фікстур I2a + I2b
+  db.prepare("DELETE FROM payout_items WHERE payout_request_id IN (?,?)").run(negPrId, negPrId2);
+  db.prepare("DELETE FROM payout_requests WHERE id IN (?,?)").run(negPrId, negPrId2);
+  db.prepare("DELETE FROM order_items WHERE order_id IN (?,?)").run(negOrderId, negOrderId2);
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id IN (?,?)").run(negOrderId, negOrderId2);
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='payout' AND ref_id IN (?,?)").run(negPrId, negPrId2);
+  db.prepare("DELETE FROM orders WHERE id IN (?,?)").run(negOrderId, negOrderId2);
   removeTestProduct(prodNeg);
+  removeTestProduct(prodNeg2);
   db.prepare("DELETE FROM balance_transactions WHERE user_id=? AND id>?").run(dropForNeg.id, btMaxIdBefore);
   db.prepare("UPDATE users SET balance=? WHERE id=?").run(origBalanceNeg, dropForNeg.id);
 

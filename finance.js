@@ -286,14 +286,15 @@ function register(app, { authMiddleware, requireRole }) {
     // мінус повернення коштів клієнту, зроблені в цьому ж періоді (рухи
     // amount у cash_moves уже від'ємні, тож додаємо їх напряму) — інакше
     // прибуток був би завищений на суму грошей, які вже повернули клієнту.
-    // status='delivered' — навмисний дубль до delivered_at!='': вихід зі
-    // статусу delivered (НП повернула посилку — refused/return_transit)
-    // чистить delivered_at (finance.onOrderUndelivered), тож на новому коді
-    // обидві умови й так збігаються. Лишаємо статус явним фільтром на
-    // випадок старих рядків до цього фіксу чи майбутнього шляху, який
-    // рухне delivered_at повз ці хуки — те саме правило, що й у
-    // GET /api/dashboard/accounting (server.js), щоб два екрани доходу
-    // ніколи не розходились між собою.
+    // status='delivered' — навмисний дубль до delivered_at!='': delivered_at
+    // навмисно НІКОЛИ не чиститься (навіть коли замовлення виходить зі
+    // статусу delivered — finance.onOrderUndelivered прибирає лише прихід
+    // каси, дату лишає, інакше повторне отримання проставило б її
+    // сьогоднішнім днем і дохід/каса тихо переїхали б у інший, можливо вже
+    // закритий місяць). Тож саме статус, а не порожня дата, відсікає
+    // повернену посилку з доходу — прибирати цю умову не можна. Те саме
+    // правило в GET /api/dashboard/accounting (server.js), щоб два екрани
+    // доходу ніколи не розходились між собою.
     const deliveredIncome = sum("SELECT COALESCE(SUM(total_drop_price),0) s FROM orders WHERE status='delivered' AND delivered_at!='' AND date(delivered_at) BETWEEN ? AND ?", from, to);
     // Повернення коштів завжди пишуться з kind='refund' — 'refund_extra' це
     // значення ref_type (друге й наступні часткові повернення без ref_id,
@@ -398,28 +399,39 @@ function onOrderDelivered(orderId) {
 function syncOrderCashMove(orderId) {
   const o = db.prepare("SELECT id,cod_amount,total_drop_price,is_prepaid,paid_from_balance FROM orders WHERE id=?").get(orderId);
   if (!o) return;
+  // Сума впала до нуля (наложку прибрали, дроп-ціну звели правкою до 0) —
+  // прибираємо рух, а не лишаємо порожній рядок на 0₴: при створенні
+  // нульова сума руху й так не породжує (addCashMove не викликається),
+  // тож синхронізація має приводити до того самого стану, а не лишати слід
+  // від суми, якої більше нема.
   if (!o.is_prepaid) {
-    db.prepare("UPDATE cash_moves SET amount=? WHERE kind='cod' AND ref_type='order' AND ref_id=?")
-      .run(round2(o.cod_amount || 0), orderId);
+    const amt = round2(o.cod_amount || 0);
+    if (amt) db.prepare("UPDATE cash_moves SET amount=? WHERE kind='cod' AND ref_type='order' AND ref_id=?").run(amt, orderId);
+    else db.prepare("DELETE FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").run(orderId);
   } else if (!o.paid_from_balance) {
-    db.prepare("UPDATE cash_moves SET amount=? WHERE kind='prepaid' AND ref_type='order' AND ref_id=?")
-      .run(round2(o.total_drop_price || 0), orderId);
+    const amt = round2(o.total_drop_price || 0);
+    if (amt) db.prepare("UPDATE cash_moves SET amount=? WHERE kind='prepaid' AND ref_type='order' AND ref_id=?").run(amt, orderId);
+    else db.prepare("DELETE FROM cash_moves WHERE kind='prepaid' AND ref_type='order' AND ref_id=?").run(orderId);
   }
 }
 
 // Замовлення, що стало delivered, а потім вийшло з цього статусу — НП
 // повернула посилку (refused/return_transit) чи хтось відкотив статус
 // вручну — більше не має рахуватись як забране: прихід наложкою, який
-// onOrderDelivered записав, знімаємо, а delivered_at чистимо, інакше дохід
-// звіту (рахується по delivered_at) назавжди лишається завищеним на цю
-// посилку. Чистий delivered_at заразом означає, що повторне отримання
-// того самого замовлення (onOrderDelivered перевіряє COALESCE(delivered_at,
-// '')='') спрацює знову як уперше, без задвоєння руху каси — addCashMove
-// сам це гарантує через unique-індекс (kind,ref_type,ref_id), але лише
-// якщо старого рядка вже нема.
+// onOrderDelivered записав, знімаємо. delivered_at навмисно НЕ чистимо
+// (це був регрес попереднього раунду): обидва місця, що рахують дохід за
+// днем отримання (GET /api/finance/report тут і GET /api/dashboard/accounting
+// у server.js), і так фільтрують status='delivered' першим — статус уже
+// відсікає повернену посилку з доходу без порожньої дати. А от чищення дати
+// шкодило: круговий рейс delivered → refused → delivered знову проставляв
+// delivered_at СЬОГОДНІШНІМ днем замість того, щоб лишити день, коли посилку
+// справді забрали вперше — дохід і каса тихо переїжджали в інший (можливо
+// вже закритий) місяць. Рух каси прибирається тим самим шляхом, яким
+// з'явився б заново: addCashMove не задвоїть його при повторному
+// onOrderDelivered завдяки unique-індексу (kind,ref_type,ref_id), а сама
+// дата руху візьметься зі збереженого delivered_at — того самого, вихідного.
 function onOrderUndelivered(orderId) {
   db.prepare("DELETE FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").run(orderId);
-  db.prepare("UPDATE orders SET delivered_at='' WHERE id=?").run(orderId);
 }
 
 // Повна передоплата: дропер платить наперед, до відправки, і гроші приходять
@@ -444,12 +456,22 @@ function onDropPayoutPaid(payoutRequestId) {
   const pr = db.prepare("SELECT id,total_amount,balance_applied,paid_at FROM payout_requests WHERE id=?").get(payoutRequestId);
   if (!pr) return;
   const amount = round2((pr.total_amount || 0) + (pr.balance_applied || 0));
-  if (!amount) return;
+  // Від'ємний підсумок сюди дійти не повинен — маршрут PUT /api/payouts/:id/paid
+  // блокує його раніше. Сьогодні викликач один, але хелпер не повинен
+  // покладатись на це: захисний ранній вихід тут коштує рядок, а без нього
+  // помилка в майбутньому виклику мовчки написала б у касу плюс замість мінуса.
+  if (amount <= 0) return;
   addCashMove({ date: (pr.paid_at || "").slice(0, 10) || db.prepare("SELECT date('now','localtime') d").get().d,
     amount: -amount, kind: "payout", ref_type: "payout", ref_id: pr.id, note: "Виплата дроперу" });
 }
 
-// Видалення замовлення не має лишати його рухи каси сиротами. Часткові
+// Видалення замовлення (DELETE /api/orders/:id) прибирає рядок orders
+// повністю — замовлення зникає з історії, тож і його рухам каси нема на що
+// посилатись, вони стали б сиротами. На відміну від скасування (нижче),
+// тут не потрібна компенсація: немає жодного екрана, де рухи видаленого
+// замовлення могли б з'явитись знову і хтось звірявся б із ними, тож
+// стерти прихід/повернення разом із самим замовленням — свідомий вибір,
+// а не той самий регрес, що лагодить compensateCancelledOrder. Часткові
 // повернення (kind='refund_extra') не мають ref_id — унікальний індекс
 // cash_moves_ref_uniq дозволяє прив'язати до замовлення лише перший рух
 // повернення, наступні пишуться без ref, тож для них шукаємо по мітці
@@ -460,6 +482,41 @@ function removeCashMovesForOrder(orderId) {
   db.prepare("DELETE FROM cash_moves WHERE ref_type='refund_extra' AND note LIKE ?").run("%(замовлення #" + orderId + ")");
 }
 
+// Скасування (POST /api/orders/:id/cancel), на відміну від видалення, лишає
+// замовлення в історії зі статусом "cancelled" — тож і його рухи каси мають
+// лишитись правдою про рахунок, а не зникнути. Попередній раунд помилково
+// підключив сюди removeCashMovesForOrder: це стирало разом зі старим
+// приходом (який справедливо піти при скасуванні — товар не поїде,
+// передоплату треба повернути) ще й РЕАЛЬНЕ повернення коштів клієнту
+// (kind='refund') — гроші, які вже вийшли з рахунку. Стерти цей рух означає
+// назавжди завищити розрахунковий залишок на суму повернення.
+// Правильна модель для каси-як-виписки — не стирати історію, а
+// компенсувати: скільки грошей за це замовлення реально надійшло (наложка
+// вже неможлива для скасовуваних статусів new/in_progress/collected —
+// посилку ще не забрали, лишається лише передоплата) мінус те, що вже
+// повернули клієнту. Якщо лишок додатний — на дату скасування пишемо
+// зустрічний розхід на цю суму (гроші, які склад тепер має повернути
+// дроперу за товар, який так і не поїде), не займаючи жодного вже
+// записаного руху. Якщо надходжень не було (звичайне COD-замовлення до
+// отримання) — не робимо нічого: рух повернення, якщо він був, так і
+// лишається в касі, як і має бути.
+function compensateCancelledOrder(orderId, dateStr) {
+  const income = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM cash_moves
+    WHERE ref_type='order' AND ref_id=? AND kind IN ('cod','prepaid')`).get(orderId).s;
+  if (!income) return;
+  const refunded = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM cash_moves
+    WHERE kind='refund' AND ((ref_type='refund' AND ref_id=?) OR (ref_type='refund_extra' AND note LIKE ?))`)
+    .get(orderId, "%(замовлення #" + orderId + ")").s; // від'ємна сума
+  const remaining = round2(income + refunded);
+  if (remaining <= 0) return;
+  const date = dateStr || db.prepare("SELECT date('now','localtime') d").get().d;
+  // ref_type='order' + свій kind — той самий шаблон ідентифікації руху, що
+  // й у cod/prepaid, тож повторний виклик на вже скасованому замовленні
+  // (наприклад помилковий подвійний клік) не задвоїть розхід.
+  addCashMove({ date, amount: -remaining, kind: "cancel_refund", ref_type: "order", ref_id: orderId,
+    note: "Повернення передоплати за скасоване замовлення #" + orderId });
+}
+
 // Зарплата: у касу потрапляє факт виплати, а не нарахування.
 function onWorkerPayout(workerPayoutId) {
   const p = db.prepare("SELECT wp.id, wp.amount, wp.created_at, w.name FROM worker_payouts wp JOIN workers w ON wp.worker_id=w.id WHERE wp.id=?").get(workerPayoutId);
@@ -468,4 +525,4 @@ function onWorkerPayout(workerPayoutId) {
     ref_type: "worker_payout", ref_id: p.id, note: "Зарплата: " + p.name });
 }
 
-module.exports = { register, addCashMove, onOrderCreated, onOrderDelivered, onOrderUndelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder, syncOrderCashMove };
+module.exports = { register, addCashMove, onOrderCreated, onOrderDelivered, onOrderUndelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder, compensateCancelledOrder, syncOrderCashMove };

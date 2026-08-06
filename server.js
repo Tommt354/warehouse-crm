@@ -2490,11 +2490,14 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
     if (PULLED_STATUSES.includes(status)) pullOrderStockOnce(db, req.params.id);
 
     // Вихід зі статусу delivered (НП повернула посилку — refused/
-    // return_transit, або статус відкотили вручну) знімає прихід наложкою
-    // і delivered_at: інакше дохід звіту лишається завищеним на посилку,
-    // яку клієнт так і не забрав, а повторне отримання того самого
-    // замовлення (нижче) мовчки нічого не зробило б через уже виставлений
-    // delivered_at.
+    // return_transit, або статус відкотили вручну) знімає прихід наложкою:
+    // інакше дохід звіту лишається завищеним на посилку, яку клієнт так і
+    // не забрав. delivered_at при цьому НЕ чиститься (finance.onOrderUndelivered
+    // сам цього більше не робить) — фільтр status='delivered' у звітах доходу
+    // й так відсікає повернену посилку, а очищення дати лише шкодило:
+    // повторне отримання (нижче) проставляло б delivered_at сьогоднішнім
+    // днем замість вихідного дня отримання, і дохід/каса переїжджали б у
+    // інший, можливо вже закритий місяць.
     if (existing.status === "delivered" && status !== "delivered") finance.onOrderUndelivered(req.params.id);
     // Забрана посилка — це дохід дня отримання, а не дня створення замовлення.
     if (status === "delivered") finance.onOrderDelivered(req.params.id);
@@ -2650,11 +2653,15 @@ app.post("/api/orders/:id/cancel", authMiddleware, requireRole("admin","warehous
     db.prepare("DELETE FROM payout_items WHERE order_id=? AND payout_request_id IN (SELECT id FROM payout_requests WHERE status='pending')").run(o.id);
     affectedPr.forEach(id => recalcPayout(id));
     refundOrderBalance(o, req.user.id);
-    // Скасоване передоплачене замовлення повертає гроші дроперу (вище), тож
-    // прихід каси, записаний при створенні (kind='prepaid'), більше не
-    // відповідає дійсності — на відміну від DELETE, тут це раніше не
-    // прибиралось, і рух лишався в касі назавжди.
-    finance.removeCashMovesForOrder(o.id);
+    // Скасоване замовлення, за яке реально надійшли гроші (передоплата —
+    // наложка на цих статусах ще не могла прийти, посилку не забрали), має
+    // повернути їх дроперу: пишемо зустрічний розхід на суму, що лишилась
+    // непокритою вже зробленими поверненнями, замість того щоб стирати
+    // рухи каси. Стирання (removeCashMovesForOrder, як у DELETE) тут не
+    // годиться — воно чіпляло б заразом і РЕАЛЬНІ повернення коштів
+    // клієнту (kind='refund'), а це гроші, які вже вийшли з рахунку і
+    // мають лишитись у касі назавжди, скасовано замовлення чи ні.
+    finance.compensateCancelledOrder(o.id);
     // Товар повернувся на полицю, тож замовлення знову "не зняте". Інакше,
     // якщо скасоване замовлення повернути в роботу ручною випадачкою, повторне
     // "Готово" не списало б залишок — речі пішли б зі складу непоміченими.
@@ -3289,8 +3296,9 @@ async function trackOneOrder(apiKey, o) {
   }
   // Той самий відкат, що й у ручному PUT /api/orders/:id/status: трекінг НП
   // сам переводить delivered → refused/return_transit, коли посилку
-  // повернули, і без цього прихід наложкою та delivered_at так само
-  // лишились би застряглими на "забраній" посилці.
+  // повернули, і без цього прихід наложкою так само лишився б застряглим
+  // на "забраній" посилці. delivered_at не чиститься — див. коментар у
+  // finance.onOrderUndelivered.
   if (o.status === "delivered" && ns && ns !== "delivered") finance.onOrderUndelivered(o.id);
   if (ns === "delivered") finance.onOrderDelivered(o.id);
   if (ns === "refused" || ns === "return_transit" || o.status === "refused" || o.status === "return_transit") {
@@ -3946,7 +3954,21 @@ app.post("/api/payouts/:id/apply-balance", authMiddleware, requireRole("admin"),
   const u = db.prepare("SELECT balance FROM users WHERE id=?").get(pr.dropshipper_id);
   const bal = u ? (u.balance || 0) : 0;
   if (!bal) return res.status(400).json({ error: "Баланс нульовий" });
-  const balR = round2(bal);
+  // Залік боргу (від'ємний баланс) не може перевищувати суму цієї заявки.
+  // balance_applied пише лише цей маршрут, і лише додаванням — відкату
+  // нема. Раніше сюди йшов увесь борг як є: якщо він більший за виплату,
+  // підсумок (total_amount+balance_applied) ставав від'ємним, PUT
+  // .../paid таку виплату блокує назавжди, а повернути залік нема як —
+  // глухий кут. Тож борг обмежуємо тим, що сама заявка фактично може
+  // покрити, а решту лишаємо висіти на балансі дропера до наступної
+  // виплати. Кредит (додатний баланс) такої загрози не несе — він лише
+  // збільшує підсумок, тож для нього стелі нема.
+  // Math.min(0, ...) — про всяк випадок, якщо підсумок уже від'ємний (стара
+  // заявка, залік на якій завели ще до цього фіксу): тоді нового боргу
+  // заводити не можна взагалі, а не тим паче в плюс.
+  const debtFloor = Math.min(0, -round2((pr.total_amount || 0) + (pr.balance_applied || 0))); // найбільший борг, який ще не заводить підсумок у мінус
+  const balR = bal < 0 ? round2(Math.max(bal, debtFloor)) : round2(bal);
+  if (!balR) return res.status(400).json({ error: "Борг дропера вже повністю покритий сумою цієї виплати — залишок боргу лишається на балансі" });
   db.transaction(() => {
     db.prepare("UPDATE payout_requests SET balance_applied=ROUND(balance_applied+?,2) WHERE id=?").run(balR, pr.id);
     db.prepare("INSERT INTO balance_transactions(user_id,amount,type,note,created_by)VALUES(?,?,?,?,?)")
@@ -3974,9 +3996,19 @@ app.put("/api/payouts/:id/paid", authMiddleware, requireRole("admin"), (req, res
   // баланс) більший за суму заявки, підсумок від'ємний — реально ніхто
   // нікому нічого не переказує, тож проводити таку виплату не можна: у касу
   // потрапив би плюс замість очікуваного мінуса (фантомний прихід).
+  // POST /api/payouts/:id/apply-balance більше не дає завести сюди більше
+  // боргу, ніж сама заявка може покрити (борг понад це лишається на
+  // балансі дропера) — тож у нормальній роботі ця перевірка не спрацьовує.
+  // Спрацювати вона може лише якщо сума заявки зменшилась ПІСЛЯ заліку
+  // (щойно вище syncPendingPayout прибрав позицію — наприклад, замовлення
+  // перестало бути delivered). Відкату вже зарахованого заліку нема, тож
+  // єдина дія, яка справді розв'яже це, — дочекатись нових доставлених
+  // замовлень дропера: вони підтягнуть суму заявки вгору, і підсумок сам
+  // вирівняється при повторній спробі провести виплату.
   const payoutFinalTotal = round2((pr.total_amount || 0) + (pr.balance_applied || 0));
   if (payoutFinalTotal < 0) {
-    return res.status(400).json({ error: "Підсумок виплати від'ємний (борг дропера більший за суму до виплати) — зменшіть залік балансу перед проведенням" });
+    return res.status(400).json({ error: "Підсумок виплати від'ємний на " + Math.abs(payoutFinalTotal).toFixed(2) +
+      "₴ — сума заявки зменшилась після заліку боргу, а сам залік скасувати не можна. Зачекайте, поки дроперу доставлять ще замовлення (сума заявки підтягнеться), і повторіть спробу." });
   }
   db.prepare("UPDATE payout_requests SET status='paid',paid_at=datetime('now','localtime') WHERE id=?").run(req.params.id);
   finance.onDropPayoutPaid(req.params.id);
@@ -4074,12 +4106,13 @@ app.get("/api/dashboard/accounting", authMiddleware, requireRole("admin"), (req,
   // якої правки замовлення (зміна ТТН, ручний edit), через що вкладка
   // «Бухгалтерія» показувала інший день, ніж день фактичного отримання.
   // status='delivered' AND delivered_at!='' — те саме правило доходу, що й
-  // у GET /api/finance/report (finance.js): вихід зі статусу delivered
-  // (НП повернула посилку) чистить delivered_at через
-  // finance.onOrderUndelivered, тож обидві умови на новому коді збігаються;
-  // фільтр по статусу лишаємо явним, щоб два екрани доходу гарантовано не
-  // розійшлись, навіть якщо колись з'явиться шлях, що зсуває delivered_at
-  // повз цей хук.
+  // у GET /api/finance/report (finance.js). delivered_at НІКОЛИ не
+  // чиститься, навіть коли замовлення виходить зі статусу delivered
+  // (finance.onOrderUndelivered лишає дату — інакше повторне отримання
+  // проставило б сьогоднішню замість вихідного дня, і дохід тихо
+  // переїжджав би в інший місяць), тож саме статус тут відсікає повернену
+  // посилку з доходу — прибирати цю умову не можна. Той самий фільтр в
+  // обох місцях, щоб два екрани доходу гарантовано не розійшлись.
   const delivered = db.prepare(`SELECT date(delivered_at) as day, COUNT(*) as c, COALESCE(SUM(cod_amount),0) as cod, COALESCE(SUM(total_drop_price),0) as drop_sum
     FROM orders WHERE status='delivered' AND delivered_at!='' AND date(delivered_at) BETWEEN ? AND ? GROUP BY day`).all(df, dt);
   const refused = db.prepare(`SELECT date(updated_at) as day, COUNT(*) as c
@@ -4099,27 +4132,40 @@ app.put("/api/orders/:id/edit", authMiddleware, requireRole("admin"), async (req
   const { client_name, client_phone, client_city, client_warehouse, cod_amount, declared_value, note, weight, delivery_type, client_street, client_house, client_flat, is_postomat, parcel_width, parcel_height, parcel_length } = req.body;
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
   if (!o) return res.status(404).json({ error: "Not found" });
-  const cod = parseFloat(cod_amount) ?? o.cod_amount;
+  // cod_amount не передане (undefined) або нечислове (NaN від parseFloat) —
+  // лишаємо наложку як була. ?? ловить лише null/undefined, а не NaN, тож
+  // parseFloat(cod_amount) ?? o.cod_amount раніше обнуляв записаний прихід
+  // і виплату дроперу щоразу, як адмінка не слала це поле (NaN ?? x === NaN,
+  // не x). Інші числові поля маршруту (declared_value, weight, parcel_*)
+  // цієї пастки не мають — вони вже стоять на || (NaN там falsy, як і 0
+  // потрібно), а не на ??.
+  const codParsed = parseFloat(cod_amount);
+  const cod = Number.isFinite(codParsed) ? codParsed : (o.cod_amount || 0);
   const payout = o.is_prepaid ? 0 : Math.round((cod - o.total_drop_price) * 100) / 100;
 
   const newName = client_name||o.client_name, newPhone = client_phone||o.client_phone, newCity = client_city||o.client_city, newWarehouse = client_warehouse||o.client_warehouse;
   const newStreet = client_street!==undefined?client_street:o.client_street, newHouse = client_house!==undefined?client_house:o.client_house, newFlat = client_flat!==undefined?client_flat:o.client_flat;
 
-  db.prepare("UPDATE orders SET client_name=?,client_phone=?,client_city=?,client_warehouse=?,cod_amount=?,declared_value=?,note=?,payout_amount=?,weight=?,delivery_type=?,client_street=?,client_house=?,client_flat=?,is_postomat=?,parcel_width=?,parcel_height=?,parcel_length=?,updated_at=datetime('now','localtime') WHERE id=?")
-    .run(newName, newPhone, newCity, newWarehouse, cod, parseFloat(declared_value)||o.declared_value, note??o.note, payout,
-      weight!==undefined?(parseFloat(weight)||o.weight):o.weight,
-      delivery_type||o.delivery_type,
-      newStreet, newHouse, newFlat,
-      is_postomat!==undefined?(is_postomat?1:0):o.is_postomat,
-      parcel_width!==undefined?(parseFloat(parcel_width)||0):o.parcel_width,
-      parcel_height!==undefined?(parseFloat(parcel_height)||0):o.parcel_height,
-      parcel_length!==undefined?(parseFloat(parcel_length)||0):o.parcel_length,
-      o.id);
+  db.transaction(() => {
+    db.prepare("UPDATE orders SET client_name=?,client_phone=?,client_city=?,client_warehouse=?,cod_amount=?,declared_value=?,note=?,payout_amount=?,weight=?,delivery_type=?,client_street=?,client_house=?,client_flat=?,is_postomat=?,parcel_width=?,parcel_height=?,parcel_length=?,updated_at=datetime('now','localtime') WHERE id=?")
+      .run(newName, newPhone, newCity, newWarehouse, cod, parseFloat(declared_value)||o.declared_value, note??o.note, payout,
+        weight!==undefined?(parseFloat(weight)||o.weight):o.weight,
+        delivery_type||o.delivery_type,
+        newStreet, newHouse, newFlat,
+        is_postomat!==undefined?(is_postomat?1:0):o.is_postomat,
+        parcel_width!==undefined?(parseFloat(parcel_width)||0):o.parcel_width,
+        parcel_height!==undefined?(parseFloat(parcel_height)||0):o.parcel_height,
+        parcel_length!==undefined?(parseFloat(parcel_length)||0):o.parcel_length,
+        o.id);
 
-  // Наложку могли правити на вже доставленому замовленні, чий прихід каси
-  // (kind='cod') уже записаний зі старою сумою — приводимо його до нової,
-  // щоб розрахунковий залишок не розійшовся з банківською випискою.
-  finance.syncOrderCashMove(o.id);
+    // Наложку могли правити на вже доставленому замовленні, чий прихід каси
+    // (kind='cod') уже записаний зі старою сумою — приводимо його до нової,
+    // щоб розрахунковий залишок не розійшовся з банківською випискою. У тій
+    // самій транзакції, що й сам UPDATE orders — так само, як два інші
+    // виклики syncOrderCashMove (swap-product, додавання позиції) — інакше
+    // збій між ними лишив би суму замовлення і рух каси розсинхронізованими.
+    finance.syncOrderCashMove(o.id);
+  })();
 
   // Recipient data on an already-issued TTN can't just be changed in place —
   // the label's name/phone/address is fixed at NP's end. If anything that
