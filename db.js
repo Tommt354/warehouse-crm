@@ -734,6 +734,14 @@ db.exec(`
   -- source розрізняє звідки партія (cut / purchase / return), ref_id
   -- вказує на джерело (cut_incoming.id, stock_incoming.id тощо). Списання
   -- зі складу йде за FIFO по цих партіях — кожна одиниця несе ціну своєї.
+  -- shelf розрізняє ФІЗИЧНУ полицю (base / returns) — це різні шухляди
+  -- капіталу (розділ 3 спеки), і партії з різних полиць не можна змішувати
+  -- в одному FIFO: інакше списання замовлення могло б узяти вартість із
+  -- полиці повернень, хоча фізично товар узяли з бази (chи навпаки). valued
+  -- каже, чи unit_cost — реальне число, чи нуль-заглушка для товару без
+  -- відомої собівартості (легасі до впровадження партій, чи прогалина
+  -- обліку) — такі партії не вигадують вартість, а лишаються видимими
+  -- окремим списком (valued=0).
   CREATE TABLE IF NOT EXISTS inventory_lots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     base_product_id INTEGER NOT NULL,
@@ -742,9 +750,13 @@ db.exec(`
     unit_cost REAL NOT NULL DEFAULT 0,
     source TEXT NOT NULL DEFAULT 'cut',
     ref_id INTEGER,
+    shelf TEXT NOT NULL DEFAULT 'base',
+    valued INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (base_product_id) REFERENCES base_products(id),
-    FOREIGN KEY (size_id) REFERENCES sizes(id)
+    -- CASCADE, як і в stock_base/stock_returns: видалення товару не має
+    -- впиратись у чуже обмеження партій вартості.
+    FOREIGN KEY (base_product_id) REFERENCES base_products(id) ON DELETE CASCADE,
+    FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE
   );
 
   -- Котел фурнітури: партійний облік гудзиків/бирок/пакетів не ведеться,
@@ -764,7 +776,7 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_material_lots_material ON material_lots(material_id);
   CREATE INDEX IF NOT EXISTS idx_cut_material_usage_cut ON cut_material_usage(cut_incoming_id);
-  CREATE INDEX IF NOT EXISTS idx_inventory_lots_product ON inventory_lots(base_product_id, size_id);
+  CREATE INDEX IF NOT EXISTS idx_inventory_lots_product ON inventory_lots(base_product_id, size_id, shelf);
 `);
 
 // Migrations
@@ -1162,6 +1174,51 @@ addCol("cut_incoming","sewing_price","REAL DEFAULT 0");
 addCol("cut_incoming","sewing_cost","REAL DEFAULT 0");
 addCol("cut_incoming","unit_cost","REAL DEFAULT 0");
 addCol("cut_incoming","valued","INTEGER DEFAULT 0");
+
+// Скільки з цієї партії крою ще НЕ перейшло на склад — власний FIFO-покажчик
+// для вартості, окремий від stock_cuts (кількісний облік крою по цехах, не
+// чіпаємо). ALTER TABLE ADD COLUMN з DEFAULT 0 заповнює НАЯВНІ рядки нулем —
+// і це свідомо правильно для крою, що вже існував до цієї міграції: ми не
+// знаємо, скільки з нього фізично ще лежить у цеху, а скільки вже давно
+// пішло на склад без партії. Такий крій просто не бере участі в майбутньому
+// підборі вартості (див. goods.onCutMovedToBase) — чесніше за вигадану
+// цифру. Нові партії крою виставляють qty_left=quantity явно при вставці
+// (server.js, /api/stock-cuts/incoming).
+addCol("cut_incoming","qty_left","REAL DEFAULT 0");
+
+// Самолікувальна міграція: перша версія inventory_lots (Задача 1 цього
+// заходу) була без ON DELETE CASCADE на base_product_id/size_id, через що
+// видалення товару падало на чужому обмеженні партій вартості. Дропаємо й
+// перестворюємо лише якщо партій ще нема (реальних даних під старою формою
+// не було) — якщо раптом щось уже лежить, лишаємо як є й друкуємо
+// попередження, а не тихо стираємо.
+(() => {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='inventory_lots'").get();
+  if (row && !/ON DELETE CASCADE/.test(row.sql)) {
+    const cnt = db.prepare("SELECT COUNT(*) as c FROM inventory_lots").get().c;
+    if (cnt === 0) {
+      db.exec("DROP TABLE inventory_lots");
+      db.exec(`CREATE TABLE inventory_lots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        base_product_id INTEGER NOT NULL,
+        size_id INTEGER NOT NULL,
+        qty_left REAL NOT NULL DEFAULT 0,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'cut',
+        ref_id INTEGER,
+        shelf TEXT NOT NULL DEFAULT 'base',
+        valued INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (base_product_id) REFERENCES base_products(id) ON DELETE CASCADE,
+        FOREIGN KEY (size_id) REFERENCES sizes(id) ON DELETE CASCADE
+      )`);
+      db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_lots_product ON inventory_lots(base_product_id, size_id, shelf)");
+      console.log("🔄 inventory_lots перестворено з ON DELETE CASCADE");
+    } else {
+      console.log("⚠️  inventory_lots має стару форму FK (без CASCADE), але вже містить " + cnt + " партій — не чіпаю автоматично");
+    }
+  }
+})();
 
 // Собівартість, зафіксована в момент продажу (списання партії складу FIFO),
 // щоб вона не пливла заднім числом, якщо пізніше на склад прийде партія з

@@ -1584,7 +1584,9 @@ app.post("/api/stock-cuts/incoming", authMiddleware, requireRole("admin"), (req,
     for (const item of items) {
       const qty = parseInt(item.quantity);
       if (qty > 0) {
-        db.prepare("INSERT INTO cut_incoming(base_product_id,size_id,workshop_id,quantity,note,created_by)VALUES(?,?,?,?,?,?)").run(base_product_id, item.size_id, workshop_id, qty, note||"", req.user.id);
+        // qty_left=qty при вставці — власний покажчик FIFO для вартості
+        // (goods.onCutMovedToBase), окремий від stock_cuts нижче.
+        db.prepare("INSERT INTO cut_incoming(base_product_id,size_id,workshop_id,quantity,qty_left,note,created_by)VALUES(?,?,?,?,?,?,?)").run(base_product_id, item.size_id, workshop_id, qty, qty, note||"", req.user.id);
         const existing = db.prepare("SELECT id FROM stock_cuts WHERE base_product_id=? AND size_id=? AND workshop_id=?").get(base_product_id, item.size_id, workshop_id);
         if (existing) db.prepare("UPDATE stock_cuts SET quantity=quantity+? WHERE id=?").run(qty, existing.id);
         else db.prepare("INSERT INTO stock_cuts(base_product_id,size_id,workshop_id,quantity)VALUES(?,?,?,?)").run(base_product_id, item.size_id, workshop_id, qty);
@@ -1638,8 +1640,21 @@ app.post("/api/stock/incoming-bulk", authMiddleware, requireRole("admin","wareho
             const take = Math.min(remaining, c.quantity);
             db.prepare("UPDATE stock_cuts SET quantity=quantity-? WHERE id=?").run(take, c.id);
             db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('cut_out',?,?,?,?,?)").run(base_product_id, item.size_id, take, "Крій → база", req.user.id);
+            // Крій → база: партія складу з вартістю тієї самої партії крою
+            // (FIFO по датах крою в цьому цеху) — сума капіталу не міняється.
+            goods.onCutMovedToBase(base_product_id, item.size_id, take, c.workshop_id);
             remaining -= take;
           }
+          if (remaining > 0) {
+            // Прийшло більше, ніж записано в крої цього товару/розміру (чи
+            // крою взагалі нема) — кількість усе одно йде на базу (вище), а
+            // вартість під неї невідома: не вигадуємо, партія складу
+            // лишається неоціненою (valued=0).
+            goods.onCutMovedToBase(base_product_id, item.size_id, remaining, null);
+          }
+        } else {
+          // Закупний товар (базар) — собівартість із картки товару.
+          goods.onStockIncoming(base_product_id, item.size_id, qty);
         }
       }
     }

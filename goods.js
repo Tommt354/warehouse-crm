@@ -245,6 +245,75 @@ function register(app, { authMiddleware, requireRole }) {
 
     res.json({ ok: true, material_cost: materialCost, notions_cost: notionsCostTotal, sewing_cost: sewingCostTotal, unit_cost: unitCost, total_cost: totalCost });
   });
+
+  // ── Партії готового товару: список і звірка ─────────────────────
+  app.get("/api/goods/lots-stock", ...adminOnly, (req, res) => {
+    let sql = `SELECT l.*, bp.name as product_name, s.name as size_name
+      FROM inventory_lots l JOIN base_products bp ON l.base_product_id=bp.id JOIN sizes s ON l.size_id=s.id WHERE 1=1`;
+    const params = [];
+    if (req.query.base_product_id) { sql += " AND l.base_product_id=?"; params.push(req.query.base_product_id); }
+    if (req.query.shelf) { sql += " AND l.shelf=?"; params.push(req.query.shelf); }
+    if (req.query.only_left === "1") sql += " AND l.qty_left > 0";
+    if (req.query.unvalued === "1") sql += " AND l.valued = 0";
+    sql += " ORDER BY l.created_at ASC, l.id ASC";
+    res.json({ lots: db.prepare(sql).all(...params) });
+  });
 }
 
-module.exports = { register };
+// ══════════════════════════════════════════════════════════════════
+// Рух вартості готового товару: крій → склад. Ці функції не рухають
+// КІЛЬКІСТЬ — вона вже рухається в server.js у своїх перевірених точках
+// (/api/stock-cuts/incoming, /api/stock/incoming-bulk). Тут лише вартість
+// іде слідом.
+// ══════════════════════════════════════════════════════════════════
+
+// Створює нову партію на вказаній полиці. Партії з тієї самої полиці й
+// джерела свідомо НЕ зливаються навіть з однаковою ціною — кожен прихід/
+// повернення лишається окремим рядком, як material_lots, для простежуваності.
+function addToShelf(baseProductId, sizeId, shelf, qty, unitCost, source, refId, valued) {
+  if (!qty || qty <= 0) return null;
+  return db.prepare(`INSERT INTO inventory_lots(base_product_id,size_id,qty_left,unit_cost,source,ref_id,shelf,valued)
+    VALUES(?,?,?,?,?,?,?,?)`)
+    .run(baseProductId, sizeId, qty, round2(unitCost) || 0, source, refId || null, shelf === "returns" ? "returns" : "base", valued ? 1 : 0)
+    .lastInsertRowid;
+}
+
+// Крій → база: партія складу з тією ж unit_cost, що й у партії крою — сума
+// капіталу не змінюється, гроші лише переїжджають із шухляди "крій" у
+// шухляду "склад". FIFO по датах партій КРОЮ (cut_incoming.qty_left) у
+// межах саме того цеху, з якого server.js уже забирає кількість
+// (stock_cuts) — які саме цехи й скільки бере кількісна логіка, тут не
+// дублюється, ми лише йдемо тим самим шляхом за вартістю. Якщо партій крою
+// для цього товару/розміру/цеху не вистачає (крій рухався ще до
+// впровадження партій) — залишок стає партією складу з unit_cost=0,
+// valued=0: вартість не вигадується, партія лишається видимою в списку
+// неоцінених.
+function onCutMovedToBase(baseProductId, sizeId, qty, workshopId) {
+  let remaining = qty;
+  if (workshopId) {
+    const batches = db.prepare(`SELECT * FROM cut_incoming WHERE base_product_id=? AND size_id=? AND workshop_id=? AND qty_left>0.0000001 ORDER BY created_at ASC, id ASC`)
+      .all(baseProductId, sizeId, workshopId);
+    for (const b of batches) {
+      if (remaining <= 0.0000001) break;
+      const take = Math.min(remaining, b.qty_left);
+      db.prepare("UPDATE cut_incoming SET qty_left = qty_left - ? WHERE id=?").run(take, b.id);
+      addToShelf(baseProductId, sizeId, "base", take, b.valued ? b.unit_cost : 0, "cut", b.id, !!b.valued);
+      remaining -= take;
+    }
+  }
+  if (remaining > 0.0000001) {
+    addToShelf(baseProductId, sizeId, "base", remaining, 0, "cut", null, false);
+  }
+}
+
+// Закупний товар (базар): собівартість береться з картки товару
+// (base_products.cost_price), партія одразу на складі. cost_price=0 означає
+// "не вписана" — не вигадуємо ціну, партія лишається неоціненою (valued=0),
+// а не отримує тихий нуль, який виглядав би як "безкоштовний товар".
+function onStockIncoming(baseProductId, sizeId, qty) {
+  const bp = db.prepare("SELECT cost_price FROM base_products WHERE id=?").get(baseProductId);
+  const cost = bp ? bp.cost_price : 0;
+  addToShelf(baseProductId, sizeId, "base", qty, cost, "purchase", null, cost > 0);
+}
+
+module.exports = { register, onCutMovedToBase, onStockIncoming };
