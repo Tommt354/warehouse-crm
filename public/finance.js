@@ -282,7 +282,10 @@ async function saveFinCheck(btn){
 // і звірка з банком нічого не показує (calcBalance у finance.js на бекенді).
 function openFinSettings(){
   document.getElementById("fs-balance").value=finSettings?finSettings.cash_opening_balance:0;
-  document.getElementById("fs-date").value=finSettings?finSettings.cash_opening_date:"";
+  // Порожню дату старту не показуємо — бекенд однаково підставить сьогодні,
+  // якщо зберегти без дати, тож префілюємо тут сьогоднішнім днем, щоб
+  // власник одразу бачив, від якого дня рахується залишок, а не гадав.
+  document.getElementById("fs-date").value=(finSettings&&finSettings.cash_opening_date)||new Date().toISOString().slice(0,10);
   document.getElementById("fs-err").style.display="none";
   openM("fin-settings-modal");
 }

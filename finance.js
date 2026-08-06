@@ -262,16 +262,33 @@ function register(app, { authMiddleware, requireRole }) {
   app.put("/api/finance/settings", ...adminOnly, (req, res) => {
     const st = db.prepare("INSERT OR REPLACE INTO settings(key,value)VALUES(?,?)");
     if (req.body.cash_opening_balance !== undefined) st.run("cash_opening_balance", String(parseFloat(req.body.cash_opening_balance) || 0));
-    if (req.body.cash_opening_date !== undefined) st.run("cash_opening_date", String(req.body.cash_opening_date || ""));
+    // Дата старту має існувати завжди: без неї calcBalance підсумовував би
+    // ВСЮ історію рухів каси, а не лише те, що сталось після дати, з якої
+    // власник почав рахунок. Небезпечно саме мовчазне порожнє значення —
+    // одразу після деплою трекінг НП заднім числом проводить прихід
+    // наложкою по старих замовленнях, і власник, щойно ввівши стартовий
+    // залишок, бачить його роздутим на всю історичну наложку без пояснення.
+    // Модалка (public/finance.js openFinSettings) тепер сама префілює поле
+    // сьогоднішнім днем, але бекенд не покладається на фронтенд: якщо разом
+    // із сумою дату явно не передали (порожній рядок так само, як undefined),
+    // підставляємо сьогодні тут.
+    const date = req.body.cash_opening_date
+      ? String(req.body.cash_opening_date)
+      : (req.body.cash_opening_balance !== undefined ? db.prepare("SELECT date('now','localtime') d").get().d : undefined);
+    if (date !== undefined) st.run("cash_opening_date", date);
     res.json({ ok: true });
   });
 
   function calcBalance() {
     const opening = parseFloat(getSetting("cash_opening_balance", 0)) || 0;
-    const since = getSetting("cash_opening_date", "") || "";
-    const moves = since
-      ? db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE date>=?").get(since).s
-      : db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves").get().s;
+    // Дата старту порожня лише до першого налаштування (PUT вище тепер
+    // завжди її проставляє разом із сумою). Захисний фолбек на "сьогодні",
+    // а не на "з нуля по всій історії": свіжий деплой, у якому власник ще
+    // не встиг відкрити модалку стартового залишку, інакше миттю проковтнув
+    // би в баланс усю історичну наложку, яку трекінг НП заднім числом
+    // допише по старих замовленнях.
+    const since = getSetting("cash_opening_date", "") || db.prepare("SELECT date('now','localtime') d").get().d;
+    const moves = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE date>=?").get(since).s;
     return round2(opening + moves);
   }
 
@@ -515,6 +532,14 @@ function compensateCancelledOrder(orderId, dateStr) {
   // (наприклад помилковий подвійний клік) не задвоїть розхід.
   addCashMove({ date, amount: -remaining, kind: "cancel_refund", ref_type: "order", ref_id: orderId,
     note: "Повернення передоплати за скасоване замовлення #" + orderId });
+  // Стеля ручного повернення (POST /api/finance/orders/:id/refund) рахується
+  // як total_drop_price мінус refunded_amount. Компенсація вище — це так само
+  // гроші, що щойно вийшли з рахунку за це замовлення, просто іншим шляхом
+  // (зустрічний розхід, а не кнопка «Повернення»). Без цього рядка стеля
+  // лишалась би на повну суму, і адмін міг би натиснути «Повернення» ще раз
+  // на суму, яку компенсація щойно повернула — подвійне списання з
+  // розрахункового залишку на рівному місці.
+  db.prepare("UPDATE orders SET refunded_amount=COALESCE(refunded_amount,0)+? WHERE id=?").run(remaining, orderId);
 }
 
 // Зарплата: у касу потрапляє факт виплати, а не нарахування.

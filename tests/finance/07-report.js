@@ -51,6 +51,41 @@ function cleanupT7() {
 
   cleanupT7();
 
+  // ── пункт 1: дата старту завжди має бути ────────────────────────────────
+  // Симулюємо стан "щойно після деплою, налаштування ще не чіпали" — через
+  // API такого стану не досягти (PUT завжди щось пише), тож прибираємо обидва
+  // ключі напряму в БД. prevSettings уже збережено вище і відновиться
+  // наприкінці файлу як завжди.
+  db.prepare("DELETE FROM settings WHERE key IN ('cash_opening_balance','cash_opening_date')").run();
+  const freshSettings = (await api("/api/finance/settings")).b;
+  ok(freshSettings.cash_opening_date === "", "щойно очищені настройки: дата старту порожня, як і в дефолтному стані (" + freshSettings.cash_opening_date + ")");
+
+  // Стара наложка (400 днів тому) — без явної дати старту calcBalance раніше
+  // підсумовував УСЮ історію рухів каси, тож саме такий давній рух і роздував
+  // би розрахунковий залишок одразу після деплою, коли трекінг НП заднім
+  // числом проводить прихід по старих замовленнях.
+  const balBeforeOldMove = (await api("/api/finance/report?from=" + today + "&to=" + today)).b.balance;
+  const oldDay = db.prepare("SELECT date('now','localtime','-400 days') d").get().d;
+  const oldMoveId = db.prepare("INSERT INTO cash_moves(date,amount,kind,ref_type,note)VALUES(?,?,?,?,?)")
+    .run(oldDay, 12345, "cod", "__t7fake", "__T7 стара наложка").lastInsertRowid;
+  const balAfterOldMove = (await api("/api/finance/report?from=" + today + "&to=" + today)).b.balance;
+  ok(round2(balAfterOldMove - balBeforeOldMove) === 0,
+    "без явної дати старту стара наложка (400 днів тому) НЕ потрапляє в розрахунковий залишок — фолбек на «сьогодні», а не на всю історію (" + round2(balAfterOldMove - balBeforeOldMove) + ")");
+
+  // Власник вводить стартовий залишок БЕЗ дати (так робила стара модалка,
+  // яка слала порожній рядок) — бекенд сам підставляє сьогодні, а не лишає
+  // настройку порожньою.
+  const putNoDate = await api("/api/finance/settings", { method: "PUT", body: JSON.stringify({ cash_opening_balance: 500 }) });
+  ok(putNoDate.s === 200, "стартовий залишок збережено без явної дати (" + JSON.stringify(putNoDate.b) + ")");
+  const afterNoDate = (await api("/api/finance/settings")).b;
+  ok(afterNoDate.cash_opening_date === today, "бекенд підставив сьогодні як дату старту, коли її не передали разом із сумою (" + afterNoDate.cash_opening_date + " = " + today + ")");
+
+  const balAfterSettingsSave = (await api("/api/finance/report?from=" + today + "&to=" + today)).b.balance;
+  ok(round2(balAfterSettingsSave - balAfterOldMove) === 500,
+    "після автопідстановки дати баланс зрушив лише на новий стартовий залишок (500), стара наложка й далі поза розрахунком (" + round2(balAfterSettingsSave - balAfterOldMove) + ")");
+
+  db.prepare("DELETE FROM cash_moves WHERE id=?").run(oldMoveId);
+
   await api("/api/finance/settings", { method: "PUT", body: JSON.stringify({ cash_opening_balance: 10000, cash_opening_date: today }) });
 
   const cats = (await api("/api/finance/categories")).b.categories;

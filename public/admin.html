@@ -479,6 +479,7 @@
 <div style="font-size:11px;color:var(--td);margin-bottom:10px">Скільки грошей було на рахунку на момент, з якого система почала рахунок. Розрахунковий залишок = це число плюс усі рухи каси з дати нижче. Без нього звірка з банком не має сенсу — система рахуватиме баланс з нуля.</div>
 <div class="fld"><label>Скільки було на рахунку на старті ₴</label><input type="number" id="fs-balance" step="0.01"></div>
 <div class="fld"><label>Дата, з якої рахувати рухи</label><input type="date" id="fs-date"></div>
+<div style="font-size:10px;color:var(--td);margin-bottom:6px">Рухи каси до цієї дати в розрахунковий залишок не входять.</div>
 <div id="fs-err" style="display:none;color:var(--red);font-size:11px;margin-bottom:6px"></div>
 <div style="display:flex;gap:6px"><button class="btn btn-p" onclick="saveFinSettings()">Зберегти</button><button class="btn" onclick="closeM('fin-settings-modal')">Скасувати</button></div>
 </div></div>
@@ -2056,7 +2057,14 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     ordStatusList.forEach(function(s){html+='<option value="'+s.code+'"'+(o.status===s.code?' selected':'')+'>'+esc(s.name)+'</option>'});
     html+='</select>';
     html+='<button class="btn btn-sm" onclick="openEditOrder('+o.id+')" style="border-color:rgba(66,165,245,.3);color:var(--blue)">'+Icon('pencil',13)+'</button>';
-    html+='<button class="btn btn-sm" onclick="openOrderRefund('+o.id+','+(o.total_drop_price||0)+','+(o.refunded_amount||0)+')" style="border-color:rgba(255,167,38,.3);color:var(--warn)" title="Повернення коштів клієнту">'+Icon('undo2',13)+' Повернення</button>';
+    // Скасоване замовлення вже повернуло гроші саме через скасування
+    // (finance.compensateCancelledOrder пише зустрічний розхід і піднімає
+    // refunded_amount) — кнопка ручного повернення на такому замовленні
+    // або нічого не дасть зробити (стеля вже 0), або, якщо колись покаже
+    // залишок, дублюватиме те, що скасування вже провело. Тож на
+    // скасованих ховаємо її повністю, а не покладаємось лише на стелю.
+    if(o.status!=='cancelled')
+      html+='<button class="btn btn-sm" onclick="openOrderRefund('+o.id+','+(o.total_drop_price||0)+','+(o.refunded_amount||0)+')" style="border-color:rgba(255,167,38,.3);color:var(--warn)" title="Повернення коштів клієнту">'+Icon('undo2',13)+' Повернення</button>';
 
     if(o.status==='new'||o.status==='in_progress')html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button>';
     html+='<button class="btn btn-d btn-sm" onclick="delAdmOrder('+o.id+',\''+o.status+'\')" title="Видалити замовлення">'+Icon('trash2',13)+'</button>';

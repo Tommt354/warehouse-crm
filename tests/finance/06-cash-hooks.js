@@ -265,6 +265,51 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
   const c2NetEffect = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE ref_type='order' AND ref_id=?").get(c2OrderId).s;
   ok(round2(c2NetEffect) === 0, "сумарний вплив скасованого передоплаченого замовлення на касу — рівно нуль, гроші повернулись (" + c2NetEffect + ")");
 
+  // ── C2-double-refund (пункт 2, головний сценарій бага): компенсація при
+  // скасуванні мала закрити стелю ручного повернення (refunded_amount), а
+  // не лишити її на повній сумі — інакше адмін тисне «Повернення» ЩЕ РАЗ на
+  // ту саму суму, яку компенсація щойно повернула, і розрахунковий залишок
+  // мінусується вдруге на рівному місці ──────────────────────────────────
+  const c2RefundedAmount = db.prepare("SELECT refunded_amount r FROM orders WHERE id=?").get(c2OrderId).r;
+  ok(c2RefundedAmount === 700, "refunded_amount піднято компенсацією до повної суми передоплати, стеля ручного повернення закрита (" + c2RefundedAmount + ")");
+  const doubleRefundRes = await api("/api/finance/orders/" + c2OrderId + "/refund", { method: "POST", body: JSON.stringify({ amount: 700, note: "__T6 подвійне" }) });
+  ok(doubleRefundRes.s === 400, "повторне ручне повернення на ту саму суму після скасування відхилене — подвійного списання нема (" + doubleRefundRes.s + ", " + JSON.stringify(doubleRefundRes.b) + ")");
+  const movesAfterDoubleAttempt = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE ref_type='order' AND ref_id=?").get(c2OrderId).s;
+  ok(round2(movesAfterDoubleAttempt) === 0, "відхилена спроба подвійного повернення не змінила сумарний вплив на касу, все ще нуль (" + movesAfterDoubleAttempt + ")");
+
+  // ── C2-reverse-order: той самий сценарій у зворотному порядку (спершу
+  // ручне повернення повної суми, потім скасування) має дати правильний
+  // нуль без зустрічного розходу — compensateCancelledOrder бачить, що
+  // прихід уже повністю покритий попереднім ручним поверненням ───────────
+  const prodC2r = createTestProduct(800);
+  const orderC2r = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodC2r.varId, size_id: prodC2r.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт18", client_phone: "+380501120018", client_city: "Київ", client_warehouse: "Відділення №1",
+    is_prepaid: true, receipt_photo: "__T6.jpg", note: "__T6"
+  }) });
+  const c2rOrderId = orderC2r.b.order_id;
+  const manualFullRefund = await api("/api/finance/orders/" + c2rOrderId + "/refund", { method: "POST", body: JSON.stringify({ amount: 800, note: "__T6 зворотний порядок" }) });
+  ok(manualFullRefund.s === 200, "ручне повернення повної суми ДО скасування проведено (" + JSON.stringify(manualFullRefund.b) + ")");
+  const c2rCancelRes = await api("/api/orders/" + c2rOrderId + "/cancel", { method: "POST", body: JSON.stringify({}) });
+  ok(c2rCancelRes.s === 200, "замовлення скасовано після повного ручного повернення (" + JSON.stringify(c2rCancelRes.b) + ")");
+  const c2rCompensatingCount = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='cancel_refund' AND ref_type='order' AND ref_id=?").get(c2rOrderId).c;
+  ok(c2rCompensatingCount === 0, "компенсація НЕ додала другий зустрічний розхід — прихід уже повністю покритий ручним поверненням (" + c2rCompensatingCount + ")");
+  // Net effect = прихід передоплати (ref_type='order') + ручне повернення
+  // (kind='refund' пишеться з ref_type='refund'/'refund_extra', НЕ 'order' —
+  // той самий шаблон ідентифікації руху, що й у countDelMoves нижче).
+  const c2rNetEffect = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM cash_moves
+    WHERE (ref_type='order' AND ref_id=?) OR (ref_type='refund' AND ref_id=?) OR (ref_type='refund_extra' AND note LIKE ?)`)
+    .get(c2rOrderId, c2rOrderId, "%(замовлення #" + c2rOrderId + ")").s;
+  ok(round2(c2rNetEffect) === 0, "зворотний порядок дій так само дає рівно нуль впливу на касу (" + c2rNetEffect + ")");
+  const c2rRefundedAmount = db.prepare("SELECT refunded_amount r FROM orders WHERE id=?").get(c2rOrderId).r;
+  ok(c2rRefundedAmount === 800, "refunded_amount лишився на сумі ручного повернення, компенсація його не задвоїла (" + c2rRefundedAmount + ")");
+
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id=?").run(c2rOrderId);
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='refund' AND ref_id=?").run(c2rOrderId);
+  db.prepare("DELETE FROM order_items WHERE order_id=?").run(c2rOrderId);
+  db.prepare("DELETE FROM orders WHERE id=?").run(c2rOrderId);
+  removeTestProduct(prodC2r);
+
   // ── C2b: скасування звичайного COD-замовлення (наложка ще не могла
   // прийти — статуси, які можна скасувати, завжди передують отриманню), по
   // якому вже зроблено повернення клієнту (гроші реально вийшли з рахунку)
