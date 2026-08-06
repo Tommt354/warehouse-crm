@@ -270,7 +270,25 @@ function openFinExpense(id){
   document.getElementById("fe-workshop").innerHTML='<option value="">—</option>'+finWorkshops.map(function(w){return '<option value="'+w.id+'">'+esc(w.name)+'</option>'}).join("");
   if(e){document.getElementById("fe-cat").value=e.category_id;document.getElementById("fe-sup").value=e.supplier_id||"";document.getElementById("fe-workshop").value=e.workshop_id||"";}
   onFinCatChange();
+  checkFeDateWarn();
   openM("fin-exp-modal");
+}
+
+// Рух каси, датований раніше за cash_opening_date, calcBalance() (finance.js)
+// суму назавжди пропускає — власник має побачити це одразу при виборі дати,
+// а не здогадуватись потім, чому «Має бути на рахунку» не зійшлося з
+// випискою. Лише попередження, не блокування: іноді власник свідомо заводить
+// давню витрату для повноти журналу, і це його право.
+function checkFeDateWarn(){
+  var w=document.getElementById("fe-warn");
+  var d=document.getElementById("fe-date").value;
+  var opening=finSettings&&finSettings.cash_opening_date;
+  if(d&&opening&&d<opening){
+    w.textContent="Дата раніша за старт обліку каси ("+opening+") — цей рух не потрапить у розрахунковий залишок.";
+    w.style.display="block";
+  }else{
+    w.style.display="none";
+  }
 }
 
 // Категорія типу sewing (робота цеху) без прив'язки до цеху — бекенд
@@ -363,20 +381,31 @@ async function saveFinSettings(){
   catch(e){err.textContent=e.message;err.style.display="block"}
 }
 
-// Повернення коштів клієнту. Кнопка стоїть у картці замовлення (admin.html),
-// звідти й приходять total/refunded — вони вже є в об'єкті замовлення, тож
-// окремий запит на відкриття модалки не потрібен.
-function openOrderRefund(orderId,total,refunded){
+// Повернення коштів клієнту. Кнопка стоїть у картці замовлення (admin.html).
+// Стелю раніше рахували тут-таки з полів замовлення (total_drop_price/
+// cod_amount) — для замовлення, яке отримали, а потім НП повернула
+// (onOrderUndelivered прибрав прихід із каси), це обіцяло повну суму, хоча
+// бекенд гарантовано відмовляв нулем. Тепер питаємо той самий вираз, яким
+// керується бекенд (GET .../refund-ceiling = orderReceivedAmount мінус
+// уже повернене, finance.js), щоб модалка не могла розійтись із реальністю.
+async function openOrderRefund(orderId){
   document.getElementById("rf-order-id").value=orderId;
-  var max=Math.round(((total||0)-(refunded||0))*100)/100;
-  document.getElementById("rf-info").textContent=refunded>0
-    ?("Клієнт заплатив "+finMoney(total)+"₴, уже повернено "+finMoney(refunded)+"₴. Можна повернути ще до "+finMoney(max)+"₴.")
-    :("Клієнт заплатив "+finMoney(total)+"₴. Можна повернути до "+finMoney(max)+"₴.");
+  document.getElementById("rf-info").textContent="Рахуємо, скільки можна повернути…";
   document.getElementById("rf-amount").value="";
-  document.getElementById("rf-amount").max=max;
+  document.getElementById("rf-amount").max="";
   document.getElementById("rf-note").value="";
   document.getElementById("rf-err").style.display="none";
   openM("refund-modal");
+  try{
+    var c=await api("/api/finance/orders/"+orderId+"/refund-ceiling");
+    document.getElementById("rf-info").textContent=c.refunded>0
+      ?("Реально надійшло "+finMoney(c.received)+"₴, уже повернено "+finMoney(c.refunded)+"₴. Можна повернути ще до "+finMoney(c.max)+"₴.")
+      :("Реально надійшло "+finMoney(c.received)+"₴. Можна повернути до "+finMoney(c.max)+"₴.");
+    document.getElementById("rf-amount").max=c.max;
+  }catch(e){
+    document.getElementById("rf-err").textContent="Не вдалось порахувати стелю повернення: "+e.message;
+    document.getElementById("rf-err").style.display="block";
+  }
 }
 
 async function saveOrderRefund(){

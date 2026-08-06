@@ -651,23 +651,157 @@ const round2 = v => Math.round((v || 0) * 100) / 100;
   ok(sumAfterDelete === sumBeforeDelete, "сумарний вплив на касу не змінився від видалення delivered-замовлення (" + sumAfterDelete + " = " + sumBeforeDelete + ")");
   ok(!db.prepare("SELECT 1 FROM orders WHERE id=?").get(delOrderId), "сам рядок замовлення таки видалений (тільки рухи каси лишились сиротами)");
 
-  // ── контрольна пара: видалення НЕ отриманого замовлення, навпаки, і далі
-  // стирає рухи каси повністю — для нього це правильно (грошей за нього ще
-  // ніколи не було, item 3 не змінює цю гілку) ─────────────────────────
-  const prodDel2 = createTestProduct(150);
+  // ── підтверджений випадок б (пункт 2 фіксу): видалення передоплаченого
+  // замовлення, яке ЩЕ НЕ отримане — статус "packed" (уже запаковане,
+  // "Скасувати" на цьому статусі недоступне, видалення єдиний шлях). Прихід
+  // передоплатою реально на рахунку з моменту створення (onOrderCreated).
+  // Стара поведінка стирала цей рух через прямий DELETE FROM cash_moves —
+  // розрахунковий залишок падав нижче виписки на всю суму передоплати.
+  // Правильно — компенсувати зустрічним розходом (той самий шлях, що й
+  // скасування), а не стерти: прихід лишається правдою про рахунок, і поруч
+  // із ним з'являється розхід на ту саму суму, разом сумарний вплив нуль ──
+  const prodDel2 = createTestProduct(350);
   const orderDel2 = await api("/api/orders", { method: "POST", body: JSON.stringify({
     dropshipper_id: drop.id, items: [{ variation_id: prodDel2.varId, size_id: prodDel2.sizeId, quantity: 1 }],
     client_name: "__T6 Клієнт19", client_phone: "+380501120019", client_city: "Київ", client_warehouse: "Відділення №1",
     is_prepaid: true, receipt_photo: "__T6.jpg", note: "__T6"
   }) });
   const delOrderId2 = orderDel2.b.order_id;
-  const prepaidBeforeDel2 = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='order' AND ref_id=?").get(delOrderId2).c;
-  ok(prepaidBeforeDel2 === 1, "передоплата НЕ отриманого замовлення записана в касу перед видаленням (" + prepaidBeforeDel2 + ")");
+  const prepaidBeforeDel2 = db.prepare("SELECT amount FROM cash_moves WHERE kind='prepaid' AND ref_type='order' AND ref_id=?").get(delOrderId2);
+  ok(prepaidBeforeDel2 && prepaidBeforeDel2.amount === 350, "передоплата НЕ отриманого замовлення записана в касу перед видаленням (" + (prepaidBeforeDel2 && prepaidBeforeDel2.amount) + ")");
+  const packRes = await api("/api/orders/" + delOrderId2 + "/status", { method: "PUT", body: JSON.stringify({ status: "packed" }) });
+  ok(packRes.s === 200, "замовлення доведено до packed — скасування звідси вже недоступне, видалення єдиний шлях (" + JSON.stringify(packRes.b) + ")");
+
   const delRes2 = await api("/api/orders/" + delOrderId2, { method: "DELETE", body: JSON.stringify({}) });
-  ok(delRes2.s === 200, "не отримане (status=new) замовлення видалено (" + JSON.stringify(delRes2.b) + ")");
-  const movesAfterDelete2 = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='order' AND ref_id=?").get(delOrderId2).c;
-  ok(movesAfterDelete2 === 0, "рух каси НЕ отриманого замовлення прибраний видаленням, як і раніше (" + movesAfterDelete2 + ")");
+  ok(delRes2.s === 200, "запаковане передоплачене замовлення видалено (" + JSON.stringify(delRes2.b) + ")");
+  const prepaidAfterDel2 = db.prepare("SELECT amount FROM cash_moves WHERE kind='prepaid' AND ref_type='order' AND ref_id=?").get(delOrderId2);
+  ok(prepaidAfterDel2 && prepaidAfterDel2.amount === 350, "прихід передоплати НЕ стерто видаленням — лишається правдою про рахунок (" + (prepaidAfterDel2 && prepaidAfterDel2.amount) + ")");
+  const cancelRefundDel2 = db.prepare("SELECT amount FROM cash_moves WHERE kind='cancel_refund' AND ref_type='order' AND ref_id=?").get(delOrderId2);
+  ok(cancelRefundDel2 && cancelRefundDel2.amount === -350, "зустрічний розхід на всю суму передоплати записаний замість стирання (" + (cancelRefundDel2 && cancelRefundDel2.amount) + ")");
+  const netDel2 = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE ref_type='order' AND ref_id=?").get(delOrderId2).s;
+  ok(round2(netDel2) === 0, "сумарний вплив видаленого неотриманого передоплаченого замовлення на касу — рівно нуль (" + netDel2 + ")");
+  ok(!db.prepare("SELECT 1 FROM orders WHERE id=?").get(delOrderId2), "сам рядок замовлення видалений");
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id=?").run(delOrderId2);
   removeTestProduct(prodDel2);
+
+  // ── підтверджений випадок а (пункт 2 фіксу): delivered → часткове
+  // повернення клієнту (реальний розхід, гроші вже вийшли з рахунку) → НП
+  // повернула посилку (refused, onOrderUndelivered прибирає прихід наложкою,
+  // саме повернення не займає) → видалення. Стара поведінка стирала УСІ
+  // рухи, повʼязані із замовленням, статус ≠ "delivered" — разом із приходом
+  // (правильно, його вже й так нема) стирала й РЕАЛЬНЕ повернення коштів
+  // (kind='refund'), розрахунковий залишок стрибав угору на суму повернення.
+  // Компенсації тут не має бути: orderReceivedAmount уже 0 (прихід прибрав
+  // onOrderUndelivered), а не стирати — тому й нового кас-руху не з'явиться ─
+  const prodDel3 = createTestProduct(150);
+  const orderDel3 = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodDel3.varId, size_id: prodDel3.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт20", client_phone: "+380501120020", client_city: "Київ", client_warehouse: "Відділення №1",
+    cod_amount: 400, note: "__T6"
+  }) });
+  const delOrderId3 = orderDel3.b.order_id;
+  await api("/api/orders/" + delOrderId3 + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
+  const refundDel3 = await api("/api/finance/orders/" + delOrderId3 + "/refund", { method: "POST", body: JSON.stringify({ amount: 300, note: "__T6" }) });
+  ok(refundDel3.s === 200, "часткове повернення по delivered-замовленню проведено (" + JSON.stringify(refundDel3.b) + ")");
+  const refusedRes = await api("/api/orders/" + delOrderId3 + "/status", { method: "PUT", body: JSON.stringify({ status: "refused" }) });
+  ok(refusedRes.s === 200, "НП повернула посилку — статус переведено на refused (" + JSON.stringify(refusedRes.b) + ")");
+  const codGoneBeforeDel3 = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").get(delOrderId3).c;
+  ok(codGoneBeforeDel3 === 0, "прихід наложкою вже прибраний виходом зі статусу delivered, до видалення (" + codGoneBeforeDel3 + ")");
+  const refundBeforeDel3 = db.prepare("SELECT amount FROM cash_moves WHERE ref_type='refund' AND ref_id=?").get(delOrderId3);
+  ok(refundBeforeDel3 && refundBeforeDel3.amount === -300, "рух реального повернення коштів є перед видаленням (" + (refundBeforeDel3 && refundBeforeDel3.amount) + ")");
+
+  const delRes3 = await api("/api/orders/" + delOrderId3, { method: "DELETE", body: JSON.stringify({ destination: "base" }) });
+  ok(delRes3.s === 200, "refused-замовлення з уже зробленим поверненням видалено (" + JSON.stringify(delRes3.b) + ")");
+  const refundAfterDel3 = db.prepare("SELECT amount FROM cash_moves WHERE ref_type='refund' AND ref_id=?").get(delOrderId3);
+  ok(refundAfterDel3 && refundAfterDel3.amount === -300, "рух реального повернення коштів НЕ стерто видаленням (" + (refundAfterDel3 && refundAfterDel3.amount) + ")");
+  const cancelRefundDel3Count = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='cancel_refund' AND ref_type='order' AND ref_id=?").get(delOrderId3).c;
+  ok(cancelRefundDel3Count === 0, "зайвої компенсації не додалось — приходу за це замовлення в касі вже не було (" + cancelRefundDel3Count + ")");
+  const codAfterDel3 = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").get(delOrderId3).c;
+  ok(codAfterDel3 === 0, "прихід наложкою так і лишився відсутнім, не відновився видаленням (" + codAfterDel3 + ")");
+  ok(!db.prepare("SELECT 1 FROM orders WHERE id=?").get(delOrderId3), "сам рядок замовлення видалений");
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='refund' AND ref_id=?").run(delOrderId3);
+  removeTestProduct(prodDel3);
+
+  // ── R1 (пункт 3 фіксу): GET .../refund-ceiling віддає ту саму стелю, якою
+  // керується сам POST .../refund (orderReceivedAmount мінус refunded_amount),
+  // а НЕ повну суму замовлення — модалка (public/finance.js openOrderRefund)
+  // тепер питає саме цей ендпоінт замість рахувати свою копію з полів
+  // total_drop_price/cod_amount. Головна перевірка — delivered → часткове
+  // повернення → refused: поля замовлення й далі показують повну наложку, а
+  // реальна стеля вже впала до 0, бо onOrderUndelivered прибрав прихід ────
+  const prodR1 = createTestProduct(220);
+  const orderR1 = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodR1.varId, size_id: prodR1.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт21", client_phone: "+380501120021", client_city: "Київ", client_warehouse: "Відділення №1",
+    cod_amount: 500, note: "__T6"
+  }) });
+  const r1OrderId = orderR1.b.order_id;
+  await api("/api/orders/" + r1OrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
+
+  const ceilBefore = await api("/api/finance/orders/" + r1OrderId + "/refund-ceiling");
+  ok(ceilBefore.s === 200 && ceilBefore.b.max === 500 && ceilBefore.b.received === 500 && ceilBefore.b.refunded === 0,
+    "стеля щойно отриманого замовлення = наложка, нічого не повернуто (" + JSON.stringify(ceilBefore.b) + ")");
+
+  await api("/api/finance/orders/" + r1OrderId + "/refund", { method: "POST", body: JSON.stringify({ amount: 200, note: "__T6" }) });
+  const ceilAfterPartial = await api("/api/finance/orders/" + r1OrderId + "/refund-ceiling");
+  ok(ceilAfterPartial.s === 200 && ceilAfterPartial.b.max === 300 && ceilAfterPartial.b.refunded === 200,
+    "стеля після часткового повернення 200 зменшилась до 300 (" + JSON.stringify(ceilAfterPartial.b) + ")");
+
+  await api("/api/orders/" + r1OrderId + "/status", { method: "PUT", body: JSON.stringify({ status: "refused" }) });
+  const ceilAfterRefused = await api("/api/finance/orders/" + r1OrderId + "/refund-ceiling");
+  ok(ceilAfterRefused.s === 200 && ceilAfterRefused.b.max === 0 && ceilAfterRefused.b.received === 0,
+    "після refused реальна стеля впала до 0, хоча order.cod_amount у полях замовлення й далі показує повну наложку — саме цю розбіжність модалка мала ловити (" + JSON.stringify(ceilAfterRefused.b) + ")");
+  const orderFieldsR1 = db.prepare("SELECT cod_amount FROM orders WHERE id=?").get(r1OrderId);
+  ok(orderFieldsR1.cod_amount === 500, "контроль: саме поле замовлення (cod_amount) і далі 500 — стара модалка рахувала стелю з нього і помилялась (" + orderFieldsR1.cod_amount + ")");
+  const blockedRefund = await api("/api/finance/orders/" + r1OrderId + "/refund", { method: "POST", body: JSON.stringify({ amount: 1, note: "__T6" }) });
+  ok(blockedRefund.s === 400, "бекенд і справді відмовляє навіть на 1₴ повернення, коли реальна стеля 0 — ceiling не розійшовся з /refund (" + blockedRefund.s + ")");
+
+  const ceil404 = await api("/api/finance/orders/999999999/refund-ceiling");
+  ok(ceil404.s === 404, "неіснуюче замовлення — 404, а не тиха стеля 0 (" + ceil404.s + ")");
+
+  db.prepare("DELETE FROM cash_moves WHERE ref_type IN ('refund','refund_extra') AND (ref_id=? OR note LIKE ?)").run(r1OrderId, "%(замовлення #" + r1OrderId + ")");
+  db.prepare("DELETE FROM order_items WHERE order_id=?").run(r1OrderId);
+  db.prepare("DELETE FROM orders WHERE id=?").run(r1OrderId);
+  removeTestProduct(prodR1);
+
+  // ── R2 (пункт 3 фіксу): замовлення, оплачене з балансу дропера
+  // (paid_from_balance) — реальних грошей на рахунок ніколи не приходило,
+  // тож стеля повернення гарантовано 0. Кнопку «Повернення» на такому
+  // замовленні тепер ховає admin.html (paid_from_balance у списку умов); тут
+  // перевіряємо саме те, від чого ця умова захищає — бекенд справді відмовляє ─
+  const dropR2Full = (await api("/api/users/" + drop.id)).b.user;
+  const restoreR2BalanceFields = () => ({
+    name: dropR2Full.name, phone: dropR2Full.phone, email: dropR2Full.email, telegram: dropR2Full.telegram,
+    discount_percent: dropR2Full.discount_percent, discount_fixed: dropR2Full.discount_fixed,
+    worker_role: dropR2Full.worker_role, worker_rate: dropR2Full.worker_rate, active: dropR2Full.active,
+    assigned_warehouse: dropR2Full.assigned_warehouse
+  });
+  if (!dropR2Full.balance_enabled) {
+    await api("/api/users/" + drop.id, { method: "PUT", body: JSON.stringify({ ...restoreR2BalanceFields(), balance_enabled: true }) });
+  }
+  const prodR2 = createTestProduct(180);
+  const orderR2 = await api("/api/orders", { method: "POST", body: JSON.stringify({
+    dropshipper_id: drop.id, items: [{ variation_id: prodR2.varId, size_id: prodR2.sizeId, quantity: 1 }],
+    client_name: "__T6 Клієнт22", client_phone: "+380501120022", client_city: "Київ", client_warehouse: "Відділення №1",
+    is_prepaid: true, pay_from_balance: true, note: "__T6"
+  }) });
+  ok(orderR2.s === 200 && orderR2.b.paid_from_balance === 1, "фікстура з балансу створена (" + JSON.stringify(orderR2.b) + ")");
+  const r2OrderId = orderR2.b.order_id;
+  const ceilR2 = await api("/api/finance/orders/" + r2OrderId + "/refund-ceiling");
+  ok(ceilR2.s === 200 && ceilR2.b.max === 0 && ceilR2.b.received === 0,
+    "оплата з балансу — реальних грошей у касі нема, стеля 0 (" + JSON.stringify(ceilR2.b) + ")");
+  const refundR2Blocked = await api("/api/finance/orders/" + r2OrderId + "/refund", { method: "POST", body: JSON.stringify({ amount: 1, note: "__T6" }) });
+  ok(refundR2Blocked.s === 400, "повернення по оплаченому з балансу замовленню відхилене навіть на 1₴ (" + refundR2Blocked.s + ")");
+
+  if (!dropR2Full.balance_enabled) {
+    await api("/api/users/" + drop.id, { method: "PUT", body: JSON.stringify({ ...restoreR2BalanceFields(), balance_enabled: false }) });
+  }
+  const balTxR2 = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM balance_transactions WHERE order_id=?").get(r2OrderId).s;
+  if (balTxR2) db.prepare("UPDATE users SET balance=ROUND(balance-?,2) WHERE id=?").run(balTxR2, drop.id);
+  db.prepare("DELETE FROM balance_transactions WHERE order_id=?").run(r2OrderId);
+  db.prepare("DELETE FROM order_items WHERE order_id=?").run(r2OrderId);
+  db.prepare("DELETE FROM orders WHERE id=?").run(r2OrderId);
+  removeTestProduct(prodR2);
 
   // ── прибирання фікстур ─────────────────────────────────────────
   // o, c1OrderId і i1OrderId прибрані одразу після власних перевірок вище

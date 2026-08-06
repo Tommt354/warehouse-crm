@@ -456,7 +456,8 @@
 </div>
 
 <div class="modal-bg" id="fin-exp-modal"><div class="modal" style="max-width:420px"><h3><i data-icon="plus" data-size="16"></i> <span id="fe-modal-title">Витрата</span></h3>
-<div class="fld"><label>Дата</label><input type="date" id="fe-date"></div>
+<div class="fld"><label>Дата</label><input type="date" id="fe-date" oninput="checkFeDateWarn()"></div>
+<div id="fe-warn" style="display:none;color:var(--warn);font-size:11px;margin-bottom:6px"></div>
 <div class="fld"><label>Сума ₴</label><input type="number" id="fe-amount" step="0.01"></div>
 <div class="fld"><label>Категорія</label><select id="fe-cat" onchange="onFinCatChange()"></select></div>
 <div class="fld" id="fe-workshop-fld" style="display:none"><label>Цех</label><select id="fe-workshop"></select></div>
@@ -2072,10 +2073,14 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     // платив: кнопка тільки збивала б з пантелику (бекенд однаково поверне
     // 0₴ доступних — стеля тепер саме про реальні гроші в касі, п.1 фіксу).
     // Передоплачене замовлення — виняток: гроші від дропера вже на рахунку
-    // одразу при створенні, незалежно від статусу отримання.
-    var admCanRefund=o.status!=='cancelled'&&(o.is_prepaid||o.delivered_at);
+    // одразу при створенні, незалежно від статусу отримання. Оплату з
+    // балансу дропера (paid_from_balance) теж ховаємо: це внутрішній залік,
+    // реальних грошей на рахунок ніколи не приходило, тож бекенд (стеля —
+    // orderReceivedAmount, п.1 фіксу) гарантовано поверне 0₴ доступних —
+    // кнопка лише обіцяла б повернення, якого не буде.
+    var admCanRefund=o.status!=='cancelled'&&!o.paid_from_balance&&(o.is_prepaid||o.delivered_at);
     if(admCanRefund)
-      html+='<button class="btn btn-sm" onclick="openOrderRefund('+o.id+','+(o.is_prepaid?(o.total_drop_price||0):(o.cod_amount||0))+','+(o.refunded_amount||0)+')" style="border-color:rgba(255,167,38,.3);color:var(--warn)" title="Повернення коштів клієнту">'+Icon('undo2',13)+' Повернення</button>';
+      html+='<button class="btn btn-sm" onclick="openOrderRefund('+o.id+')" style="border-color:rgba(255,167,38,.3);color:var(--warn)" title="Повернення коштів клієнту">'+Icon('undo2',13)+' Повернення</button>';
 
     if(o.status==='new'||o.status==='in_progress')html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button>';
     html+='<button class="btn btn-d btn-sm" onclick="delAdmOrder('+o.id+',\''+o.status+'\')" title="Видалити замовлення">'+Icon('trash2',13)+'</button>';

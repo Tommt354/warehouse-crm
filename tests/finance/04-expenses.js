@@ -139,6 +139,48 @@ const today = new Date().toISOString().slice(0, 10);
   db.prepare("DELETE FROM expense_payments WHERE expense_id IN (?,?)").run(e5, e6);
   db.prepare("DELETE FROM expenses WHERE id IN (?,?)").run(e5, e6);
 
+  // C (головна діра, звідси й фікс): дата витрати й дата ОКРЕМОЇ оплати
+  // боргу ЗБІГАЮТЬСЯ — власник саме так і працює: записав борг сьогодні, того
+  // ж дня переказав частину. Старий код рухав будь-яку оплату, датовану так
+  // само, як стара дата витрати, тож ловив і цю окрему оплату боргу разом із
+  // авто-оплатою. Відтворення точно за описом ревʼю: витрата створена з
+  // paid=1 (авто-оплата на всю початкову суму), потім сумою PUT піднято вище
+  // за вже оплачене (утворився борг), і борг у той самий день закритий через
+  // окремий POST /pay — обидві оплати датовані today. Після цього дата
+  // витрати правиться — рухатись має ЛИШЕ авто-оплата ─────────────────────
+  r = await api("/api/finance/expenses", { method: "POST", body: JSON.stringify({ date: today, amount: 1500, category_id: opex, note: "__T4 дата3", paid: 1 }) });
+  ok(r.s === 200 && r.b.id, "витрата сценарію C створена, оплачена одразу на 1500 (" + JSON.stringify(r.b) + ")");
+  const e7 = r.b.id;
+  const e7AutoPay = db.prepare("SELECT id,date,amount FROM expense_payments WHERE expense_id=?").get(e7);
+  ok(e7AutoPay && e7AutoPay.date === today && e7AutoPay.amount === 1500, "авто-оплата створення записана на дату витрати, на всю суму (" + JSON.stringify(e7AutoPay) + ")");
+
+  r = await api("/api/finance/expenses/" + e7, { method: "PUT", body: JSON.stringify({ amount: 2000, date: today }) });
+  ok(r.s === 200, "суму витрати піднято до 2000 — утворився борг 500, дата поки та сама (" + r.s + ")");
+
+  const e7Pay = await api("/api/finance/expenses/" + e7 + "/pay", { method: "POST", body: JSON.stringify({ amount: 500, date: today }) });
+  ok(e7Pay.s === 200, "борг 500 закрито окремою оплатою в ТОЙ САМИЙ день, що й дата витрати (" + JSON.stringify(e7Pay.b) + ")");
+  const e7ManualPay = db.prepare("SELECT id,date FROM expense_payments WHERE expense_id=? AND id!=?").get(e7, e7AutoPay.id);
+  ok(e7ManualPay && e7ManualPay.date === today, "окрема оплата боргу справді датована today, як і авто-оплата — умова бага виконана (" + (e7ManualPay && e7ManualPay.date) + ")");
+
+  const dateNew3 = db.prepare("SELECT date(?,'-7 days') d").get(today).d;
+  const e7Edit = await api("/api/finance/expenses/" + e7, { method: "PUT", body: JSON.stringify({ amount: 2000, date: dateNew3 }) });
+  ok(e7Edit.s === 200, "дату витрати сценарію C змінено (" + e7Edit.s + ")");
+
+  const e7AutoAfter = db.prepare("SELECT date FROM expense_payments WHERE id=?").get(e7AutoPay.id);
+  ok(e7AutoAfter.date === dateNew3, "авто-оплата (народжена разом із витратою) переїхала на нову дату (" + e7AutoAfter.date + ")");
+  const e7AutoCashAfter = db.prepare("SELECT date FROM cash_moves WHERE ref_type='expense' AND ref_id=?").get(e7);
+  ok(e7AutoCashAfter && e7AutoCashAfter.date === dateNew3, "рух каси авто-оплати теж переїхав (" + (e7AutoCashAfter && e7AutoCashAfter.date) + ")");
+
+  const e7ManualAfter = db.prepare("SELECT date FROM expense_payments WHERE id=?").get(e7ManualPay.id);
+  ok(e7ManualAfter.date === today, "ОКРЕМА оплата боргу НЕ зрушила дату, попри те що вона збігалась зі старою датою витрати — це і є дірка, яку фіксимо (" + e7ManualAfter.date + ")");
+  const e7ManualCashAfter = db.prepare("SELECT date FROM cash_moves WHERE ref_type='expense_payment' AND ref_id=?").get(e7ManualPay.id);
+  ok(e7ManualCashAfter && e7ManualCashAfter.date === today, "рух каси окремої оплати боргу так само лишився на today, реальній даті виходу грошей (" + (e7ManualCashAfter && e7ManualCashAfter.date) + ")");
+
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id=?").run(e7);
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense_payment' AND ref_id IN (SELECT id FROM expense_payments WHERE expense_id=?)").run(e7);
+  db.prepare("DELETE FROM expense_payments WHERE expense_id=?").run(e7);
+  db.prepare("DELETE FROM expenses WHERE id=?").run(e7);
+
   // прибираємо все, що встиг створити POST/PUT для e3 — включно з рухом каси,
   // який лишився б сиротою при прямому DELETE рядків із бази в обхід ендпоінта.
   // Спершу саму витрату (вона зараз посилається на ws2Id), потім тимчасові
