@@ -17,6 +17,24 @@ function addCashMove({ date, amount, kind, ref_type, ref_id, note }) {
     .run(date, round2(amount), kind, ref_type || "", ref_id || null, note || "").lastInsertRowid;
 }
 
+// Ядро створення витрати — спільне для POST /api/finance/expenses (нижче) і
+// приходу рулону тканини (goods.js): власник вписав ціну рулону, і це має
+// лягти в матеріали тим самим шляхом, що й будь-яка інша витрата, а не
+// власним дублем логіки боргу/оплати/руху каси. paid=1 — гроші пішли
+// одразу; paid=0 (чи не передано) — борг постачальнику, каса не рухається.
+function createExpense({ date, amount, category_id, supplier_id, workshop_id, note, created_by, paid }) {
+  let id;
+  db.transaction(() => {
+    id = db.prepare("INSERT INTO expenses(date,amount,category_id,supplier_id,workshop_id,note,created_by)VALUES(?,?,?,?,?,?,?)")
+      .run(date, round2(amount), category_id, supplier_id || null, workshop_id || null, note || "", created_by || null).lastInsertRowid;
+    if (paid) {
+      db.prepare("INSERT INTO expense_payments(expense_id,date,amount)VALUES(?,?,?)").run(id, date, round2(amount));
+      addCashMove({ date, amount: -amount, kind: "expense", ref_type: "expense", ref_id: id, note: note || "" });
+    }
+  })();
+  return id;
+}
+
 // Скільки реально надійшло в касу за конкретне замовлення (наложка або
 // передоплата) — спільне джерело правди для стелі ручного повернення
 // (POST /api/finance/orders/:id/refund) і компенсації при скасуванні
@@ -242,16 +260,10 @@ function register(app, { authMiddleware, requireRole }) {
     if (!req.body.category_id) return res.status(400).json({ error: "Оберіть категорію" });
     if (!sewingExpenseHasWorkshop(req.body.category_id, req.body.workshop_id)) return res.status(400).json({ error: "Оберіть цех" });
     const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
-    let id;
-    db.transaction(() => {
-      id = db.prepare("INSERT INTO expenses(date,amount,category_id,supplier_id,workshop_id,note,created_by)VALUES(?,?,?,?,?,?,?)")
-        .run(date, round2(amount), req.body.category_id, req.body.supplier_id || null, req.body.workshop_id || null, req.body.note || "", req.user.id).lastInsertRowid;
-      // paid=1 — гроші пішли одразу; paid=0 — це борг постачальнику, каса не рухається.
-      if (req.body.paid) {
-        db.prepare("INSERT INTO expense_payments(expense_id,date,amount)VALUES(?,?,?)").run(id, date, round2(amount));
-        addCashMove({ date, amount: -amount, kind: "expense", ref_type: "expense", ref_id: id, note: req.body.note || "" });
-      }
-    })();
+    const id = createExpense({
+      date, amount, category_id: req.body.category_id, supplier_id: req.body.supplier_id,
+      workshop_id: req.body.workshop_id, note: req.body.note, created_by: req.user.id, paid: req.body.paid
+    });
     res.json({ ok: true, id });
   });
 
@@ -879,4 +891,4 @@ function onWorkerPayout(workerPayoutId) {
     ref_type: "worker_payout", ref_id: p.id, note: "Зарплата: " + p.name });
 }
 
-module.exports = { register, addCashMove, onOrderCreated, onOrderDelivered, onOrderUndelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder, compensateCancelledOrder, syncOrderCashMove };
+module.exports = { register, addCashMove, createExpense, onOrderCreated, onOrderDelivered, onOrderUndelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder, compensateCancelledOrder, syncOrderCashMove };

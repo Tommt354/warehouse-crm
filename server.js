@@ -6,6 +6,7 @@ const fs = require("fs");
 const db = require("./db");
 const { createToken, authMiddleware, requireRole } = require("./auth");
 const finance = require("./finance");
+const goods = require("./goods");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -4229,6 +4230,7 @@ app.get("/staff",pageAuth,pageRole("warehouse"),(req,res)=>res.sendFile(path.joi
 // Реєструємо ДО catch-all нижче: інакше "*" перехопить будь-який невідомий
 // цьому файлу маршрут /api/finance/* раніше, ніж до нього дійде фінмодуль.
 finance.register(app, { authMiddleware, requireRole });
+goods.register(app, { authMiddleware, requireRole });
 
 app.get("*",(req,res)=>{if(req.path.startsWith("/api/"))return res.status(404).json({error:"Not found"});res.redirect("/login")});
 
