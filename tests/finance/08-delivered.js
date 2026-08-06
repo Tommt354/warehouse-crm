@@ -7,6 +7,13 @@
 // повернення коштів.
 const { api, ok, login } = require("./_helpers");
 const db = require("../../node_modules/better-sqlite3")(process.env.DB_PATH || "/tmp/fin-test.db");
+// Фікстури тут заводяться прямим INSERT в orders (status='delivered' одразу),
+// в обхід реального API — тож finance.onOrderDelivered ніколи не
+// спрацьовує сам, і рух каси за наложкою не з'являється. Стеля повернення
+// коштів (пункт 1 фіксу) тепер рахується саме з рухів каси, а не з
+// cod_amount напряму, тож для фікстур, які тестують повернення, рух каси
+// треба дописати вручну тим самим хелпером, яким його пише реальний потік.
+const finance = require("../../finance");
 const round2 = v => Math.round((v || 0) * 100) / 100;
 const today = db.prepare("SELECT date('now','localtime') d").get().d;
 const yesterday = db.prepare("SELECT date(?,'-1 day') d").get(today).d;
@@ -48,11 +55,13 @@ function insertOrder({ status, cod, drop, prepaid, deliveredAt, createdAt, ttn }
   // щоб окремо перевірити суму наложок.
   const dId = insertOrder({ status: "delivered", cod: 1000, drop: { id: dropRow.id, price: 1000 },
     prepaid: false, deliveredAt: today + " 12:00:00", ttn: "__T8TTN1" });
+  finance.onOrderDelivered(dId); // прямий INSERT не тригерить хук — дописуємо рух каси наложки вручну
 
   // Замовлення G: теж сьогодні, але пізніше за D — перевірка сортування
   // "найновіші зверху".
   const gId = insertOrder({ status: "delivered", cod: 200, drop: { id: dropRow.id, price: 200 },
     prepaid: false, deliveredAt: today + " 15:00:00", ttn: "__T8TTN2" });
+  finance.onOrderDelivered(gId);
 
   const d1 = (await api("/api/finance/delivered?from=" + today + "&to=" + today)).b;
   ok(round2(d1.drop_price_sum - d0.drop_price_sum) === 1200, "сума дроп-цін +1200 (1000+200) після двох забраних сьогодні (" + round2(d1.drop_price_sum - d0.drop_price_sum) + ")");

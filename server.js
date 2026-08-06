@@ -2705,7 +2705,10 @@ app.delete("/api/orders/:id", authMiddleware, requireRole("admin"), (req, res) =
     db.prepare("UPDATE balance_transactions SET order_id=NULL WHERE order_id=?").run(o.id);
     // Замовлення видаляється — його рухи каси (наложка/передоплата,
     // повернення) інакше лишаються сиротами: рух є, а orders-рядка вже нема.
-    finance.removeCashMovesForOrder(o.id);
+    // Статус передаємо навмисно: для "delivered" функція нічого не чіпає —
+    // гроші за отримане замовлення реально на рахунку, видалення картки в
+    // CRM цього не скасовує (див. коментар у finance.removeCashMovesForOrder).
+    finance.removeCashMovesForOrder(o.id, o.status);
     db.prepare("DELETE FROM orders WHERE id=?").run(o.id);
   })();
   res.json({ ok: true });
@@ -3987,9 +3990,19 @@ app.post("/api/payouts/:id/apply-balance", authMiddleware, requireRole("admin"),
 app.put("/api/payouts/:id/paid", authMiddleware, requireRole("admin"), (req, res) => {
   const pr = db.prepare("SELECT * FROM payout_requests WHERE id=?").get(req.params.id);
   if (!pr) return res.status(404).json({ error: "Не знайдено" });
+  // Повторне проведення вже проведеної заявки задвоїло б касу: onDropPayoutPaid
+  // ще раз пише мінус у cash_moves. Унікальний індекс cash_moves_ref_uniq
+  // рятує сам рух каси (другий INSERT з тим самим ref_id мовчки поверне
+  // старий id), але без цієї перевірки paid_at просто переписався б, і
+  // адмін не побачив би жодного сигналу, що другий клік нічого нового не
+  // зробив — а мав би побачити явну відмову з причиною.
+  if (pr.status !== "pending") {
+    return res.status(400).json({ error: "Заявку вже проведено" + (pr.paid_at ? " " + pr.paid_at.slice(0, 10) : "") });
+  }
   // Останнє звірення перед тим, як гроші підуть: якщо якесь замовлення в
   // запиті встигло змінити стан, сума має це врахувати, а не платити старе.
-  if (pr.status === "pending") { try { db.transaction(() => syncPendingPayout(pr.id))(); } catch (e) { console.log("sync payout error:", e.message); } }
+  // Перевірка статусу вище вже гарантує "pending" тут — виклик безумовний.
+  try { db.transaction(() => syncPendingPayout(pr.id))(); } catch (e) { console.log("sync payout error:", e.message); }
   pr.total_amount = db.prepare("SELECT total_amount FROM payout_requests WHERE id=?").get(pr.id).total_amount;
   // Підсумок виплати — total_amount заявки плюс залік балансу, той самий,
   // що йде в касу мінусом (onDropPayoutPaid). Якщо борг дропера (від'ємний

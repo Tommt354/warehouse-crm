@@ -90,6 +90,55 @@ const today = new Date().toISOString().slice(0, 10);
   r = await api("/api/finance/expenses/" + e4, { method: "PUT", body: JSON.stringify({ amount: 350, category_id: sewCat.id }) });
   ok(r.s === 400, "зміна категорії на sewing без цеху через PUT відхилена (" + r.s + ")");
 
+  // ── пункт 2: зміна дати витрати рухає за собою пов'язані оплати й рухи
+  // каси — саме ту оплату, що виникла РАЗОМ із витратою (при paid=1 чи
+  // будь-яку, датовану так само, як стара дата витрати), а НЕ пізнішу
+  // окрему часткову оплату боргу, зроблену свідомо іншим днем ──────────
+  const dateNew = db.prepare("SELECT date(?,'-5 days') d").get(today).d;
+  const dateLatePay = db.prepare("SELECT date(?,'-1 days') d").get(today).d;
+
+  // A: оплата, що народилась РАЗОМ із витратою (paid=1 при створенні) —
+  // має переїхати разом із правкою дати витрати.
+  r = await api("/api/finance/expenses", { method: "POST", body: JSON.stringify({ date: today, amount: 1000, category_id: opex, note: "__T4 дата", paid: 1 }) });
+  ok(r.s === 200 && r.b.id, "витрата для перевірки переносу дати створена, оплачена одразу");
+  const e5 = r.b.id;
+  const e5PayBefore = db.prepare("SELECT id,date FROM expense_payments WHERE expense_id=?").get(e5);
+  ok(e5PayBefore && e5PayBefore.date === today, "оплата створення записана на дату витрати (" + (e5PayBefore && e5PayBefore.date) + ")");
+
+  r = await api("/api/finance/expenses/" + e5, { method: "PUT", body: JSON.stringify({ amount: 1000, date: dateNew }) });
+  ok(r.s === 200, "дату витрати змінено (" + r.s + ")");
+  const e5Row = db.prepare("SELECT date FROM expenses WHERE id=?").get(e5);
+  ok(e5Row.date === dateNew, "дата витрати оновлена (" + e5Row.date + ")");
+  const e5PayAfter = db.prepare("SELECT date FROM expense_payments WHERE id=?").get(e5PayBefore.id);
+  ok(e5PayAfter.date === dateNew, "оплата, народжена разом із витратою, переїхала на нову дату (" + e5PayAfter.date + ")");
+  const e5CashAfter = db.prepare("SELECT date FROM cash_moves WHERE ref_type='expense' AND ref_id=?").get(e5);
+  ok(e5CashAfter && e5CashAfter.date === dateNew, "рух каси цієї витрати теж переїхав на нову дату (" + (e5CashAfter && e5CashAfter.date) + ")");
+
+  // B: пізня оплата боргу окремим, свідомо іншим днем (реальна дата виходу
+  // грошей), і потім дата витрати знову міняється: ця оплата рухатись не
+  // повинна. Витрата з A вище вже повністю "оплачена" самим paid=1 (боргу
+  // для /pay нема), тож заводимо окрему витрату в борг.
+  r = await api("/api/finance/expenses", { method: "POST", body: JSON.stringify({ date: dateNew, amount: 500, category_id: opex, note: "__T4 дата2", paid: 0 }) });
+  ok(r.s === 200 && r.b.id, "друга витрата для сценарію B створена, в борг");
+  const e6 = r.b.id;
+  const latePay = await api("/api/finance/expenses/" + e6 + "/pay", { method: "POST", body: JSON.stringify({ amount: 500, date: dateLatePay }) });
+  ok(latePay.s === 200, "пізня оплата боргу проведена окремою датою (" + dateLatePay + ")");
+  const e6PayRow = db.prepare("SELECT id,date FROM expense_payments WHERE expense_id=?").get(e6);
+  ok(e6PayRow && e6PayRow.date === dateLatePay, "пізня оплата справді записана на свою дату, не на дату витрати (" + (e6PayRow && e6PayRow.date) + ")");
+
+  const dateNew2 = db.prepare("SELECT date(?,'-9 days') d").get(today).d;
+  r = await api("/api/finance/expenses/" + e6, { method: "PUT", body: JSON.stringify({ amount: 500, date: dateNew2 }) });
+  ok(r.s === 200, "дату другої витрати змінено ще раз (" + r.s + ")");
+  const e6PayAfter = db.prepare("SELECT date FROM expense_payments WHERE id=?").get(e6PayRow.id);
+  ok(e6PayAfter.date === dateLatePay, "окрема пізніша оплата НЕ зрушила дату — вона реальна дата виходу грошей з рахунку (" + e6PayAfter.date + ")");
+  const e6CashAfter = db.prepare("SELECT date FROM cash_moves WHERE ref_type='expense_payment' AND ref_id=?").get(e6PayRow.id);
+  ok(e6CashAfter && e6CashAfter.date === dateLatePay, "рух каси пізньої оплати теж лишився на своїй даті (" + (e6CashAfter && e6CashAfter.date) + ")");
+
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id IN (?,?)").run(e5, e6);
+  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense_payment' AND ref_id IN (SELECT id FROM expense_payments WHERE expense_id IN (?,?))").run(e5, e6);
+  db.prepare("DELETE FROM expense_payments WHERE expense_id IN (?,?)").run(e5, e6);
+  db.prepare("DELETE FROM expenses WHERE id IN (?,?)").run(e5, e6);
+
   // прибираємо все, що встиг створити POST/PUT для e3 — включно з рухом каси,
   // який лишився б сиротою при прямому DELETE рядків із бази в обхід ендпоінта.
   // Спершу саму витрату (вона зараз посилається на ws2Id), потім тимчасові

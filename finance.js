@@ -17,6 +17,22 @@ function addCashMove({ date, amount, kind, ref_type, ref_id, note }) {
     .run(date, round2(amount), kind, ref_type || "", ref_id || null, note || "").lastInsertRowid;
 }
 
+// Скільки реально надійшло в касу за конкретне замовлення (наложка або
+// передоплата) — спільне джерело правди для стелі ручного повернення
+// (POST /api/finance/orders/:id/refund) і компенсації при скасуванні
+// (compensateCancelledOrder) нижче. Навмисно не поле cod_amount/
+// total_drop_price напряму: воно може розійтись із реальністю (НП
+// скасувала наложку при refused/return_transit — onOrderUndelivered
+// прибирає рух каси, а cod_amount у рядку замовлення лишається як був).
+// У звичайному випадку (замовлення дійшло звичним шляхом) ця сума якраз і
+// дорівнює cod_amount для наложки чи total_drop_price для передоплати,
+// бо syncOrderCashMove тримає рух каси синхронним із сумою замовлення —
+// але ніколи не дозволить рахувати "надійшло" більше, ніж реально є в касі.
+function orderReceivedAmount(orderId) {
+  return db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM cash_moves
+    WHERE ref_type='order' AND ref_id=? AND kind IN ('cod','prepaid')`).get(orderId).s;
+}
+
 // Фінансовий модуль тримаємо окремо від server.js: там уже 4000+ рядків, і
 // дописувати туди ще один домен означало б робити файл нечитабельним.
 function register(app, { authMiddleware, requireRole }) {
@@ -156,8 +172,36 @@ function register(app, { authMiddleware, requireRole }) {
     const workshop_id = req.body.workshop_id !== undefined ? (req.body.workshop_id || null) : existing.workshop_id;
     const note = req.body.note !== undefined ? req.body.note : existing.note;
     if (!sewingExpenseHasWorkshop(category_id, workshop_id)) return res.status(400).json({ error: "Оберіть цех" });
-    db.prepare("UPDATE expenses SET date=?,amount=?,category_id=?,supplier_id=?,workshop_id=?,note=? WHERE id=?")
-      .run(date, round2(amount), category_id, supplier_id, workshop_id, note, req.params.id);
+    db.transaction(() => {
+      db.prepare("UPDATE expenses SET date=?,amount=?,category_id=?,supplier_id=?,workshop_id=?,note=? WHERE id=?")
+        .run(date, round2(amount), category_id, supplier_id, workshop_id, note, req.params.id);
+      // Дата витрати рухає за собою оплати й рухи каси, які виникли РАЗОМ із
+      // витратою на ту саму (стару) дату — це рівно та оплата, що
+      // з'являється автоматично при створенні (paid=1): її "дата" ніколи не
+      // була окремим рішенням, а просто копією дати витрати в цей момент
+      // (POST /api/finance/expenses вище пише обидві тим самим `date`).
+      // Без цього переносу розріз по категоріях (рахується з expenses.date)
+      // переїжджає в новий період, а "оплачено за період" (рахується з
+      // expense_payments.date) і сама каса (cash_moves.date) лишаються у
+      // старому — три числа одного звіту розходяться. Часткову оплату
+      // боргу, зроблену ОКРЕМО (POST /pay, свідомо іншим днем — реальна
+      // дата виходу грошей з рахунку), не чіпаємо: посунути її разом із
+      // правкою заголовка витрати означало б задатувати реальний рух каси
+      // днем, коли з рахунку насправді нічого не виходило.
+      if (date !== existing.date) {
+        const paymentIds = db.prepare("SELECT id FROM expense_payments WHERE expense_id=? AND date=?")
+          .all(req.params.id, existing.date).map(p => p.id);
+        db.prepare("UPDATE expense_payments SET date=? WHERE expense_id=? AND date=?").run(date, req.params.id, existing.date);
+        // ref_type='expense' — рух каси, записаний прямо при створенні
+        // витрати (ref_id=expense_id, не payment_id), завжди відповідає
+        // саме цій "разом народженій" оплаті.
+        db.prepare("UPDATE cash_moves SET date=? WHERE ref_type='expense' AND ref_id=?").run(date, req.params.id);
+        if (paymentIds.length) {
+          db.prepare(`UPDATE cash_moves SET date=? WHERE ref_type='expense_payment' AND ref_id IN (${paymentIds.map(() => "?").join(",")})`)
+            .run(date, ...paymentIds);
+        }
+      }
+    })();
     res.json({ ok: true });
   });
 
@@ -189,14 +233,21 @@ function register(app, { authMiddleware, requireRole }) {
   // Повернення грошей клієнту: мінус у касі й мінус у доході того дня, коли
   // повернули, а не того, коли замовлення створювалось.
   app.post("/api/finance/orders/:id/refund", ...adminOnly, (req, res) => {
-    const o = db.prepare("SELECT id,total_drop_price,refunded_amount FROM orders WHERE id=?").get(req.params.id);
+    const o = db.prepare("SELECT id,refunded_amount FROM orders WHERE id=?").get(req.params.id);
     if (!o) return res.status(404).json({ error: "Замовлення не знайдено" });
     const amount = parseFloat(req.body.amount);
     if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму повернення" });
-    // Стеля повернення: без неї зайвий нуль у полі суми знищує залишок, а
-    // виправити з інтерфейсу нема як — повернути можна не більше, ніж
-    // клієнт фактично заплатив за замовлення (дроп-ціна мінус уже повернене).
-    const maxRefund = round2((o.total_drop_price || 0) - (o.refunded_amount || 0));
+    // Стеля повернення: раніше стелею завжди була дроп-ціна — для наложки
+    // це неправильно, бо клієнт по наложці платить cod_amount, який
+    // зазвичай БІЛЬШИЙ за дроп-ціну (різниця — маржа складу), і повернути
+    // йому реальну суму було неможливо. Стеля тепер — сума РЕАЛЬНИХ
+    // приходів каси за це замовлення (orderReceivedAmount): для наложки це
+    // й буде cod_amount, для передоплати — total_drop_price, оскільки
+    // syncOrderCashMove тримає рух каси синхронним із сумою замовлення;
+    // при цьому підхід сам захищає від переплати повернення там, де грошей
+    // насправді ще нема (замовлення ще не забрали) чи вже нема (НП
+    // скасувала наложку — onOrderUndelivered прибрав рух каси).
+    const maxRefund = round2(orderReceivedAmount(o.id) - (o.refunded_amount || 0));
     if (round2(amount) > maxRefund) {
       return res.status(400).json({ error: "Сума перевищує залишок, доступний до повернення (" + maxRefund + "₴)" });
     }
@@ -520,16 +571,28 @@ function onDropPayoutPaid(payoutRequestId) {
 
 // Видалення замовлення (DELETE /api/orders/:id) прибирає рядок orders
 // повністю — замовлення зникає з історії, тож і його рухам каси нема на що
-// посилатись, вони стали б сиротами. На відміну від скасування (нижче),
-// тут не потрібна компенсація: немає жодного екрана, де рухи видаленого
-// замовлення могли б з'явитись знову і хтось звірявся б із ними, тож
-// стерти прихід/повернення разом із самим замовленням — свідомий вибір,
-// а не той самий регрес, що лагодить compensateCancelledOrder. Часткові
-// повернення (kind='refund_extra') не мають ref_id — унікальний індекс
-// cash_moves_ref_uniq дозволяє прив'язати до замовлення лише перший рух
-// повернення, наступні пишуться без ref, тож для них шукаємо по мітці
-// "(замовлення #N)" у нотатці, так само як /refund вирішує, який це рух.
-function removeCashMovesForOrder(orderId) {
+// посилатись, вони стали б сиротами. Для замовлення, яке НЕ дійшло до
+// "delivered", це нормально: жодних реальних грошей за нього ще не було
+// (наложка приходить лише при отриманні), а прибрати прихід/повернення
+// разом із самим замовленням — свідомий вибір, не той самий регрес, що
+// лагодить compensateCancelledOrder. Часткові повернення (kind='refund_extra')
+// не мають ref_id — унікальний індекс cash_moves_ref_uniq дозволяє
+// прив'язати до замовлення лише перший рух повернення, наступні пишуться
+// без ref, тож для них шукаємо по мітці "(замовлення #N)" у нотатці, так
+// само як /refund вирішує, який це рух.
+//
+// Для замовлення в статусі "delivered" ЦЯ функція взагалі не викликається
+// на його рухи каси (див. виклик у DELETE /api/orders/:id, server.js) —
+// на відміну від щойно описаного випадку, наложка від НП чи передоплата
+// вже реально на рахунку, і видалення карточки замовлення в CRM цього факту
+// не скасовує. На відміну від скасування (компенсація нижче — там пишеться
+// ЗУСТРІЧНИЙ розхід, бо товар так і не поїде і гроші треба повернути),
+// тут не потрібна ні компенсація, ні стирання: гроші законно зароблені й
+// мають лишитись у касі назавжди, товар клієнт отримав. Рух каси лишається
+// сиротою (без orders-рядка) — це безпечно, бо жоден екран модуля не
+// підтягує рухи каси через JOIN з orders, лише сумує їх напряму.
+function removeCashMovesForOrder(orderId, orderStatus) {
+  if (orderStatus === "delivered") return;
   db.prepare("DELETE FROM cash_moves WHERE ref_type='order' AND ref_id=?").run(orderId);
   db.prepare("DELETE FROM cash_moves WHERE ref_type='refund' AND ref_id=?").run(orderId);
   db.prepare("DELETE FROM cash_moves WHERE ref_type='refund_extra' AND note LIKE ?").run("%(замовлення #" + orderId + ")");
@@ -554,8 +617,7 @@ function removeCashMovesForOrder(orderId) {
 // отримання) — не робимо нічого: рух повернення, якщо він був, так і
 // лишається в касі, як і має бути.
 function compensateCancelledOrder(orderId, dateStr) {
-  const income = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM cash_moves
-    WHERE ref_type='order' AND ref_id=? AND kind IN ('cod','prepaid')`).get(orderId).s;
+  const income = orderReceivedAmount(orderId);
   if (!income) return;
   const refunded = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM cash_moves
     WHERE kind='refund' AND ((ref_type='refund' AND ref_id=?) OR (ref_type='refund_extra' AND note LIKE ?))`)
@@ -569,8 +631,8 @@ function compensateCancelledOrder(orderId, dateStr) {
   addCashMove({ date, amount: -remaining, kind: "cancel_refund", ref_type: "order", ref_id: orderId,
     note: "Повернення передоплати за скасоване замовлення #" + orderId });
   // Стеля ручного повернення (POST /api/finance/orders/:id/refund) рахується
-  // як total_drop_price мінус refunded_amount. Компенсація вище — це так само
-  // гроші, що щойно вийшли з рахунку за це замовлення, просто іншим шляхом
+  // як orderReceivedAmount мінус refunded_amount. Компенсація вище — це так
+  // само гроші, що щойно вийшли з рахунку за це замовлення, просто іншим шляхом
   // (зустрічний розхід, а не кнопка «Повернення»). Без цього рядка стеля
   // лишалась би на повну суму, і адмін міг би натиснути «Повернення» ще раз
   // на суму, яку компенсація щойно повернула — подвійне списання з

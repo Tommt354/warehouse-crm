@@ -16,13 +16,23 @@ var FIN_KIND_LABEL = {
   purchase: "закупка готового товару"
 };
 
-function setFinPeriod(days){
+// Тільки календар, без жодного запиту — викликається одноразово при
+// завантаженні сторінки, щоб поля дат і кнопка "30д" були готові, коли
+// власник відкриє вкладку «Гроші», але сама вкладка при цьому НЕ тягне
+// 5 запитів фінмодуля щоразу, коли просто відкрили адмінку (setFinPeriod
+// нижче робить те саме плюс вантажить дані — саме її раніше й викликали
+// при завантаженні сторінки).
+function initFinDates(days){
   ["fin-7","fin-30","fin-90"].forEach(function(id){var b=document.getElementById(id);if(b)b.classList.remove("on")});
   var b=document.getElementById("fin-"+days); if(b)b.classList.add("on");
   var end=new Date(), start=new Date(end.getTime()-(days-1)*86400000);
   function f(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
   document.getElementById("fin-df").value=f(start);
   document.getElementById("fin-dt").value=f(end);
+}
+
+function setFinPeriod(days){
+  initFinDates(days);
   loadFinance();
 }
 
@@ -36,6 +46,7 @@ function showFinTab(t){
 async function loadFinance(){
   if(!document.getElementById("fin-df").value)return setFinPeriod(30);
   var f=document.getElementById("fin-df").value, t=document.getElementById("fin-dt").value;
+  var errEl=document.getElementById("fin-err");
   try{
     finCats=(await api("/api/finance/categories")).categories;
     finSups=(await api("/api/finance/suppliers")).suppliers;
@@ -44,11 +55,28 @@ async function loadFinance(){
     finReport=await api("/api/finance/report?from="+f+"&to="+t);
     finExpenses=(await api("/api/finance/expenses?from="+f+"&to="+t)).expenses;
     finDelivered=await api("/api/finance/delivered?from="+f+"&to="+t);
+    if(errEl){errEl.style.display="none";errEl.textContent=""}
     renderFinSummary(); renderFinList(finExpenses); renderFinDelivered(); renderFinDebts(); renderFinCats(); renderFinMgr();
-  }catch(e){}
+  }catch(e){
+    // Порожній catch тут ковтав помилку мовчки — власник бачив старі цифри
+    // й не здогадувався, що запит відпав (напр. сесія злетіла чи бекенд
+    // упав). Показуємо так само, як інші місця вкладки (fe-err/fs-err/
+    // rf-err/mr-err) — текстом над плитками, а не alert(), щоб не заважати
+    // побачити, які саме дані застаріли.
+    if(errEl){errEl.textContent="Не вдалось завантажити дані вкладки: "+e.message;errEl.style.display="block"}
+  }
 }
 
 function finMoney(v){return (Math.round((v||0)*100)/100).toLocaleString("uk-UA")}
+
+// esc() (admin.html) прибирає <, > і & — досить для тексту всередині тегу,
+// але тут значення підставляються в атрибут value="..." інлайнових рядків
+// редагування нижче: подвійна лапка в назві категорії чи постачальника
+// розриває атрибут і ламає розмітку. Локальний хелпер лише для фінмодуля,
+// а не правка esc() глобально — esc() використовується по всьому
+// admin.html (сотні місць за межами фінансів), і міняти її поведінку там,
+// де це не потрібно, — зайвий ризик регресу в інших вкладках.
+function escAttr(s){return esc(s).replace(/"/g,"&quot;")}
 
 function renderFinSummary(){
   var r=finReport;
@@ -133,8 +161,8 @@ function renderFinDebts(){
   var allRows=finSups.map(function(s){
     if(finSupEditId===s.id){
       return '<div style="display:flex;gap:6px;align-items:center;padding:6px 0;border-top:1px solid var(--brd);flex-wrap:wrap">'
-        +'<input id="fs-edit-name" value="'+esc(s.name)+'" placeholder="Назва" style="flex:1;min-width:110px;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff">'
-        +'<input id="fs-edit-note" value="'+esc(s.note||"")+'" placeholder="Коментар" style="flex:1;min-width:110px;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff">'
+        +'<input id="fs-edit-name" value="'+escAttr(s.name)+'" placeholder="Назва" style="flex:1;min-width:110px;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff">'
+        +'<input id="fs-edit-note" value="'+escAttr(s.note||"")+'" placeholder="Коментар" style="flex:1;min-width:110px;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff">'
         +'<button class="btn btn-sm btn-p" onclick="saveFinSupEdit('+s.id+')">'+Icon('check',11)+'</button>'
         +'<button class="btn btn-sm" onclick="finSupEditId=null;renderFinDebts()">'+Icon('x',11)+'</button></div>';
     }
@@ -159,7 +187,7 @@ function renderFinCats(){
   var rows=finCats.map(function(c){
     if(finCatEditId===c.id){
       return '<div style="display:flex;gap:6px;align-items:center;padding:7px 0;border-top:1px solid var(--brd);flex-wrap:wrap">'
-        +'<input id="fc-edit-name" value="'+esc(c.name)+'" placeholder="Назва" style="flex:1;min-width:130px;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff">'
+        +'<input id="fc-edit-name" value="'+escAttr(c.name)+'" placeholder="Назва" style="flex:1;min-width:130px;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff">'
         +'<select id="fc-edit-kind" style="padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff">'
         +Object.keys(FIN_KIND_LABEL).map(function(k){return '<option value="'+k+'"'+(k===c.kind?' selected':'')+'>'+FIN_KIND_LABEL[k]+'</option>'}).join("")
         +'</select>'
@@ -356,6 +384,10 @@ async function saveOrderRefund(){
   var err=document.getElementById("rf-err");
   var amount=parseFloat(document.getElementById("rf-amount").value);
   if(!amount||amount<=0){err.textContent="Вкажіть суму повернення";err.style.display="block";return}
+  // Гроші реально йдуть з рахунку і дію не можна відмінити з інтерфейсу —
+  // підтвердження тут, а не лише кнопка в картці замовлення, страхує від
+  // випадкового кліку/подвійного тапу на мобільному.
+  if(!confirm("Повернути клієнту "+finMoney(amount)+"₴ по замовленню #"+id+"? Дію не можна відмінити."))return;
   try{
     await api("/api/finance/orders/"+id+"/refund",{method:"POST",body:JSON.stringify({amount:amount,note:document.getElementById("rf-note").value})});
     closeM("refund-modal");

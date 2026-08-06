@@ -439,6 +439,7 @@
   <button class="btn btn-sm btn-p" onclick="loadFinance()">OK</button>
   <button class="btn btn-sm" onclick="openFinExpense()"><i data-icon="plus" data-size="13"></i> Додати витрату</button>
 </div>
+<div id="fin-err" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.25);border-radius:8px;padding:8px 10px"></div>
 <div id="fin-summary" style="margin-bottom:12px"></div>
 <div class="stabs" style="margin-bottom:10px">
   <button class="stab on" id="fintab-list" onclick="showFinTab('list')">Витрати</button>
@@ -2065,8 +2066,16 @@ async function loadAdmOrders(status,silent){if(!silent)document.getElementById("
     // або нічого не дасть зробити (стеля вже 0), або, якщо колись покаже
     // залишок, дублюватиме те, що скасування вже провело. Тож на
     // скасованих ховаємо її повністю, а не покладаємось лише на стелю.
-    if(o.status!=='cancelled')
-      html+='<button class="btn btn-sm" onclick="openOrderRefund('+o.id+','+(o.total_drop_price||0)+','+(o.refunded_amount||0)+')" style="border-color:rgba(255,167,38,.3);color:var(--warn)" title="Повернення коштів клієнту">'+Icon('undo2',13)+' Повернення</button>';
+    // Так само ховаємо на COD-замовленні, яке ще жодного разу не забирали
+    // (немає delivered_at) — наложка приходить у касу лише при отриманні
+    // (finance.onOrderDelivered), тож до того клієнт фізично ще нічого не
+    // платив: кнопка тільки збивала б з пантелику (бекенд однаково поверне
+    // 0₴ доступних — стеля тепер саме про реальні гроші в касі, п.1 фіксу).
+    // Передоплачене замовлення — виняток: гроші від дропера вже на рахунку
+    // одразу при створенні, незалежно від статусу отримання.
+    var admCanRefund=o.status!=='cancelled'&&(o.is_prepaid||o.delivered_at);
+    if(admCanRefund)
+      html+='<button class="btn btn-sm" onclick="openOrderRefund('+o.id+','+(o.is_prepaid?(o.total_drop_price||0):(o.cod_amount||0))+','+(o.refunded_amount||0)+')" style="border-color:rgba(255,167,38,.3);color:var(--warn)" title="Повернення коштів клієнту">'+Icon('undo2',13)+' Повернення</button>';
 
     if(o.status==='new'||o.status==='in_progress')html+='<button class="btn btn-d btn-sm" onclick="cancelAdmOrder('+o.id+')">'+Icon('x',13)+' Скасувати</button>';
     html+='<button class="btn btn-d btn-sm" onclick="delAdmOrder('+o.id+',\''+o.status+'\')" title="Видалити замовлення">'+Icon('trash2',13)+'</button>';
@@ -3676,7 +3685,10 @@ setAccPeriod(30);
 RangePicker.init("cc-df", "cc-dt", {presets:[7,30,90], quick:false, onApply:function(){loadCycleCount()}});
 setCcPeriod(30);
 RangePicker.init("fin-df", "fin-dt", {presets:[7,30,90], quick:false, onApply:function(){loadFinance()}});
-setFinPeriod(30);
+// Лише виставляємо календар — саму вкладку (5 запитів фінмодуля) вантажить
+// нав-клік по "Гроші" (див. масив нижче: fin:loadFinance), а не кожне
+// відкриття адмінки.
+initFinDates(30);
 init();
 </script>
 <div id="loader" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center"><div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:24px 40px;text-align:center"><div style="width:36px;height:36px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto"></div><div style="color:var(--td);font-size:12px;margin-top:10px">Завантаження...</div></div></div>

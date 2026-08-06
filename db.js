@@ -666,6 +666,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_bp_model ON base_products(model_id);
   CREATE INDEX IF NOT EXISTS idx_var_bp ON variations(base_product_id);
   CREATE INDEX IF NOT EXISTS idx_cat_parent ON categories(parent_id);
+
+  -- Фінмодуль: звіт (GET /api/finance/report) і звірка з банком щоразу
+  -- сканують cash_moves/expenses по діапазону дат і expense_payments по
+  -- expense_id — без індексів це повне сканування таблиці на кожне
+  -- відкриття вкладки «Гроші». Дані поки що невеликі, тож різниці не видно,
+  -- але звіт уже й так робить кілька таких запитів поспіль (income,
+  -- cashDelta, expensesPaid, byCategory, debtsTotal) — вона накопичиться.
+  CREATE INDEX IF NOT EXISTS idx_cash_moves_date ON cash_moves(date);
+  CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
+  CREATE INDEX IF NOT EXISTS idx_expenses_supplier ON expenses(supplier_id);
+  CREATE INDEX IF NOT EXISTS idx_expense_payments_expense ON expense_payments(expense_id);
 `);
 
 // Migrations
