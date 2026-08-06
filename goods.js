@@ -261,10 +261,10 @@ function register(app, { authMiddleware, requireRole }) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// Рух вартості готового товару: крій → склад. Ці функції не рухають
-// КІЛЬКІСТЬ — вона вже рухається в server.js у своїх перевірених точках
-// (/api/stock-cuts/incoming, /api/stock/incoming-bulk). Тут лише вартість
-// іде слідом.
+// Рух вартості готового товару: крій → склад → у дорозі → продано /
+// повернення / втрати. Ці функції не рухають КІЛЬКІСТЬ — вона вже рухається
+// в server.js у своїх перевірених точках (pullOrderStockOnce, incoming-bulk,
+// return-to-stock, defect, переоблік). Тут лише вартість іде слідом.
 // ══════════════════════════════════════════════════════════════════
 
 // Створює нову партію на вказаній полиці. Партії з тієї самої полиці й
@@ -276,6 +276,128 @@ function addToShelf(baseProductId, sizeId, shelf, qty, unitCost, source, refId, 
     VALUES(?,?,?,?,?,?,?,?)`)
     .run(baseProductId, sizeId, qty, round2(unitCost) || 0, source, refId || null, shelf === "returns" ? "returns" : "base", valued ? 1 : 0)
     .lastInsertRowid;
+}
+
+// FIFO-списання з партій готового товару конкретної полиці (база/повернення —
+// різні фізичні місця, партії між ними не змішуються, інакше собівартість
+// продажу з бази могла б узяти ціну з полиці повернень). Якщо партій не
+// вистачає (товар лежав на полиці ще до впровадження партій, чи прогалина
+// обліку) — решта списується з unit_cost=0 і lot_id=NULL: вартість НЕ
+// вигадується, а сам факт лишається видимим (COUNT(*) WHERE lot_id IS NULL
+// у inventory_consumptions — той самий "окремий лічильник" з плану).
+function consumeLotsFifo(baseProductId, sizeId, qty, shelf) {
+  shelf = shelf === "returns" ? "returns" : "base";
+  let remaining = qty;
+  const consumed = [];
+  const lots = db.prepare(`SELECT * FROM inventory_lots WHERE base_product_id=? AND size_id=? AND shelf=? AND qty_left>0.0000001 ORDER BY created_at ASC, id ASC`)
+    .all(baseProductId, sizeId, shelf);
+  for (const lot of lots) {
+    if (remaining <= 0.0000001) break;
+    const take = Math.min(remaining, lot.qty_left);
+    db.prepare("UPDATE inventory_lots SET qty_left = qty_left - ? WHERE id=?").run(take, lot.id);
+    consumed.push({ lot_id: lot.id, qty: take, unit_cost: lot.unit_cost });
+    remaining -= take;
+  }
+  if (remaining > 0.0000001) {
+    consumed.push({ lot_id: null, qty: remaining, unit_cost: 0 });
+  }
+  const cost = round2(consumed.reduce((s, c) => s + c.qty * c.unit_cost, 0));
+  return { cost, consumed };
+}
+
+function persistConsumption(baseProductId, sizeId, shelf, consumed, opts) {
+  opts = opts || {};
+  const ins = db.prepare(`INSERT INTO inventory_consumptions(order_item_id,base_product_id,size_id,lot_id,qty,unit_cost,shelf,status,ref_type,ref_id,note)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?)`);
+  consumed.forEach(c => {
+    ins.run(opts.orderItemId || null, baseProductId, sizeId, c.lot_id, c.qty, c.unit_cost,
+      shelf === "returns" ? "returns" : "base", opts.status || "in_transit", opts.refType || "", opts.refId || null, opts.note || "");
+  });
+}
+
+// Товар фізично покинув полицю (пакування/відправка — база; use-return —
+// повернення), а продаж ще не підтверджений: вартість переїжджає в "у
+// дорозі" (тимчасовий стан inventory_consumptions.status='in_transit'), а не
+// одразу в собівартість проданого — посилка ще може повернутись.
+function consumeToTransit(baseProductId, sizeId, shelf, qty, orderItemId, refType, refId) {
+  const { cost, consumed } = consumeLotsFifo(baseProductId, sizeId, qty, shelf);
+  persistConsumption(baseProductId, sizeId, shelf, consumed, { orderItemId, refType, refId, status: "in_transit" });
+  return cost;
+}
+
+// Прямі втрати (брак, недостача переобліку, списання при видаленні
+// замовлення) — вартість партії йде у втрати періоду одразу, без стадії
+// "у дорозі": товар не продається, а зникає з обліку зараз.
+function writeOffLots(baseProductId, sizeId, shelf, qty, refType, refId, note) {
+  const { cost, consumed } = consumeLotsFifo(baseProductId, sizeId, qty, shelf);
+  persistConsumption(baseProductId, sizeId, shelf, consumed, { refType, refId, status: "lost", note });
+  return cost;
+}
+
+// Посилку забрали: те, що було "у дорозі" для позицій цього замовлення,
+// фіксується в order_items.cogs НАЗАВЖДИ. Ціна вже визначена в момент, коли
+// товар пішов з полиці (consumeToTransit) — тут лише підсумовуємо. Ідемпотентно:
+// повторний виклик (напр. НП підтвердила "отримано" ще раз) не чіпає позицію,
+// у якої вже немає незаселених in_transit рядків, — інакше другий виклик
+// обнулив би вже зафіксовану цифру.
+function onOrderDeliveredGoods(orderId) {
+  const items = db.prepare("SELECT id FROM order_items WHERE order_id=?").all(orderId);
+  const setCogs = db.prepare("UPDATE order_items SET cogs=? WHERE id=?");
+  const settle = db.prepare("UPDATE inventory_consumptions SET status='sold',settled_at=datetime('now','localtime') WHERE order_item_id=? AND status='in_transit'");
+  db.transaction(() => {
+    items.forEach(i => {
+      const row = db.prepare("SELECT COALESCE(SUM(qty*unit_cost),0) as s, COUNT(*) as c FROM inventory_consumptions WHERE order_item_id=? AND status='in_transit'").get(i.id);
+      if (!row.c) return; // немає що фіксувати — або вже зафіксовано раніше
+      setCogs.run(round2(row.s), i.id);
+      settle.run(i.id);
+    });
+  })();
+}
+
+// Відкат "отримано" (НП скоригувала статус — клієнт насправді не забрав):
+// продажу не було, собівартість повертається в 0. Товар нікуди фізично не
+// рухається — це відкат помилкового підтвердження, а не повернення на
+// полицю, тож рядки повертаються в "у дорозі", а не в 'returned'.
+function onOrderUndeliveredGoods(orderId) {
+  const items = db.prepare("SELECT id FROM order_items WHERE order_id=?").all(orderId);
+  const setCogs = db.prepare("UPDATE order_items SET cogs=0 WHERE id=?");
+  const revert = db.prepare("UPDATE inventory_consumptions SET status='in_transit',settled_at=NULL WHERE order_item_id=? AND status='sold'");
+  db.transaction(() => {
+    items.forEach(i => {
+      const cnt = db.prepare("SELECT COUNT(*) as c FROM inventory_consumptions WHERE order_item_id=? AND status='sold'").get(i.id).c;
+      if (!cnt) return;
+      revert.run(i.id);
+      setCogs.run(i.id);
+    });
+  })();
+}
+
+// Товар "у дорозі" не продався: destination='base'|'returns' повертає
+// вартість на відповідну полицю ТІЄЮ Ж ціною, якою він пішов (нова партія з
+// unit_cost консумпції, valued успадковується від вихідної партії — щоб
+// неоцінений крій не перетворився на "оцінений нуль" при поверненні);
+// destination='writeoff' — товар втрачено (брак при поверненні, списання при
+// видаленні замовлення) — вартість згорає у втрати періоду.
+function settleInTransitForItem(orderItemId, destination, note) {
+  const rows = db.prepare("SELECT * FROM inventory_consumptions WHERE order_item_id=? AND status='in_transit'").all(orderItemId);
+  if (!rows.length) return;
+  const settle = db.prepare("UPDATE inventory_consumptions SET status=?,settled_at=datetime('now','localtime') WHERE id=?");
+  db.transaction(() => {
+    rows.forEach(r => {
+      if (destination === "writeoff") {
+        settle.run("lost", r.id);
+        return;
+      }
+      const shelf = destination === "returns" ? "returns" : "base";
+      let valued = 0;
+      if (r.lot_id) {
+        const srcLot = db.prepare("SELECT valued FROM inventory_lots WHERE id=?").get(r.lot_id);
+        valued = srcLot ? srcLot.valued : 0;
+      }
+      addToShelf(r.base_product_id, r.size_id, shelf, r.qty, r.unit_cost, "return", orderItemId, valued);
+      settle.run("returned", r.id);
+    });
+  })();
 }
 
 // Крій → база: партія складу з тією ж unit_cost, що й у партії крою — сума
@@ -316,4 +438,14 @@ function onStockIncoming(baseProductId, sizeId, qty) {
   addToShelf(baseProductId, sizeId, "base", qty, cost, "purchase", null, cost > 0);
 }
 
-module.exports = { register, onCutMovedToBase, onStockIncoming };
+module.exports = {
+  register,
+  consumeLotsFifo,
+  consumeToTransit,
+  writeOffLots,
+  onOrderDeliveredGoods,
+  onOrderUndeliveredGoods,
+  settleInTransitForItem,
+  onCutMovedToBase,
+  onStockIncoming,
+};

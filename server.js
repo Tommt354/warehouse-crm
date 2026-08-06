@@ -27,14 +27,19 @@ const PULLED_STATUSES = ["collected", "packed", "shipped", "delivering", "delive
 function pullOrderStockOnce(db, orderId) {
   const o = db.prepare("SELECT stock_pulled FROM orders WHERE id=?").get(orderId);
   if (!o || o.stock_pulled) return false;
-  const items = db.prepare("SELECT oi.quantity,oi.from_returns,v.base_product_id,oi.size_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
+  const items = db.prepare("SELECT oi.id,oi.quantity,oi.from_returns,v.base_product_id,oi.size_id FROM order_items oi JOIN variations v ON oi.variation_id=v.id WHERE oi.order_id=?").all(orderId);
   const dec = db.prepare("UPDATE stock_base SET quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?");
   items.forEach(i => {
     // Те, що взяли з полиці повернень, фізично не сходило з бази — база
     // отримала назад лише списану кількість (див. use-return). Знімаємо з
     // фактичного залишку тільки ту частину, яку реально брали з бази.
     const fromBase = Math.max(0, i.quantity - (i.from_returns || 0));
-    if (fromBase > 0) dec.run(fromBase, i.base_product_id, i.size_id);
+    if (fromBase > 0) {
+      dec.run(fromBase, i.base_product_id, i.size_id);
+      // Товар фізично покинув полицю бази — вартість іде слідом у "у
+      // дорозі" (goods.js), кількість вище цим не чіпається.
+      goods.consumeToTransit(i.base_product_id, i.size_id, "base", fromBase, i.id, "order_pull", orderId);
+    }
   });
   db.prepare("UPDATE orders SET stock_pulled=1 WHERE id=?").run(orderId);
   return true;
@@ -1049,7 +1054,13 @@ function applyRecountAdjustments(adjustments, userId, scope) {
       db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=?,recount_session_id=NULL WHERE base_product_id=? AND size_id=?").run(diff, actual, bpId, sizeId);
       db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('recount',?,?,?,?,?)")
         .run(bpId, sizeId, diff, "Переоблік: " + current + " → " + actual + deferredNote, userId);
-      logItem.run(row && row.recount_session_id ? row.recount_session_id : adhocSession(), bpId, sizeId, current, actual, actual - current, orderedDuring);
+      const sessionForItem = row && row.recount_session_id ? row.recount_session_id : adhocSession();
+      logItem.run(sessionForItem, bpId, sizeId, current, actual, actual - current, orderedDuring);
+      // Недостача переобліку списує партію у втрати періоду по вартості
+      // своєї полиці. Перестача (diff>0) навмисно НЕ отримує нову партію —
+      // знайдений товар без відомої собівартості не можна оцінити, не
+      // вигадуючи цифру, тож капітал лишається без змін, а не завищується.
+      if (diff < 0) goods.writeOffLots(bpId, sizeId, "base", -diff, "recount", sessionForItem, "Недостача переобліку");
       handledKeys.add(bpId + "_" + sizeId);
       changed++;
     });
@@ -1671,6 +1682,7 @@ app.post("/api/stock/write-off", authMiddleware, requireRole("admin","warehouse"
   db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, size_id);
   db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, size_id, -qty, "Списання: "+(note||""), req.user.id);
   db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?)").run(base_product_id,size_id,qty,"Списання: "+(note||""),req.user.id);
+  goods.writeOffLots(base_product_id, size_id, "base", qty, "writeoff", null, note || "");
   res.json({ ok: true });
 });
 
@@ -1685,6 +1697,7 @@ app.post("/api/stock/write-off-bulk", authMiddleware, requireRole("admin","wareh
         db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, item.size_id);
         db.prepare("INSERT INTO stock_incoming(base_product_id,size_id,quantity,note,created_by)VALUES(?,?,?,?,?)").run(base_product_id, item.size_id, -qty, "Списання: "+(note||""), req.user.id);
         db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('writeoff',?,?,?,?,?)").run(base_product_id, item.size_id, qty, "Списання: "+(note||""), req.user.id);
+        goods.writeOffLots(base_product_id, item.size_id, "base", qty, "writeoff", null, note || "");
       }
     }
   })();
@@ -1726,6 +1739,9 @@ app.post("/api/stock/defect", authMiddleware, requireRole("admin","warehouse"), 
       .run(bpId, varId, size_id, qty, src);
     db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('defect',?,?,?,?,?,?)")
       .run(bpId, varId || null, size_id, qty, "Брак" + (src === "returns" ? " (з повернень)" : " (з бази)") + (note ? ": " + note : ""), req.user.id);
+    // Брак списує партію по вартості своєї полиці (база/повернення) у втрати
+    // періоду — src тут той самий 'base'/'returns', що й shelf у goods.js.
+    goods.writeOffLots(bpId, size_id, src, qty, "defect", null, note || "");
   })();
   res.json({ ok: true });
 });
@@ -2446,6 +2462,10 @@ app.post("/api/order-items/:id/use-return", authMiddleware, requireRole("admin",
     }
     // Mark item
     db.prepare("UPDATE order_items SET from_returns=from_returns+? WHERE id=?").run(qty, item.id);
+    // Річ фізично пішла з полиці ПОВЕРНЕНЬ (не бази — базу вище лише
+    // компенсували бухгалтерськи) — вартість іде слідом у "у дорозі" з тієї
+    // самої полиці, окремо від consumeToTransit у pullOrderStockOnce.
+    goods.consumeToTransit(item.base_product_id, item.size_id, "returns", qty, item.id, "order_pull", item.order_id);
   })();
 
   res.json({ ok: true });
@@ -2514,9 +2534,11 @@ app.put("/api/orders/:id/status", authMiddleware, requireRole("admin","warehouse
     // повторне отримання (нижче) проставляло б delivered_at сьогоднішнім
     // днем замість вихідного дня отримання, і дохід/каса переїжджали б у
     // інший, можливо вже закритий місяць.
-    if (existing.status === "delivered" && status !== "delivered") finance.onOrderUndelivered(req.params.id);
+    if (existing.status === "delivered" && status !== "delivered") { finance.onOrderUndelivered(req.params.id); goods.onOrderUndeliveredGoods(req.params.id); }
     // Забрана посилка — це дохід дня отримання, а не дня створення замовлення.
-    if (status === "delivered") finance.onOrderDelivered(req.params.id);
+    // goods.onOrderDeliveredGoods фіксує собівартість проданого — товарна
+    // лінія, симетрична до фінансової, з тим самим тригером.
+    if (status === "delivered") { finance.onOrderDelivered(req.params.id); goods.onOrderDeliveredGoods(req.params.id); }
   })();
 
   // Дропер бачить у себе в сповіщеннях кожну реальну зміну статусу свого
@@ -2619,6 +2641,12 @@ function applyOrderStockRemoval(orderId, status, destination, userId) {
         db.prepare("UPDATE stock_base SET quantity_actual=quantity_actual+? WHERE base_product_id=? AND size_id=?").run(i.quantity, i.base_product_id, i.size_id);
       }
     }
+    // Товарна лінія слідом за тим самим dest: якщо для цієї позиції товар
+    // фізично покидав полицю (є "у дорозі" рядки — pullOrderStockOnce чи
+    // use-return), вартість повертається на ту саму полицю чи згорає у
+    // втрати. Для позицій, які ще не пульнули (немає in_transit рядків),
+    // функція нічого не робить — кількість вище й так не займала цю гілку.
+    goods.settleInTransitForItem(i.id, dest, "Видалення замовлення #" + orderId);
   });
 }
 
@@ -2932,6 +2960,10 @@ app.post("/api/order-items/:id/return-to-stock", authMiddleware, requireRole("ad
         .run(item.base_product_id, item.variation_id, item.size_id, item.quantity, "Брак з повернення: " + item.var_name, req.user.id);
     }
     db.prepare("UPDATE order_items SET returned_to_stock=1,return_condition=? WHERE id=?").run(condition, item.id);
+    // Товар "у дорозі" для цієї позиції повертається на ту саму полицю тією
+    // ж ціною (good) або згорає у втрати (damaged) — див. коментар у
+    // goods.settleInTransitForItem.
+    goods.settleInTransitForItem(item.id, condition === "good" ? (item.print_id ? "returns" : "base") : "writeoff", "Брак з повернення: " + item.var_name);
   })();
   res.json({ ok: true, condition });
 });
@@ -3318,8 +3350,8 @@ async function trackOneOrder(apiKey, o) {
   // повернули, і без цього прихід наложкою так само лишився б застряглим
   // на "забраній" посилці. delivered_at не чиститься — див. коментар у
   // finance.onOrderUndelivered.
-  if (o.status === "delivered" && ns && ns !== "delivered") finance.onOrderUndelivered(o.id);
-  if (ns === "delivered") finance.onOrderDelivered(o.id);
+  if (o.status === "delivered" && ns && ns !== "delivered") { finance.onOrderUndelivered(o.id); goods.onOrderUndeliveredGoods(o.id); }
+  if (ns === "delivered") { finance.onOrderDelivered(o.id); goods.onOrderDeliveredGoods(o.id); }
   if (ns === "refused" || ns === "return_transit" || o.status === "refused" || o.status === "return_transit") {
     db.prepare("UPDATE orders SET return_flagged_at=datetime('now','localtime') WHERE id=? AND (return_flagged_at IS NULL OR return_flagged_at='')").run(o.id);
     if (st.LastCreatedOnTheBasisNumber) {

@@ -774,9 +774,50 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 
+  -- Журнал списань партій готового товару (FIFO): кожен рядок — "стільки
+  -- одиниць за такою ціною пішло звідси". lot_id=NULL означає, що партій не
+  -- вистачило (товар без відомої собівартості) — списано з unit_cost=0, а
+  -- НЕ вигадано число; COUNT(*) WHERE lot_id IS NULL — той самий "окремий
+  -- лічильник" неоцінених списань, про який просить план.
+  -- status веде життєвий цикл вартості товару, що фізично покинув полицю:
+  --   in_transit — пішов з полиці (відправка / взяли з повернень), продаж
+  --                ще не підтверджений — це шухляда "у дорозі".
+  --   sold       — посилку забрали: списано в order_items.cogs НАЗАВЖДИ.
+  --   returned   — не продалось, вартість повернулась на полицю новою
+  --                inventory_lots(shelf=...) тією ж ціною.
+  --   lost       — брак, недостача переобліку чи списання при видаленні
+  --                замовлення: вартість згоріла у втрати періоду.
+  -- order_item_id — прив'язка до конкретної позиції замовлення для in_transit/
+  -- sold/returned; для прямих втрат (брак, переоблік) лишається NULL, слід
+  -- лишає ref_type/ref_id.
+  CREATE TABLE IF NOT EXISTS inventory_consumptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_item_id INTEGER,
+    base_product_id INTEGER NOT NULL,
+    size_id INTEGER NOT NULL,
+    lot_id INTEGER,
+    qty REAL NOT NULL,
+    unit_cost REAL NOT NULL DEFAULT 0,
+    shelf TEXT NOT NULL DEFAULT 'base',
+    status TEXT NOT NULL DEFAULT 'in_transit',
+    ref_type TEXT DEFAULT '',
+    ref_id INTEGER,
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    settled_at TEXT,
+    -- ON DELETE CASCADE: order_items каскадно видаляється разом із orders
+    -- (наявний FK нижче за течією), і без каскаду тут теж видалення
+    -- замовлення падало б на чужому обмеженні — ledger списання не має
+    -- сенсу без позиції, яку він описує.
+    FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE,
+    FOREIGN KEY (lot_id) REFERENCES inventory_lots(id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_material_lots_material ON material_lots(material_id);
   CREATE INDEX IF NOT EXISTS idx_cut_material_usage_cut ON cut_material_usage(cut_incoming_id);
   CREATE INDEX IF NOT EXISTS idx_inventory_lots_product ON inventory_lots(base_product_id, size_id, shelf);
+  CREATE INDEX IF NOT EXISTS idx_inv_consumptions_item ON inventory_consumptions(order_item_id);
+  CREATE INDEX IF NOT EXISTS idx_inv_consumptions_status ON inventory_consumptions(status);
 `);
 
 // Migrations
@@ -1217,6 +1258,41 @@ addCol("cut_incoming","qty_left","REAL DEFAULT 0");
     } else {
       console.log("⚠️  inventory_lots має стару форму FK (без CASCADE), але вже містить " + cnt + " партій — не чіпаю автоматично");
     }
+  }
+})();
+
+// Разова самолікувальна міграція: перша версія inventory_consumptions (у
+// межах цього ж заходу, до коміту) створювалась без ON DELETE CASCADE на
+// order_item_id, через що видалення замовлення падало на чужому обмеженні
+// (order_items каскадно видаляються разом з orders, а ця таблиця — ні).
+// Таблиця щойно з'явилась і в реальному використанні ще не встигла
+// наповнитись, тож безпечно перестворити її з правильним FK, якщо стара
+// форма вже встигла матеріалізуватись (напр. сервер запускали до фіксу).
+(() => {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='inventory_consumptions'").get();
+  if (row && !/ON DELETE CASCADE/.test(row.sql)) {
+    db.exec("DROP TABLE inventory_consumptions");
+    db.exec(`CREATE TABLE inventory_consumptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_item_id INTEGER,
+      base_product_id INTEGER NOT NULL,
+      size_id INTEGER NOT NULL,
+      lot_id INTEGER,
+      qty REAL NOT NULL,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      shelf TEXT NOT NULL DEFAULT 'base',
+      status TEXT NOT NULL DEFAULT 'in_transit',
+      ref_type TEXT DEFAULT '',
+      ref_id INTEGER,
+      note TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      settled_at TEXT,
+      FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE,
+      FOREIGN KEY (lot_id) REFERENCES inventory_lots(id)
+    )`);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_inv_consumptions_item ON inventory_consumptions(order_item_id)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_inv_consumptions_status ON inventory_consumptions(status)");
+    console.log("🔄 inventory_consumptions перестворено з ON DELETE CASCADE");
   }
 })();
 
