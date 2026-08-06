@@ -33,6 +33,106 @@ function orderReceivedAmount(orderId) {
     WHERE ref_type='order' AND ref_id=? AND kind IN ('cod','prepaid')`).get(orderId).s;
 }
 
+// GET /api/finance/journal (нижче в register()) показує повний журнал —
+// власник хоче взяти виписку з банку й пройтись по рядках. Колонка kind у
+// cash_moves сама по собі неоднозначна: і сама витрата, і оплата боргу
+// пишуться з kind='expense' (різняться лише ref_type), тож для журналу
+// вводимо власний "journal_kind" — рівно один код на один людський опис.
+// Значення взяті з повного переліку addCashMove(...) по всьому коду
+// (finance.js) — якщо колись з'явиться новий kind, якого нема в цьому
+// списку, journalKindOf/JOURNAL_KIND_LABELS нижче не вигадують опис, а
+// віддають сирий kind як є (щоб прогалину було видно, а не заховано за
+// придуманою назвою).
+const JOURNAL_KIND_LABELS = {
+  cod: "Наложка від Нової Пошти",
+  prepaid: "Передоплата від дропера",
+  payout: "Виплата дроперу",
+  expense: "Витрата",
+  expense_payment: "Оплата боргу",
+  refund: "Повернення коштів клієнту",
+  cancel_refund: "Повернення при скасуванні замовлення",
+  salary: "Зарплата",
+  // Віртуальний тип: рядок не з cash_moves, а з expenses (paid=0) — грошей
+  // ще не було, тож рухом каси він ніколи не стане, поки його не оплатять
+  // (тоді з'явиться СВІЙ рух з journal_kind='expense_payment').
+  expense_debt: "Витрата в борг (без руху грошей)"
+};
+
+// kind='expense' з ref_type='expense_payment' — оплата вже існуючого боргу,
+// а не нова витрата; це єдина пара (kind,ref_type), що не мапиться 1:1 на
+// journal_kind напряму.
+function journalKindOf(cm) {
+  if (cm.kind === "expense" && cm.ref_type === "expense_payment") return "expense_payment";
+  return cm.kind;
+}
+
+// "Джерело" рядка журналу — звідки взялась сума (номер замовлення й дропер,
+// категорія й постачальник витрати, працівник) — окремо від суми/дати,
+// власник саме це має побачити, звіряючи журнал із випискою. За браком
+// зв'язаного запису (ref_id порожній, чи запис уже видалений) віддаємо
+// власний note руху — це те, що реально записав код у момент події.
+function describeCashMove(cm) {
+  const jkind = journalKindOf(cm);
+  if (jkind === "cod" || jkind === "prepaid" || jkind === "cancel_refund") {
+    const o = cm.ref_id ? db.prepare("SELECT o.id, u.name as drop_name FROM orders o LEFT JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(cm.ref_id) : null;
+    return o ? "Замовлення #" + o.id + (o.drop_name ? " · Дропер " + o.drop_name : "") : (cm.note || "");
+  }
+  if (jkind === "payout") {
+    const p = cm.ref_id ? db.prepare("SELECT pr.id, u.name as drop_name FROM payout_requests pr LEFT JOIN users u ON pr.dropshipper_id=u.id WHERE pr.id=?").get(cm.ref_id) : null;
+    return p ? "Заявка на виплату #" + p.id + (p.drop_name ? " · Дропер " + p.drop_name : "") : (cm.note || "");
+  }
+  if (jkind === "expense") {
+    const e = cm.ref_id ? db.prepare(`SELECT c.name as category_name, s.name as supplier_name, w.name as workshop_name, e.note
+        FROM expenses e LEFT JOIN fin_categories c ON e.category_id=c.id LEFT JOIN suppliers s ON e.supplier_id=s.id LEFT JOIN workshops w ON e.workshop_id=w.id
+        WHERE e.id=?`).get(cm.ref_id) : null;
+    if (!e) return cm.note || "";
+    return [e.category_name ? "Категорія: " + e.category_name : null, e.supplier_name ? "Постачальник: " + e.supplier_name : null,
+      e.workshop_name ? "Цех: " + e.workshop_name : null].filter(Boolean).join(" · ") || (cm.note || "");
+  }
+  if (jkind === "expense_payment") {
+    // Сама оплата пишеться з фіксованою нотою "Оплата боргу" (POST
+    // .../expenses/:id/pay) — джерело тут особливо важливе, інакше в
+    // журналі був би ряд однакових нічого не значущих рядків. Тягнемо його
+    // з батьківської витрати через expense_payments, включно з її власною
+    // нотою — саме за нею власник впізнає, який борг щойно погасили.
+    const p = cm.ref_id ? db.prepare(`SELECT c.name as category_name, s.name as supplier_name, e.note
+        FROM expense_payments ep LEFT JOIN expenses e ON ep.expense_id=e.id
+        LEFT JOIN fin_categories c ON e.category_id=c.id LEFT JOIN suppliers s ON e.supplier_id=s.id
+        WHERE ep.id=?`).get(cm.ref_id) : null;
+    if (!p) return cm.note || "";
+    return [p.category_name ? "Категорія: " + p.category_name : null, p.supplier_name ? "Постачальник: " + p.supplier_name : null,
+      p.note ? "за витрату: " + p.note : null].filter(Boolean).join(" · ") || (cm.note || "");
+  }
+  if (jkind === "refund") {
+    // refund_extra (друге й наступні часткові повернення того самого
+    // замовлення) пишеться БЕЗ ref_id (унікальний індекс дозволяє лише
+    // одну прив'язку kind+ref_type+ref_id на замовлення) — номер
+    // замовлення тоді дістаємо з ноти, куди addCashMove його завжди додає.
+    let orderId = cm.ref_id;
+    if (!orderId) {
+      const m = /замовлення #(\d+)/.exec(cm.note || "");
+      orderId = m ? parseInt(m[1], 10) : null;
+    }
+    const o = orderId ? db.prepare("SELECT o.id, u.name as drop_name FROM orders o LEFT JOIN users u ON o.dropshipper_id=u.id WHERE o.id=?").get(orderId) : null;
+    return o ? "Замовлення #" + o.id + (o.drop_name ? " · Дропер " + o.drop_name : "") : (cm.note || "");
+  }
+  if (jkind === "salary") {
+    const w = cm.ref_id ? db.prepare("SELECT w.name FROM worker_payouts wp LEFT JOIN workers w ON wp.worker_id=w.id WHERE wp.id=?").get(cm.ref_id) : null;
+    return w && w.name ? "Працівник: " + w.name : (cm.note || "");
+  }
+  // Невідомий kind — не вигадуємо джерело, показуємо, що є.
+  return [cm.ref_type, cm.ref_id].filter(Boolean).join(" #") || (cm.note || "");
+}
+
+// Джерело для боргового (некасового) рядка — та сама структура полів, що й
+// у "звичайної" витрати вище (describeCashMove, гілка jkind==='expense'),
+// умисно повторена тут окремо: та гілка читає expenses ЧЕРЕЗ cash_moves.ref_id
+// (руху каси в боргу якраз нема), тут — напряму з уже підвантаженого рядка.
+function describeDebtExpense(e) {
+  return [e.category_name ? "Категорія: " + e.category_name : null, e.supplier_name ? "Постачальник: " + e.supplier_name : null,
+    e.workshop_name ? "Цех: " + e.workshop_name : null].filter(Boolean).join(" · ") || (e.note || "");
+}
+
 // Фінансовий модуль тримаємо окремо від server.js: там уже 4000+ рядків, і
 // дописувати туди ще один домен означало б робити файл нечитабельним.
 function register(app, { authMiddleware, requireRole }) {
@@ -472,6 +572,101 @@ function register(app, { authMiddleware, requireRole }) {
       // Має точно збігатись із income з GET /api/finance/report за той самий
       // період — це і є перевірка, яку бачить власник у підсумковому рядку.
       income_check: round2(dropPriceSum + refundsInPeriod)
+    });
+  });
+
+  // Повний журнал усіх операцій — інструмент довіри до системи: власник бере
+  // виписку з банку й проходиться по рядках. Тому наростаючий підсумок
+  // рахуємо від cash_opening_date (той самий "since", яким керується
+  // calcBalance), а НЕ від "from" обраного періоду: інакше "залишок після" у
+  // межах короткого періоду був би відірваний від реального рахунку, і
+  // останній рядок журналу перестав би збігатись зі звітом.
+  app.get("/api/finance/journal", ...adminOnly, (req, res) => {
+    const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+    const to = req.query.to || db.prepare("SELECT date('now','localtime') d").get().d;
+    const kindFilter = req.query.kind || "";
+    const since = getSetting("cash_opening_date", "") || db.prepare("SELECT date('now','localtime') d").get().d;
+    const opening = parseFloat(getSetting("cash_opening_balance", 0)) || 0;
+
+    // Хронологічно ЗРОСТАЮЧИЙ прохід від старту обліку до кінця обраного
+    // періоду (не від "from"!) — тільки так залишок після кожного рядка є
+    // правдою про рахунок станом на "to", а не числом, порахованим лише за
+    // видиму частину журналу.
+    const movesAsc = db.prepare("SELECT * FROM cash_moves WHERE date BETWEEN ? AND ? ORDER BY date ASC, id ASC").all(since, to);
+    let running = opening;
+    const enriched = movesAsc.map(cm => {
+      running = round2(running + cm.amount);
+      const jkind = journalKindOf(cm);
+      return {
+        id: "cm-" + cm.id, date: cm.date, created_at: cm.created_at,
+        kind: cm.kind, journal_kind: jkind, kind_label: JOURNAL_KIND_LABELS[jkind] || null,
+        amount: cm.amount, is_cash: true, balance_after: running,
+        source: describeCashMove(cm), note: cm.note || "",
+        ref_type: cm.ref_type, ref_id: cm.ref_id
+      };
+    });
+
+    // "Залишок на кінець" обраного періоду — це залишок після останнього
+    // руху хронологічного проходу вище, а НЕ calcBalance(): та функція не
+    // має верхньої межі й завжди показує стан "на зараз", тоді як тут
+    // власник міг обрати період, що закінчується в минулому. Коли to —
+    // сьогодні (типовий випадок) і в базі нема рухів із датою в майбутньому,
+    // ці два числа збігаються — саме це і є перевірка "журнал = звіт".
+    const balanceEnd = enriched.length ? enriched[enriched.length - 1].balance_after : opening;
+
+    // Борг: витрата, заведена paid=0, — гроші ще не пішли, тож рухом каси
+    // вона не стає ніколи (навіть якщо пізніше її частково погасять — та
+    // оплата вже прийде своїм окремим реальним рухом, ref_type='expense_payment',
+    // він уже є в enriched вище). Ознака "не оплачена одразу" — відсутність
+    // "народжуючого" руху (ref_type='expense', ref_id=e.id): POST
+    // /api/finance/expenses пише його лише коли paid=1.
+    const debtExpenses = db.prepare(`
+      SELECT e.*, c.name as category_name, s.name as supplier_name, w.name as workshop_name
+      FROM expenses e
+      LEFT JOIN fin_categories c ON e.category_id=c.id
+      LEFT JOIN suppliers s ON e.supplier_id=s.id
+      LEFT JOIN workshops w ON e.workshop_id=w.id
+      WHERE e.date BETWEEN ? AND ?
+        AND NOT EXISTS (SELECT 1 FROM cash_moves cm WHERE cm.ref_type='expense' AND cm.ref_id=e.id)
+      ORDER BY e.date ASC, e.id ASC
+    `).all(from, to);
+    const debtRows = debtExpenses.map(e => ({
+      id: "debt-" + e.id, date: e.date, created_at: e.created_at,
+      kind: "expense", journal_kind: "expense_debt", kind_label: JOURNAL_KIND_LABELS.expense_debt,
+      // Сума — інформаційна (яким був би розхід, якби оплатили одразу), тому
+      // й amount != 0, але balance_after=null нижче явно каже: у підсумок
+      // рахунку це число не входить.
+      amount: -round2(e.amount), is_cash: false, balance_after: null,
+      source: describeDebtExpense(e), note: e.note || "",
+      ref_type: "expense", ref_id: e.id
+    }));
+
+    // Показ обмежуємо обраним періодом (from — на відміну від нижньої межі
+    // розрахунку залишку, яка навмисно ширша, від since), плюс необов'язковий
+    // фільтр за типом. Підсумки нижче рахуються ДО фільтра — він лише лінза
+    // на таблицю, а не спосіб змінити "скільки прийшло/пішло за період".
+    const periodCash = enriched.filter(r => r.date >= from);
+    let rows = periodCash.concat(debtRows);
+    if (kindFilter) rows = rows.filter(r => r.journal_kind === kindFilter);
+
+    // Найновіші зверху; у межах одного дня реальні рухи йдуть перед борговими
+    // (боргові рядки не впливають на залишок, тож їхнє місце в тай-брейку не
+    // міняє суті — лише узгоджений порядок показу).
+    rows.sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      if (a.is_cash !== b.is_cash) return a.is_cash ? -1 : 1;
+      const aid = parseInt(String(a.id).split("-")[1], 10), bid = parseInt(String(b.id).split("-")[1], 10);
+      return bid - aid;
+    });
+
+    const income = round2(periodCash.filter(r => r.amount > 0).reduce((s, r) => s + r.amount, 0));
+    const outcome = round2(periodCash.filter(r => r.amount < 0).reduce((s, r) => s - r.amount, 0));
+
+    res.json({
+      from, to, kind: kindFilter,
+      rows,
+      summary: { income, outcome, net: round2(income - outcome), balance_end: balanceEnd },
+      kinds: Object.keys(JOURNAL_KIND_LABELS).map(k => ({ value: k, label: JOURNAL_KIND_LABELS[k] }))
     });
   });
 

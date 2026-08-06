@@ -2,6 +2,11 @@
 // Логіку тримаємо окремим файлом — admin.html уже завеликий.
 var finCats = [], finSups = [], finReport = null, finWorkshops = [];
 var finExpenses = [], finSettings = null, finDelivered = null;
+// Журнал: власне джерело даних вкладки «Журнал», перезавантажується разом
+// з рештою фінмодуля (loadFinance) для того самого періоду — окремого
+// календаря вкладка не має. Фільтр за типом — суто фронтенд-стан, тримаємо
+// його тут, а не в даті/періоді, щоб зміна фільтра не тягла новий запит.
+var finJournal = null, finJournalKindFilter = "";
 // id витрати, яку зараз редагують у fin-exp-modal; null = форма додавання.
 var finEditExpenseId = null;
 // id категорії/постачальника, рядок якого зараз розкритий на редагування.
@@ -37,7 +42,7 @@ function setFinPeriod(days){
 }
 
 function showFinTab(t){
-  ["list","delivered","debts","cats","mgr"].forEach(function(x){
+  ["list","delivered","debts","journal","cats","mgr"].forEach(function(x){
     document.getElementById("fin-v-"+x).style.display=x===t?"":"none";
     document.getElementById("fintab-"+x).classList.toggle("on",x===t);
   });
@@ -55,8 +60,9 @@ async function loadFinance(){
     finReport=await api("/api/finance/report?from="+f+"&to="+t);
     finExpenses=(await api("/api/finance/expenses?from="+f+"&to="+t)).expenses;
     finDelivered=await api("/api/finance/delivered?from="+f+"&to="+t);
+    finJournal=await api("/api/finance/journal?from="+f+"&to="+t);
     if(errEl){errEl.style.display="none";errEl.textContent=""}
-    renderFinSummary(); renderFinList(finExpenses); renderFinDelivered(); renderFinDebts(); renderFinCats(); renderFinMgr();
+    renderFinSummary(); renderFinList(finExpenses); renderFinDelivered(); renderFinDebts(); renderFinJournal(); renderFinCats(); renderFinMgr();
   }catch(e){
     // Порожній catch тут ковтав помилку мовчки — власник бачив старі цифри
     // й не здогадувався, що запит відпав (напр. сесія злетіла чи бекенд
@@ -181,6 +187,54 @@ async function saveFinSupEdit(id){
   if(!name)return;
   var note=document.getElementById("fs-edit-note").value;
   try{await api("/api/finance/suppliers/"+id,{method:"PUT",body:JSON.stringify({name:name,note:note,active:1})});finSupEditId=null;loadFinance()}catch(e){alert(e.message)}
+}
+
+// Журнал: власник бере виписку з банку й проходиться по рядках, тож формат
+// навмисно "як у банку" — дата, опис, сума зі знаком, залишок після. Рядки,
+// що не рухають гроші (борг), позначені окремо й БЕЗ залишку — showFinTab
+// уже перемикає видимість блоку, тут лише малюємо вміст.
+function setFinJournalKind(v){finJournalKindFilter=v;renderFinJournal()}
+
+function renderFinJournal(){
+  var el=document.getElementById("fin-v-journal");
+  var j=finJournal;
+  if(!j){el.innerHTML='<div class="empty">Немає даних за обраний період</div>';return}
+  function tile(l,v,c){return '<div style="flex:1;min-width:130px;background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:10px"><div style="font-size:10px;color:var(--td);margin-bottom:4px">'+l+'</div><div style="font-size:16px;font-weight:700;color:'+(c||"var(--th)")+'">'+v+'</div></div>'}
+  var summary='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">'
+    +tile("Прийшло",finMoney(j.summary.income)+"₴","var(--acc)")
+    +tile("Пішло",finMoney(j.summary.outcome)+"₴","var(--red)")
+    +tile("Чиста різниця",finMoney(j.summary.net)+"₴",j.summary.net<0?"var(--red)":"var(--acc)")
+    +tile("Залишок на кінець періоду",finMoney(j.summary.balance_end)+"₴")
+    +'</div>';
+  var kinds=j.kinds||[];
+  var filterHtml='<div style="margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+    +'<span style="font-size:11px;color:var(--td)">Тип операції:</span>'
+    +'<select onchange="setFinJournalKind(this.value)" style="padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:6px;color:#fff;font-size:12px">'
+    +'<option value="">Усі типи</option>'
+    +kinds.map(function(k){return '<option value="'+k.value+'"'+(finJournalKindFilter===k.value?' selected':'')+'>'+esc(k.label)+'</option>'}).join("")
+    +'</select></div>';
+  var rows=(j.rows||[]).filter(function(r){return !finJournalKindFilter||r.journal_kind===finJournalKindFilter});
+  if(!rows.length){
+    el.innerHTML=summary+filterHtml+'<div class="empty">'+(j.rows&&j.rows.length?'Немає операцій цього типу за обраний період':'Операцій за обраний період немає')+'</div>';
+    return;
+  }
+  var rowsHtml=rows.map(function(r){
+    // Тип операції без людського опису (kind_label===null) — прогалина в
+    // мапі описів на бекенді (finance.js:JOURNAL_KIND_LABELS), а не помилка
+    // фронтенда: показуємо сирий код як є, а не вигадуємо назву.
+    var label=r.kind_label?esc(r.kind_label):('<span style="color:var(--warn)">'+esc(r.kind)+' (немає опису)</span>');
+    var amtColor=r.amount>0?"var(--acc)":(r.amount<0?"var(--red)":"var(--th)");
+    var balHtml=r.is_cash?('<div style="font-size:10px;color:var(--td)">залишок '+finMoney(r.balance_after)+'₴</div>')
+      :'<div style="font-size:10px;color:var(--warn)">борг · грошей ще не було, залишку не змінює</div>';
+    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--brd);font-size:12px'
+      +(r.is_cash?'':';opacity:.75')+'">'
+      +'<div><b style="color:var(--th)">'+label+'</b>'
+      +(r.source?'<div style="font-size:10px;color:var(--td)">'+esc(r.source)+'</div>':'')
+      +'<div style="font-size:10px;color:var(--td)">'+esc(r.date)+'</div></div>'
+      +'<div style="text-align:right;white-space:nowrap"><div style="color:'+amtColor+';font-weight:600">'+(r.amount>0?"+":"")+finMoney(r.amount)+'₴</div>'
+      +balHtml+'</div></div>';
+  }).join("");
+  el.innerHTML=summary+filterHtml+rowsHtml;
 }
 
 function renderFinCats(){
