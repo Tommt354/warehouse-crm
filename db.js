@@ -677,6 +677,94 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
   CREATE INDEX IF NOT EXISTS idx_expenses_supplier ON expenses(supplier_id);
   CREATE INDEX IF NOT EXISTS idx_expense_payments_expense ON expense_payments(expense_id);
+
+  -- Фінмодуль, заход 2 «Товар». Вид тканини задає одиницю виміру, у якій
+  -- рулон приходить, зберігається й списується (двонитка — кг, плащівка —
+  -- метри) — змішувати одиниці всередині одного виду сенсу нема.
+  CREATE TABLE IF NOT EXISTS materials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    unit TEXT NOT NULL CHECK(unit IN ('kg','m')),
+    active INTEGER DEFAULT 1
+  );
+
+  -- Рулон тканини — партія зі своєю ціною. price_uah і fx_rate фіксуються в
+  -- момент приходу (fx_rate — за замовчуванням курс НБУ, редагований, бо
+  -- закупівля може йти за готівковим курсом) і більше НІКОЛИ не
+  -- перераховуються — інакше вся історія собівартості попливла б заднім
+  -- числом при кожному стрибку долара. qty_left — залишок рулону в його
+  -- одиниці, зменшується списанням на крій за явно вказаним рулоном (не
+  -- FIFO: власник сам знає, з якого рулону різав).
+  CREATE TABLE IF NOT EXISTS material_lots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    material_id INTEGER NOT NULL,
+    color TEXT DEFAULT '',
+    roll_no TEXT DEFAULT '',
+    qty_total REAL NOT NULL,
+    qty_left REAL NOT NULL,
+    price_usd REAL NOT NULL DEFAULT 0,
+    fx_rate REAL NOT NULL DEFAULT 0,
+    price_uah REAL NOT NULL DEFAULT 0,
+    supplier_id INTEGER,
+    expense_id INTEGER,
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (material_id) REFERENCES materials(id),
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+    FOREIGN KEY (expense_id) REFERENCES expenses(id)
+  );
+
+  -- Списання тканини на партію крою: по конкретному рулону (lot_id), а не
+  -- FIFO — пряма ідентифікація партії точніша за будь-яку автоматику. Одна
+  -- партія крою може списувати з кількох рулонів (кілька рядків тут). cost
+  -- фіксується на момент списання (qty × тодішня price_uah рулону), щоб не
+  -- поплисти, якщо рулон продовжать чіпати пізніше.
+  CREATE TABLE IF NOT EXISTS cut_material_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cut_incoming_id INTEGER NOT NULL,
+    lot_id INTEGER NOT NULL,
+    qty REAL NOT NULL,
+    cost REAL NOT NULL DEFAULT 0,
+    FOREIGN KEY (cut_incoming_id) REFERENCES cut_incoming(id) ON DELETE CASCADE,
+    FOREIGN KEY (lot_id) REFERENCES material_lots(id)
+  );
+
+  -- Партії готового товару: crій, перейшовши на склад, або закупний товар
+  -- (базар), або повернення на полицю — кожен зі своєю унесеною unit_cost.
+  -- source розрізняє звідки партія (cut / purchase / return), ref_id
+  -- вказує на джерело (cut_incoming.id, stock_incoming.id тощо). Списання
+  -- зі складу йде за FIFO по цих партіях — кожна одиниця несе ціну своєї.
+  CREATE TABLE IF NOT EXISTS inventory_lots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    base_product_id INTEGER NOT NULL,
+    size_id INTEGER NOT NULL,
+    qty_left REAL NOT NULL DEFAULT 0,
+    unit_cost REAL NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'cut',
+    ref_id INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (base_product_id) REFERENCES base_products(id),
+    FOREIGN KEY (size_id) REFERENCES sizes(id)
+  );
+
+  -- Котел фурнітури: партійний облік гудзиків/бирок/пакетів не ведеться,
+  -- витрати на нього більші за користь. Плюс — закупівля (реальна витрата),
+  -- мінус — нарахування за нормативом (виготовлено × base_products.notions_cost).
+  -- Місячна звірка сум плюсів і мінусів показує власнику, чи занижений
+  -- норматив, чи просто росте запас — систему це не хвилює, рішення за ним.
+  CREATE TABLE IF NOT EXISTS notions_pool (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    ref_type TEXT DEFAULT '',
+    ref_id INTEGER,
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_material_lots_material ON material_lots(material_id);
+  CREATE INDEX IF NOT EXISTS idx_cut_material_usage_cut ON cut_material_usage(cut_incoming_id);
+  CREATE INDEX IF NOT EXISTS idx_inventory_lots_product ON inventory_lots(base_product_id, size_id);
 `);
 
 // Migrations
@@ -1050,6 +1138,36 @@ if(!db.prepare("SELECT id FROM sizes LIMIT 1").get()){
   const s=db.prepare("INSERT INTO sizes(name,sort_order)VALUES(?,?)");
   ["XXS","XS","S","M","L","XL","2XL","3XL"].forEach((n,i)=>s.run(n,i));
 }
+// Фінмодуль, заход 2 «Товар»: норми й ставки за замовчуванням у картці
+// товару. Це лише підказки, що підставляються у форму крою — реальна
+// вартість партії рахується з полів cut_incoming нижче, а не з цих значень
+// (власник може змінити ставку на конкретній партії).
+addCol("base_products","material_id","INTEGER DEFAULT NULL");
+addCol("base_products","material_norm","REAL DEFAULT 0");
+addCol("base_products","notions_cost","REAL DEFAULT 0");
+addCol("base_products","sewing_cost","REAL DEFAULT 0");
+
+// Собівартість партії крою фіксується на самій партії, а не рахується на
+// льоту: material_cost/notions_cost/sewing_cost — суми в гривнях, вже
+// помножені на фактичну кількість; sewing_price — ставка за 1 шт саме цієї
+// партії (ціна пошиву різна для різних товарів). unit_cost = сума трьох
+// доданків, поділена на фактичну кількість (cut_incoming.quantity) — якщо
+// частина партії бракована й quantity зменшили, той самий чисельник на
+// менший знаменник сам підняв собівартість одиниці, рахувати брак окремо
+// не треба. valued=0, поки власник не вписав рулон і фактичну кількість
+// тканини — до того партія неоцінена і в жодному підсумку нулем не рахується.
+addCol("cut_incoming","material_cost","REAL DEFAULT 0");
+addCol("cut_incoming","notions_cost","REAL DEFAULT 0");
+addCol("cut_incoming","sewing_price","REAL DEFAULT 0");
+addCol("cut_incoming","sewing_cost","REAL DEFAULT 0");
+addCol("cut_incoming","unit_cost","REAL DEFAULT 0");
+addCol("cut_incoming","valued","INTEGER DEFAULT 0");
+
+// Собівартість, зафіксована в момент продажу (списання партії складу FIFO),
+// щоб вона не пливла заднім числом, якщо пізніше на склад прийде партія з
+// іншою ціною.
+addCol("order_items","cogs","REAL DEFAULT 0");
+
 const ups=db.prepare("INSERT OR IGNORE INTO settings(key,value)VALUES(?,?)");
 Object.entries({stock_warning_threshold:"3",company_name:"ADS DROP",np_api_key:process.env.NP_API_KEY||"",sender_city:"",sender_warehouse:"",sender_phone:"",sender_name:""}).forEach(([k,v])=>ups.run(k,v));
 
