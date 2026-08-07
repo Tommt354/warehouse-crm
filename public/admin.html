@@ -98,6 +98,18 @@
 
 <div style="margin-top:24px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:14px;font-weight:600;color:var(--th)">Замовлення по днях</div>
+    <div class="acts" style="margin-bottom:0">
+      <select id="dobd-drop" onchange="loadDashOrdersByDay()" style="padding:6px 10px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"><option value="">Усі дропери</option></select>
+      <select id="dobd-ch" onchange="loadDashOrdersByDay()" style="padding:6px 10px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"><option value="">Усі канали</option></select>
+    </div>
+  </div>
+  <div id="dash-obd-totals" style="margin-bottom:8px"></div>
+  <div id="dash-obd"></div>
+</div>
+
+<div style="margin-top:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
     <div style="font-size:14px;font-weight:600;color:var(--th)">Популярні товари</div>
     <div class="acts" style="margin-bottom:0">
       <button class="stab" id="dpop-7" onclick="setDashPopPeriod(7)">7д</button>
@@ -1021,10 +1033,12 @@ async function loadDash(){
   const d=await api("/api/dashboard?stock_view="+dashStockView);
   document.getElementById("dash-s").innerHTML=`<div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div><div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div><div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div><div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div><div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_today||0}</div><div class="sl">замовлень сьогодні</div></div><div class="sc"><div class="sv" style="color:var(--td)">${d.orders_yesterday||0}</div><div class="sl">замовлень вчора</div></div>`+
     `<div class="sc" style="cursor:pointer" onclick="document.querySelector('a[data-p=\\'adm-returns\\']').click()"><div class="sv" style="color:var(--red)">${d.unreceived_orders||0}</div><div class="sl">не отримано</div></div>`+
-    `<div class="sc" style="cursor:pointer" onclick="document.querySelector('a[data-p=\\'adm-returns\\']').click()"><div class="sv" style="color:var(--red);font-size:18px">${fmtMoney(d.unreceived_cost||0)}₴</div><div class="sl">собівартість не отриманих</div></div>`;
+    `<div class="sc" style="cursor:pointer" onclick="document.querySelector('a[data-p=\\'adm-returns\\']').click()"><div class="sv" style="color:var(--red);font-size:18px">${fmtMoney(d.unreceived_cost||0)}₴</div><div class="sl">собівартість не отриманих</div></div>`+
+    `<div class="sc"><div class="sv" style="color:var(--acc)">${d.returns_received_today||0}</div><div class="sl">повернень прийнято сьогодні</div></div>`;
   renderDashStock(d);
   loadDashCharts();
   loadDashPopularity();
+  loadDashOrdersByDay();
 }
 // Дашборд: два окремі списки — де залишок ще є, але малий, і де його вже
 // немає взагалі (нуль і мінус). Перемикач обирає, за яким лічильником
@@ -1088,12 +1102,42 @@ function setDashPopPeriod(days){
   document.getElementById("dpop-dt").value=fmt(end);
   loadDashPopularity();
 }
+// Замовлення по днях із фільтрами: власник дивиться не лише «скільки», а й
+// «скільки з них дійшло» — без другої цифри обсяг нічого не каже.
+async function loadDashOrdersByDay(){
+  var df=document.getElementById("dpop-df").value,dt=document.getElementById("dpop-dt").value;
+  var q=[];
+  if(df&&dt){q.push("from="+df);q.push("to="+dt)}
+  var dsel=document.getElementById("dobd-drop"),csel=document.getElementById("dobd-ch");
+  if(dsel&&dsel.value)q.push("dropshipper_id="+dsel.value);
+  if(csel&&csel.value)q.push("channel="+encodeURIComponent(csel.value));
+  var r;try{r=await api("/api/dashboard/orders-by-day"+(q.length?"?"+q.join("&"):""))}catch(e){return}
+  if(dsel&&dsel.options.length<=1)dsel.innerHTML='<option value="">Усі дропери</option>'+r.dropshippers.map(function(d){return '<option value="'+d.id+'">'+esc(d.name)+'</option>'}).join("");
+  if(csel&&csel.options.length<=1)csel.innerHTML='<option value="">Усі канали</option>'+r.channels.map(function(c){return '<option value="'+esc(c)+'">'+esc(c.toUpperCase())+'</option>'}).join("");
+  var t=r.totals;
+  document.getElementById("dash-obd-totals").innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px">'
+    +'<span style="padding:4px 9px;border-radius:6px;background:var(--bg);color:var(--td)">замовлень '+t.orders+'</span>'
+    +'<span style="padding:4px 9px;border-radius:6px;background:var(--bg);color:var(--acc)">забрали '+t.delivered+'</span>'
+    +'<span style="padding:4px 9px;border-radius:6px;background:var(--bg);color:var(--red)">повернень '+t.refused+'</span>'
+    +'<span style="padding:4px 9px;border-radius:6px;background:var(--bg);color:var(--th)">'+(t.drop_sum||0).toLocaleString("uk-UA")+'₴ дроп-ціни</span></div>';
+  var max=Math.max.apply(null,r.days.map(function(d){return d.orders}).concat([1]));
+  document.getElementById("dash-obd").innerHTML=r.days.length?r.days.map(function(d){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11px">'
+      +'<div style="width:78px;color:var(--td);font-family:JetBrains Mono,monospace">'+esc(d.day)+'</div>'
+      +'<div style="flex:1;background:var(--bg);border-radius:4px;height:14px;position:relative;overflow:hidden">'
+        +'<div style="position:absolute;left:0;top:0;bottom:0;width:'+Math.round(d.orders/max*100)+'%;background:var(--accbg)"></div>'
+        +'<div style="position:absolute;left:0;top:0;bottom:0;width:'+Math.round(d.delivered/max*100)+'%;background:var(--acc);opacity:.7"></div>'
+      +'</div>'
+      +'<div style="width:150px;text-align:right;color:var(--td)">'+d.orders+' шт · забрали '+d.delivered+' · '+(d.drop_sum||0).toLocaleString("uk-UA")+'₴</div></div>';
+  }).join(""):'<div style="color:var(--td);font-size:12px;padding:10px">Немає замовлень за цей період</div>';
+}
+
 async function loadDashPopularity(){
   var df=document.getElementById("dpop-df").value,dt=document.getElementById("dpop-dt").value;
   try{
     var r=await api("/api/dashboard/popularity"+(df&&dt?"?date_from="+df+"&date_to="+dt:""));
     document.getElementById("dash-popularity").innerHTML=r.items.length?r.items.map(function(p){
-      return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.model_name)+(p.color_name?' · '+esc(p.color_name):'')+'</div><div class="pcard-price">'+p.qty+' шт продано</div></div></div>';
+      return '<div class="pcard"><div class="pcard-img">'+(p.photo?'<img src="'+p.photo+'">':Icon('camera',28))+'</div><div class="pcard-body"><div class="pcard-name">'+esc(p.model_name)+(p.color_name?' · '+esc(p.color_name):'')+'</div><div class="pcard-price">'+p.qty+' шт · '+(p.drop_sum||0).toLocaleString("uk-UA")+'₴</div><div style="font-size:10px;color:var(--td)">забрали '+(p.qty_delivered||0)+' шт · '+(p.drop_sum_delivered||0).toLocaleString("uk-UA")+'₴</div></div></div>';
     }).join(""):'<div style="color:var(--td);font-size:12px;padding:10px">Немає продажів за цей період</div>';
   }catch(e){}
 }

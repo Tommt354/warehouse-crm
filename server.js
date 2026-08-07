@@ -4184,6 +4184,12 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
       // висить у дорозі або лежить у відділенні. Кількість не показує ваги
       // проблеми, тому поруч сума собівартості — скільки грошей зараз висить.
       unreceived_orders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status IN ('refused','return_transit') AND COALESCE(return_received,0)=0").get().c,
+      // Скільки повернень фізично прийняли сьогодні — щоденний пульс полиці
+      // повернень, окремо від загального боргу «не отримано».
+      returns_received_today: db.prepare(`SELECT COUNT(*) as c FROM orders
+        WHERE COALESCE(return_received,0)=1 AND date(return_received_at)=date('now','localtime')`).get().c,
+      returns_received_today_sum: db.prepare(`SELECT COALESCE(SUM(total_drop_price),0) as s FROM orders
+        WHERE COALESCE(return_received,0)=1 AND date(return_received_at)=date('now','localtime')`).get().s,
       unreceived_cost: db.prepare(`SELECT COALESCE(SUM(oi.quantity * COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0)),0) as s
         FROM order_items oi JOIN orders o ON oi.order_id=o.id
         JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id
@@ -4214,7 +4220,11 @@ app.get("/api/dashboard/popularity", authMiddleware, requireRole("admin"), (req,
   const df = req.query.date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const dt = req.query.date_to || new Date().toISOString().slice(0, 10);
   const rows = db.prepare(`
-    SELECT bp.id as base_product_id, bp.name, bp.photo, m.name as model_name, c.name as color_name, SUM(oi.quantity) as qty
+    SELECT bp.id as base_product_id, bp.name, bp.photo, m.name as model_name, c.name as color_name,
+      SUM(oi.quantity) as qty,
+      ROUND(SUM(oi.quantity * oi.drop_price), 2) as drop_sum,
+      SUM(CASE WHEN o.status='delivered' THEN oi.quantity ELSE 0 END) as qty_delivered,
+      ROUND(SUM(CASE WHEN o.status='delivered' THEN oi.quantity * oi.drop_price ELSE 0 END), 2) as drop_sum_delivered
     FROM order_items oi
     JOIN variations v ON oi.variation_id=v.id
     JOIN base_products bp ON v.base_product_id=bp.id
@@ -4228,6 +4238,32 @@ app.get("/api/dashboard/popularity", authMiddleware, requireRole("admin"), (req,
 });
 
 // Daily accounting: delivered sums, refused count, shipped count per day
+// Замовлення по днях: скільки створено і скільки з них уже забрали, з
+// фільтром по дроперу й каналу. Дві криві поруч показують не лише обсяг, а й
+// те, яка частина реально дійшла до клієнта — саме це власник і питав.
+app.get("/api/dashboard/orders-by-day", authMiddleware, requireRole("admin"), (req, res) => {
+  const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+  const to = req.query.to || db.prepare("SELECT date('now','localtime') d").get().d;
+  const where = ["date(o.created_at) BETWEEN ? AND ?"];
+  const params = [from, to];
+  if (req.query.dropshipper_id) { where.push("o.dropshipper_id=?"); params.push(parseInt(req.query.dropshipper_id)); }
+  if (req.query.channel) { where.push("o.drop_channel=?"); params.push(req.query.channel); }
+  const rows = db.prepare(`SELECT date(o.created_at) as day,
+      COUNT(*) as orders,
+      ROUND(SUM(o.total_drop_price),2) as drop_sum,
+      SUM(CASE WHEN o.status='delivered' THEN 1 ELSE 0 END) as delivered,
+      SUM(CASE WHEN o.status IN ('refused','return_transit') THEN 1 ELSE 0 END) as refused
+    FROM orders o WHERE ${where.join(" AND ")}
+    GROUP BY day ORDER BY day DESC`).all(...params);
+  const totals = rows.reduce((a, r) => ({
+    orders: a.orders + r.orders, drop_sum: Math.round((a.drop_sum + r.drop_sum) * 100) / 100,
+    delivered: a.delivered + r.delivered, refused: a.refused + r.refused
+  }), { orders: 0, drop_sum: 0, delivered: 0, refused: 0 });
+  res.json({ from, to, days: rows, totals,
+    dropshippers: db.prepare("SELECT id,name FROM users WHERE role='dropshipper' AND active=1 ORDER BY name").all(),
+    channels: db.prepare("SELECT DISTINCT drop_channel c FROM orders WHERE COALESCE(drop_channel,'')<>'' ORDER BY c").all().map(x => x.c) });
+});
+
 app.get("/api/dashboard/accounting", authMiddleware, requireRole("admin"), (req, res) => {
   const df = req.query.date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const dt = req.query.date_to || new Date().toISOString().slice(0, 10);
