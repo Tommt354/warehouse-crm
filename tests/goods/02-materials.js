@@ -78,16 +78,32 @@ const db = require("../../node_modules/better-sqlite3")(process.env.DB_PATH || "
   const exp = db.prepare("SELECT * FROM expenses WHERE id=?").get(lotRow.expense_id);
   ok(exp && exp.category_id === matCat.id, "витрата заведена в категорії матеріалів (" + (exp && exp.category_id) + " очікували " + matCat.id + ")");
   ok(Math.abs(exp.amount - 20 * (6.5 * 40)) < 0.01, "сума витрати = кількість × ціна за одиницю в грн (" + (exp && exp.amount) + ")");
+  // Прихід рулону за замовчуванням — БОРГ, як і будь-яка інша витрата:
+  // два протилежні замовчування на одному понятті плутали б власника й тихо
+  // рухали б реальні гроші там, де він цього не просив.
   const cash = db.prepare("SELECT amount FROM cash_moves WHERE ref_type='expense' AND ref_id=?").get(lotRow.expense_id);
-  ok(cash && cash.amount === -exp.amount, "рух каси через наявний механізм витрат (" + (cash && cash.amount) + ")");
+  ok(!cash, "без явного paid прихід рулону каси не рухає — це борг (" + (cash && cash.amount) + ")");
+
+  // А з явним paid — рухає, тим самим механізмом, що й звичайна витрата.
+  r = await api("/api/goods/lots", {
+    method: "POST",
+    body: JSON.stringify({ material_id: matKg, color: "сірий", roll_no: "R-4", qty_total: 5, price_usd: 4, fx_rate: 40, create_expense: true, paid: true })
+  });
+  ok(r.s === 200 && r.b.id, "рулон з оплатою приходить (" + r.s + ")");
+  const lot4 = db.prepare("SELECT * FROM material_lots WHERE id=?").get(r.b.id);
+  const exp4 = db.prepare("SELECT * FROM expenses WHERE id=?").get(lot4.expense_id);
+  const cash4 = db.prepare("SELECT amount FROM cash_moves WHERE ref_type='expense' AND ref_id=?").get(lot4.expense_id);
+  ok(cash4 && Math.abs(cash4.amount + exp4.amount) < 0.01, "оплачений прихід дав рух каси (" + (cash4 && cash4.amount) + ")");
 
   // прибирання (спершу рулони — material_lots.expense_id посилається на
   // expenses, FOREIGN KEY не дасть видалити витрату, поки на неї є посилання)
-  db.prepare("DELETE FROM material_lots WHERE id IN (?,?,?)").run(lot1, lot2, lot3);
+  db.prepare("DELETE FROM material_lots WHERE id IN (?,?,?,?)").run(lot1, lot2, lot3, lot4.id);
   db.prepare("DELETE FROM materials WHERE id IN (?,?)").run(matKg, matM);
-  db.prepare("DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id=?").run(lotRow.expense_id);
-  db.prepare("DELETE FROM expense_payments WHERE expense_id=?").run(lotRow.expense_id);
-  db.prepare("DELETE FROM expenses WHERE id=?").run(lotRow.expense_id);
+  [lotRow.expense_id, lot4.expense_id].forEach(eid => {
+    db.prepare("DELETE FROM cash_moves WHERE ref_type='expense' AND ref_id=?").run(eid);
+    db.prepare("DELETE FROM expense_payments WHERE expense_id=?").run(eid);
+    db.prepare("DELETE FROM expenses WHERE id=?").run(eid);
+  });
 
   // ── доступ ──────────────────────────────────────────────────────
   await login("packer");

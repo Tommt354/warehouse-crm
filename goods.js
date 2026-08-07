@@ -110,6 +110,32 @@ function register(app, { authMiddleware, requireRole }) {
     res.json({ lots: db.prepare(sql).all(...params) });
   });
 
+  // Звірка лінії товару: де партії розійшлися з фактичним залишком і що
+  // лишилось неоціненим. Без цього маршруту розходження ніяк не побачити —
+  // а мовчазне розходження і є найгіршим сценарієм для цього модуля.
+  app.get("/api/goods/reconcile", ...adminOnly, (req, res) => {
+    const mismatches = db.prepare(`SELECT sb.base_product_id, sb.size_id, bp.name as product_name, s.name as size_name,
+        sb.quantity_actual as fact,
+        COALESCE((SELECT SUM(l.qty_left) FROM inventory_lots l
+          WHERE l.base_product_id=sb.base_product_id AND l.size_id=sb.size_id AND l.shelf='base'),0) as lots
+      FROM stock_base sb
+      JOIN base_products bp ON sb.base_product_id=bp.id
+      JOIN sizes s ON sb.size_id=s.id
+      WHERE bp.active=1
+      HAVING ABS(fact - lots) > 0.0001
+      ORDER BY ABS(fact - lots) DESC LIMIT 200`).all();
+    const unvalued = db.prepare(`SELECT l.base_product_id, l.size_id, bp.name as product_name, s.name as size_name,
+        l.shelf, SUM(l.qty_left) as qty
+      FROM inventory_lots l
+      JOIN base_products bp ON l.base_product_id=bp.id
+      JOIN sizes s ON l.size_id=s.id
+      WHERE l.valued=0 AND l.qty_left > 0
+      GROUP BY l.base_product_id, l.size_id, l.shelf
+      ORDER BY qty DESC LIMIT 200`).all();
+    const legacyQty = db.prepare("SELECT COALESCE(SUM(qty_left),0) q FROM inventory_lots WHERE source='legacy'").get().q;
+    res.json({ mismatches, unvalued, legacy_qty: legacyQty });
+  });
+
   app.post("/api/goods/lots", ...adminOnly, async (req, res) => {
     const material = db.prepare("SELECT * FROM materials WHERE id=?").get(req.body.material_id);
     if (!material) return res.status(400).json({ error: "Оберіть вид тканини" });
@@ -151,7 +177,7 @@ function register(app, { authMiddleware, requireRole }) {
         expenseId = finance.createExpense({
           date: today(), amount, category_id: categoryId, supplier_id: req.body.supplier_id,
           note: "Рулон " + material.name + (req.body.roll_no ? " №" + req.body.roll_no : "") + (req.body.color ? ", " + req.body.color : ""),
-          created_by: req.user.id, paid: req.body.paid !== false
+          created_by: req.user.id, paid: !!req.body.paid
         });
       }
       id = db.prepare(`INSERT INTO material_lots(material_id,color,roll_no,qty_total,qty_left,price_usd,fx_rate,price_uah,supplier_id,expense_id,note)

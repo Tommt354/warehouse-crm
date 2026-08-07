@@ -1301,6 +1301,40 @@ addCol("cut_incoming","qty_left","REAL DEFAULT 0");
 // іншою ціною.
 addCol("order_items","cogs","REAL DEFAULT 0");
 
+// Стартові партії під товар, який лежав на складі ще до впровадження партій.
+// Без цього з дня впровадження кожен продаж старого товару давав би
+// собівартість нуль — і лінія товару показувала б порожнечу там, де насправді
+// лежать гроші. Оцінюємо тим, що власник сам записав у картці; де і в картці
+// нуль — партія лишається неоціненою (valued=0) і видимою у звірці, а не
+// отримує вигадану ціну. Разово: прапорець у settings.
+if (!db.prepare("SELECT value FROM settings WHERE key='goods_legacy_lots_done'").get()) {
+  const seedBase = db.prepare(`INSERT INTO inventory_lots(base_product_id,size_id,qty_left,unit_cost,source,shelf,valued)
+    SELECT sb.base_product_id, sb.size_id, sb.quantity_actual,
+      COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0),
+      'legacy', 'base',
+      CASE WHEN COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0) > 0 THEN 1 ELSE 0 END
+    FROM stock_base sb
+    JOIN base_products bp ON sb.base_product_id=bp.id
+    JOIN models m ON bp.model_id=m.id
+    WHERE sb.quantity_actual > 0`);
+  const seedRet = db.prepare(`INSERT INTO inventory_lots(base_product_id,size_id,qty_left,unit_cost,source,shelf,valued)
+    SELECT v.base_product_id, sr.size_id, SUM(sr.quantity),
+      COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0),
+      'legacy', 'returns',
+      CASE WHEN COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0) > 0 THEN 1 ELSE 0 END
+    FROM stock_returns sr
+    JOIN variations v ON sr.variation_id=v.id
+    JOIN base_products bp ON v.base_product_id=bp.id
+    JOIN models m ON bp.model_id=m.id
+    WHERE sr.quantity > 0
+    GROUP BY v.base_product_id, sr.size_id`);
+  db.transaction(() => {
+    const a = seedBase.run().changes, b = seedRet.run().changes;
+    db.prepare("INSERT OR REPLACE INTO settings(key,value)VALUES('goods_legacy_lots_done',?)").run(new Date().toISOString().slice(0, 10));
+    if (a || b) console.log("📦 Стартові партії заведено: база " + a + ", повернення " + b);
+  })();
+}
+
 const ups=db.prepare("INSERT OR IGNORE INTO settings(key,value)VALUES(?,?)");
 Object.entries({stock_warning_threshold:"3",company_name:"ADS DROP",np_api_key:process.env.NP_API_KEY||"",sender_city:"",sender_warehouse:"",sender_phone:"",sender_name:""}).forEach(([k,v])=>ups.run(k,v));
 
