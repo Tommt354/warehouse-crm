@@ -30,6 +30,7 @@
 <script src="/public/icons.js"></script>
 <script src="/public/calendar.js"></script>
 <script src="/public/finance.js"></script>
+<script src="/public/goods.js"></script>
 </head>
 <body>
 <div class="app">
@@ -45,6 +46,7 @@
     <a data-p="sbase"><i data-icon="package" data-size="15"></i> Склад база</a>
     <a data-p="sready"><i data-icon="check" data-size="15"></i> Готовий товар</a>
     <a data-p="sdrop"><i data-icon="shoppingCart" data-size="15"></i> Склад дроп</a>
+    <a data-p="materials"><i data-icon="ruler" data-size="15"></i> Матеріали</a>
     <a data-p="cuts"><i data-icon="scissors" data-size="15"></i> Крій</a>
     <a data-p="orders"><i data-icon="clipboardList" data-size="15"></i> Замовлення</a>
     <a data-p="returns"><i data-icon="packageOpen" data-size="15"></i> Повернення</a>
@@ -186,6 +188,73 @@
 <div id="ws-list"></div>
 <div style="display:flex;gap:4px;margin-top:8px"><input id="ws-name" placeholder="Назва цеху" style="flex:1;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"><button class="btn btn-p" onclick="addWorkshop()">+</button></div>
 <div style="margin-top:10px"><button class="btn" onclick="closeM('ws-modal')">Закрити</button></div>
+</div></div>
+
+<div class="page" id="pg-materials"><div class="pt"><i data-icon="ruler" data-size="17"></i> Матеріали</div>
+<div class="acts" style="margin-bottom:8px">
+  <button class="btn btn-p" onclick="openMatLot()"><i data-icon="download" data-size="14"></i> Прихід рулону</button>
+  <button class="btn" onclick="openMatDict()"><i data-icon="bookOpen" data-size="14"></i> Види тканини</button>
+</div>
+<div class="stabs">
+  <button class="stab on" id="mattab-lots" onclick="showMatTab('lots')">Рулони</button>
+  <button class="stab" id="mattab-cuts" onclick="showMatTab('cuts')">Оцінка крою <span id="mat-cuts-badge" style="display:none;background:var(--warn);color:#0a0e17;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
+</div>
+<div id="mat-v-lots">
+  <div id="mat-summary" style="margin-bottom:12px"></div>
+  <div class="acts" style="margin-bottom:4px">
+    <select id="mat-filter-material" onchange="setMatFilterMaterial(this.value)" style="padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"><option value="">Усі види тканини</option></select>
+    <button class="stab on" id="mat-only-left-btn" onclick="toggleMatOnlyLeft(this)">Лише з залишком</button>
+  </div>
+  <div id="mat-lots-list"></div>
+</div>
+<div id="mat-v-cuts" style="display:none">
+  <div style="font-size:11px;color:var(--td);margin-bottom:8px">Партії крою, яким ще не порахована собівартість. Оцініть, вказавши, скільки тканини з якого рулону пішло на партію.</div>
+  <div id="mat-cuts-list"></div>
+</div>
+</div>
+
+<!-- Прихід рулону тканини -->
+<div class="modal-bg" id="mat-lot-modal"><div class="modal" style="max-width:480px"><h3><i data-icon="download" data-size="16"></i> Прихід рулону</h3>
+<div class="fld-row">
+  <div class="fld"><label>Вид тканини</label><select id="mlot-material" onchange="onMatLotMaterialChange()"></select></div>
+  <div class="fld"><label>Колір</label><input id="mlot-color"></div>
+</div>
+<div class="fld-row">
+  <div class="fld"><label>Номер рулону</label><input id="mlot-roll"></div>
+  <div class="fld"><label>Кількість, <span id="mlot-qty-unit">од.</span></label><input id="mlot-qty" type="number" step="0.001" min="0" oninput="matLotRecalc()"></div>
+</div>
+<div class="fld-row">
+  <div class="fld"><label>Ціна за <span id="mlot-price-unit">од.</span>, $</label><input id="mlot-price-usd" type="number" step="0.01" min="0" oninput="matLotRecalc()"></div>
+  <div class="fld"><label>Курс $</label><input id="mlot-fx" type="number" step="0.0001" min="0" oninput="matLotRecalc()"></div>
+</div>
+<div id="mlot-fx-warn" style="display:none;color:var(--warn);font-size:11px;margin-bottom:8px"></div>
+<div id="mlot-calc" style="font-size:12px;color:var(--td);margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px">Впишіть кількість, ціну й курс — тут з'явиться розрахунок.</div>
+<div class="fld"><label>Постачальник (не обов'язково)</label><select id="mlot-supplier"></select></div>
+<div class="fld"><label>Примітка</label><input id="mlot-note"></div>
+<div class="fld" style="margin-bottom:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;text-transform:none;font-size:12px;color:var(--th)"><input type="checkbox" id="mlot-expense" checked style="width:16px;height:16px;accent-color:var(--acc)"> Створити витрату (прихід одразу ляже в журнал витрат)</label></div>
+<div id="mlot-err" style="display:none;color:var(--red);font-size:11px;margin-bottom:6px"></div>
+<div style="display:flex;gap:6px"><button class="btn btn-p" onclick="saveMatLot()">Оприбуткувати</button><button class="btn" onclick="closeM('mat-lot-modal')">Скасувати</button></div>
+</div></div>
+
+<!-- Довідник видів тканини -->
+<div class="modal-bg" id="mat-dict-modal"><div class="modal" style="max-width:420px"><h3><i data-icon="bookOpen" data-size="16"></i> Види тканини</h3>
+<div id="mat-dict-list"></div>
+<div style="margin-top:10px"><button class="btn" onclick="closeM('mat-dict-modal')">Закрити</button></div>
+</div></div>
+
+<!-- Оцінка партії крою -->
+<div class="modal-bg" id="mat-value-modal"><div class="modal" style="max-width:520px"><h3><i data-icon="scissors" data-size="16"></i> Оцінка партії крою</h3>
+<div id="mval-title" style="font-size:13px;font-weight:600;color:var(--th);margin-bottom:10px"></div>
+<div id="mval-norm-hint" style="display:none;font-size:11px;color:var(--td);margin-bottom:8px"></div>
+<label style="display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--td);margin-bottom:6px">Рулони, з яких списано тканину</label>
+<div id="mval-rows" style="margin-bottom:10px"></div>
+<div class="fld-row">
+  <div class="fld"><label>Ставка пошиву ₴/шт</label><input id="mval-sewing" type="number" step="0.01" min="0" oninput="matValueRecalc()"></div>
+  <div class="fld"><label>Фурнітура ₴/шт</label><input id="mval-notions" type="number" step="0.01" min="0" oninput="matValueRecalc()"></div>
+</div>
+<div id="mval-calc" style="font-size:12px;color:var(--td);margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px"></div>
+<div id="mval-err" style="display:none;color:var(--red);font-size:11px;margin-bottom:6px"></div>
+<div style="display:flex;gap:6px"><button class="btn btn-p" onclick="saveMatValue()">Зберегти оцінку</button><button class="btn" onclick="closeM('mat-value-modal')">Скасувати</button></div>
 </div></div>
 
 <div class="page" id="pg-orders"><div class="pt"><i data-icon="clipboardList" data-size="17"></i> Замовлення</div>
@@ -926,7 +995,7 @@ document.querySelectorAll(".side-nav a").forEach(a=>a.addEventListener("click",(
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("on"));
   a.classList.add("on");document.getElementById("pg-"+a.dataset.p).classList.add("on");
   location.hash=a.dataset.p;
-  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,defect:loadAdmDefect,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},cyclecount:loadCycleCount,accounting:loadAccounting,fin:loadFinance,settings:loadSets})[a.dataset.p]?.();
+  ({dash:loadDash,dirs:loadDir,models:loadModels,sbase:()=>{sbCatP=null;loadSBase()},sready:()=>{sreadyCatP=null;loadSReady()},sdrop:()=>{sdCatP=null;loadSDrop()},materials:loadMaterialsTab,cuts:loadCuts,orders:()=>{if(!document.getElementById("adm-df").value)setAdmDatePeriod(30);else loadAdmOrders('')},returns:loadReturns,defect:loadAdmDefect,drops:loadDrops,workers:loadWorkers,tasks:loadTasks,payouts:loadAdmPayouts,"adm-returns":loadAdmReturns,stocklog:loadStockLog,recount:()=>{rcCatP=null;loadRecount()},cyclecount:loadCycleCount,accounting:loadAccounting,fin:loadFinance,settings:loadSets})[a.dataset.p]?.();
 }));
 
 // Close dropdowns on outside click
