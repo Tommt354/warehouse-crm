@@ -1057,10 +1057,14 @@ function applyRecountAdjustments(adjustments, userId, scope) {
       const sessionForItem = row && row.recount_session_id ? row.recount_session_id : adhocSession();
       logItem.run(sessionForItem, bpId, sizeId, current, actual, actual - current, orderedDuring);
       // Недостача переобліку списує партію у втрати періоду по вартості
-      // своєї полиці. Перестача (diff>0) навмисно НЕ отримує нову партію —
-      // знайдений товар без відомої собівартості не можна оцінити, не
-      // вигадуючи цифру, тож капітал лишається без змін, а не завищується.
-      if (diff < 0) goods.writeOffLots(bpId, sizeId, "base", -diff, "recount", sessionForItem, "Недостача переобліку");
+      // своєї полиці. Перестача навмисно НЕ отримує нову партію — знайдений
+      // товар без відомої собівартості не можна оцінити, не вигадуючи цифру,
+      // тож капітал лишається без змін, а не завищується.
+      // Рахуємо саме фізичну недостачу (current - actual), а НЕ diff: із diff
+      // вище відняли замовлене під час заморозки, а той товар ще лежить на
+      // полиці й спишеться пізніше, коли замовлення зберуть. По diff вартість
+      // згоряла б двічі — спершу тут, потім при збірці.
+      if (actual < current) goods.writeOffLots(bpId, sizeId, "base", current - actual, "recount", sessionForItem, "Недостача переобліку");
       handledKeys.add(bpId + "_" + sizeId);
       changed++;
     });
