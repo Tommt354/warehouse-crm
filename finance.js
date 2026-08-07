@@ -2,6 +2,19 @@ const db = require("./db");
 
 function round2(v) { return Math.round((v || 0) * 100) / 100; }
 
+// Одне правило добору доходу на всі запити: плитку «Надходження», список
+// «Забрані» і звіт. Тримати його в трьох місцях означало б, що вони
+// розійдуться при першій же правці одного з них.
+//
+// Дохід визнається в день, коли клієнт ЗАБРАВ посилку — і для замовлень зі
+// своєю ТТН теж (рішення власника): гроші від дропера приходять наперед, але
+// доходом вони стають лише коли товар реально дійшов до клієнта. Наслідок,
+// про який варто знати: поки менеджер не внесе номер своєї ТТН, НП таке
+// замовлення не трекає, статус не стане «Отримано» і дохід не визнається.
+const INCOME_DATE_SQL = `date(o.delivered_at)`;
+const INCOME_WHERE_SQL = `(o.status='delivered' AND COALESCE(o.delivered_at,'')<>'')`;
+
+
 // Ідемпотентний запис руху грошей: захист працює лише для подій зі
 // стабільним зовнішнім ref_id — трекінг НП знову й знову бачить те саме
 // забране замовлення, повторний виклик проведення виплати дроперу приносить
@@ -401,6 +414,13 @@ function register(app, { authMiddleware, requireRole }) {
         AND created_at >= datetime('now','localtime','-${DUPLICATE_WINDOW_MIN} minutes')`)
       .get(round2(-amount), "%" + orderTag);
     if (dup) return res.status(409).json({ error: "Таке саме повернення щойно вже проведено — повторний запит відхилено" });
+    // Чи за це замовлення дроперу вже реально заплатили: від цього залежить,
+    // чи можна зняти виплату автоматично, чи лише повідомити адміна.
+    const paidRow = db.prepare(`SELECT COALESCE(SUM(pi.amount),0) s FROM payout_items pi
+      JOIN payout_requests pr ON pi.payout_request_id=pr.id
+      WHERE pi.order_id=? AND pr.status='paid' AND pi.is_return=0`).get(o.id);
+    const paidPayout = paidRow ? paidRow.s : 0;
+    const alreadyPaid = paidPayout > 0;
     db.transaction(() => {
       db.prepare("UPDATE orders SET refunded_amount=COALESCE(refunded_amount,0)+?,refunded_at=datetime('now','localtime') WHERE id=?")
         .run(round2(amount), o.id);
@@ -410,8 +430,24 @@ function register(app, { authMiddleware, requireRole }) {
       const had = db.prepare("SELECT COUNT(*) c FROM cash_moves WHERE ref_type='refund' AND ref_id=?").get(o.id).c;
       addCashMove({ date, amount: -amount, kind: "refund", ref_type: had ? "refund_extra" : "refund",
         ref_id: had ? null : o.id, note: (req.body.note || "Повернення коштів") + " " + orderTag });
+
+      // Повернули гроші клієнту — дропер за це замовлення не отримує нічого
+      // (рішення власника): виплата знімається повністю, наш заробіток
+      // зменшується на суму повернення, а собівартість повертається на склад
+      // разом із товаром (це вже робить лінія товару при поверненні на полицю).
+      if (!alreadyPaid) {
+        db.prepare("UPDATE orders SET payout_amount=0 WHERE id=?").run(o.id);
+        // Незакритий запит на виплату перескладається під новий стан — інакше
+        // у ньому лишилась би стара сума за це замовлення.
+        db.prepare(`DELETE FROM payout_items WHERE order_id=? AND payout_request_id IN
+          (SELECT id FROM payout_requests WHERE status<>'paid')`).run(o.id);
+      }
     })();
-    res.json({ ok: true });
+    // Якщо гроші дроперу вже виплачені, автоматично їх не забираємо — це
+    // давнє правило власника: виплачене замовлення система сама не чіпає
+    // ніколи, перерахунок іде вручну через баланс. Повертаємо суму, яку
+    // адміну треба закрити руками.
+    res.json({ ok: true, payout_already_paid: alreadyPaid, payout_to_settle: alreadyPaid ? round2(paidPayout) : 0 });
   });
 
   // Стартовий залишок: система не знає, скільки було на рахунку до її появи,
@@ -494,7 +530,8 @@ function register(app, { authMiddleware, requireRole }) {
     // повернену посилку з доходу — прибирати цю умову не можна. Те саме
     // правило в GET /api/dashboard/accounting (server.js), щоб два екрани
     // доходу ніколи не розходились між собою.
-    const deliveredIncome = sum("SELECT COALESCE(SUM(total_drop_price),0) s FROM orders WHERE status='delivered' AND delivered_at!='' AND date(delivered_at) BETWEEN ? AND ?", from, to);
+    const deliveredIncome = sum(`SELECT COALESCE(SUM(o.total_drop_price),0) s FROM orders o
+      WHERE ${INCOME_WHERE_SQL} AND ${INCOME_DATE_SQL} BETWEEN ? AND ?`, from, to);
     // Повернення коштів завжди пишуться з kind='refund' — 'refund_extra' це
     // значення ref_type (друге й наступні часткові повернення без ref_id,
     // див. addCashMove у POST /api/finance/orders/:id/refund), а не kind.
@@ -552,19 +589,17 @@ function register(app, { authMiddleware, requireRole }) {
   });
 
   // Розшифровка плитки «Надходження»: власник бачить суму, але не бачить,
-  // з яких саме посилок вона складається. Правило добору замовлень — СЛОВО В
-  // СЛОВО те саме, що deliveredIncome у GET /api/finance/report вище
-  // (status='delivered' AND delivered_at!='' AND date(delivered_at) в
-  // періоді) — інакше список і плитка розійшлися б при першій же зміні
-  // одного з двох місць.
+  // з яких саме посилок вона складається. Правило добору — те саме
+  // INCOME_WHERE_SQL/INCOME_DATE_SQL, що й у плитці, тому список і плитка
+  // не можуть розійтися.
   app.get("/api/finance/delivered", ...adminOnly, (req, res) => {
     const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
     const to = req.query.to || db.prepare("SELECT date('now','localtime') d").get().d;
     const orders = db.prepare(`SELECT o.id, o.ttn, o.delivered_at, o.total_drop_price, o.cod_amount, o.refunded_amount,
-        u.name as drop_name
+        o.own_ttn, ${INCOME_DATE_SQL} as income_date, u.name as drop_name
       FROM orders o JOIN users u ON o.dropshipper_id=u.id
-      WHERE o.status='delivered' AND o.delivered_at!='' AND date(o.delivered_at) BETWEEN ? AND ?
-      ORDER BY o.delivered_at DESC, o.id DESC`).all(from, to);
+      WHERE ${INCOME_WHERE_SQL} AND ${INCOME_DATE_SQL} BETWEEN ? AND ?
+      ORDER BY income_date DESC, o.id DESC`).all(from, to);
     const dropPriceSum = round2(orders.reduce((s, o) => s + (o.total_drop_price || 0), 0));
     const codSum = round2(orders.reduce((s, o) => s + (o.cod_amount || 0), 0));
     // Повернення коштів, зроблені в цьому періоді — той самий підзапит, що й

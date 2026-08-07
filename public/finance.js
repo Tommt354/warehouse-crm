@@ -450,6 +450,8 @@ async function openOrderRefund(orderId){
   document.getElementById("rf-note").value="";
   document.getElementById("rf-err").style.display="none";
   openM("refund-modal");
+  var hint=document.getElementById("rf-payout-hint");
+  if(hint)hint.textContent="Виплата дроперу за це замовлення буде знята повністю.";
   try{
     var c=await api("/api/finance/orders/"+orderId+"/refund-ceiling");
     document.getElementById("rf-info").textContent=c.refunded>0
@@ -472,8 +474,12 @@ async function saveOrderRefund(){
   // випадкового кліку/подвійного тапу на мобільному.
   if(!confirm("Повернути клієнту "+finMoney(amount)+"₴ по замовленню #"+id+"? Дію не можна відмінити."))return;
   try{
-    await api("/api/finance/orders/"+id+"/refund",{method:"POST",body:JSON.stringify({amount:amount,note:document.getElementById("rf-note").value})});
+    var res=await api("/api/finance/orders/"+id+"/refund",{method:"POST",body:JSON.stringify({amount:amount,note:document.getElementById("rf-note").value})});
     closeM("refund-modal");
+    // Виплату дроперу за це замовлення система знімає сама. Але якщо йому вже
+    // заплатили — не чіпає: мовчки забрати виплачені гроші не можна, тому
+    // кажемо адміну суму, яку треба закрити руками через баланс.
+    if(res&&res.payout_already_paid)alert("Дроперу за це замовлення вже виплачено "+finMoney(res.payout_to_settle)+"₴. Система їх не забирає — врегулюйте вручну через баланс дропера.");
     // Картка замовлення — не вкладка "Гроші": оновлюємо список замовлень,
     // якщо він на екрані, щоб одразу побачити нову суму повернення.
     if(typeof loadAdmOrders==="function")loadAdmOrders(admOrdFilter);
