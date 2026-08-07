@@ -42,7 +42,7 @@ function setFinPeriod(days){
 }
 
 function showFinTab(t){
-  ["list","delivered","debts","journal","cats","mgr"].forEach(function(x){
+  ["list","delivered","debts","journal","cats","goods","mgr"].forEach(function(x){
     document.getElementById("fin-v-"+x).style.display=x===t?"":"none";
     document.getElementById("fintab-"+x).classList.toggle("on",x===t);
   });
@@ -62,7 +62,7 @@ async function loadFinance(){
     finDelivered=await api("/api/finance/delivered?from="+f+"&to="+t);
     finJournal=await api("/api/finance/journal?from="+f+"&to="+t);
     if(errEl){errEl.style.display="none";errEl.textContent=""}
-    renderFinSummary(); renderFinList(finExpenses); renderFinDelivered(); renderFinDebts(); renderFinJournal(); renderFinCats(); renderFinMgr();
+    renderFinSummary(); renderFinList(finExpenses); renderFinDelivered(); renderFinDebts(); renderFinJournal(); renderFinCats(); renderFinMgr(); loadFinGoods();
   }catch(e){
     // Порожній catch тут ковтав помилку мовчки — власник бачив старі цифри
     // й не здогадувався, що запит відпав (напр. сесія злетіла чи бекенд
@@ -478,4 +478,52 @@ async function saveOrderRefund(){
     // якщо він на екрані, щоб одразу побачити нову суму повернення.
     if(typeof loadAdmOrders==="function")loadAdmOrders(admOrdFilter);
   }catch(e){err.textContent=e.message;err.style.display="block"}
+}
+
+
+// ── Товар зараз ───────────────────────────────────────────────────
+// Друга лінія обліку: скільки грошей лежить у товарі. З лінією грошей вона
+// не додається, а звіряється — саме тому «реальний результат» показуємо як
+// прибуток по касі плюс приріст вартості товару, і поруч пояснюємо, звідки
+// береться різниця з тим, що видно на рахунку.
+async function loadFinGoods(){
+  var f=document.getElementById("fin-df").value, t=document.getElementById("fin-dt").value;
+  var el=document.getElementById("fin-v-goods");
+  var g;
+  try{ g=await api("/api/goods/report?from="+f+"&to="+t) }
+  catch(e){ el.innerHTML='<div class="empty">Не вдалось завантажити: '+esc(e.message)+'</div>'; return }
+
+  function tile(l,v,sub,c){return '<div style="flex:1;min-width:150px;background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:10px">'
+    +'<div style="font-size:10px;color:var(--td);margin-bottom:4px">'+l+'</div>'
+    +'<div style="font-size:17px;font-weight:700;color:'+(c||"var(--th)")+'">'+v+'</div>'
+    +(sub?'<div style="font-size:10px;color:var(--td);margin-top:2px">'+sub+'</div>':'')+'</div>'}
+
+  var shelves='<div style="display:flex;flex-wrap:wrap;gap:8px">'
+    +tile("Матеріали",finMoney(g.materials.cost)+"₴",g.materials.qty+" од.")
+    +tile("Фурнітура",finMoney(g.notions.cost)+"₴")
+    +tile("Крій у цехах",finMoney(g.cuts.cost)+"₴",g.cuts.qty+" шт")
+    +tile("Склад",finMoney(g.stock.cost)+"₴",g.stock.qty+" шт")
+    +tile("Повернення",finMoney(g.returns.cost)+"₴",g.returns.qty+" шт")
+    +tile("У дорозі",finMoney(g.in_transit.cost)+"₴",g.in_transit.qty+" шт")
+    +tile("Разом у товарі",finMoney(g.total)+"₴","","var(--acc)")
+    +'</div>';
+
+  var profitCash=finReport?finReport.profit_cash:0;
+  var real=Math.round((profitCash+g.goods_delta)*100)/100;
+  var period='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'
+    +tile("Собівартість проданого",finMoney(g.cogs_period)+"₴","за період")
+    +tile("Втрати (брак, недостача)",finMoney(g.lost_period)+"₴","за період",g.lost_period?"var(--red)":"var(--th)")
+    +tile("Осіло в товарі",(g.goods_delta>0?"+":"")+finMoney(g.goods_delta)+"₴","куплено мінус продано й втрачено",g.goods_delta<0?"var(--warn)":"var(--acc)")
+    +tile("Реальний результат",(real>0?"+":"")+finMoney(real)+"₴","прибуток по касі + приріст товару",real<0?"var(--red)":"var(--acc)")
+    +'</div>';
+
+  var warn="";
+  if(g.unvalued.lots_qty>0||g.unvalued.cuts>0){
+    warn='<div style="margin-top:10px;padding:9px;border:1px solid rgba(255,167,38,.3);border-radius:10px;background:rgba(255,167,38,.06);font-size:11px;color:var(--warn)">'
+      +'Неоцінене: '+g.unvalued.lots_qty+' шт на складі'+(g.unvalued.cuts?' і '+g.unvalued.cuts+' партій крою':'')
+      +' — ці одиниці рахуються нулем, поки їм не проставлено вартість. Сума в товарі занижена на цю величину.</div>';
+  }
+
+  el.innerHTML=shelves+period+warn
+    +'<div style="margin-top:10px;font-size:11px;color:var(--td)">Гроші й товар — дві окремі лінії: у місяць великої закупівлі каса показує мінус, а вартість товару росте на ту саму суму. Реальний результат — це їхня сума.</div>';
 }

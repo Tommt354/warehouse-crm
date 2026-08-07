@@ -1270,29 +1270,38 @@ addCol("cut_incoming","qty_left","REAL DEFAULT 0");
 // форма вже встигла матеріалізуватись (напр. сервер запускали до фіксу).
 (() => {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='inventory_consumptions'").get();
-  if (row && !/ON DELETE CASCADE/.test(row.sql)) {
-    db.exec("DROP TABLE inventory_consumptions");
-    db.exec(`CREATE TABLE inventory_consumptions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_item_id INTEGER,
-      base_product_id INTEGER NOT NULL,
-      size_id INTEGER NOT NULL,
-      lot_id INTEGER,
-      qty REAL NOT NULL,
-      unit_cost REAL NOT NULL DEFAULT 0,
-      shelf TEXT NOT NULL DEFAULT 'base',
-      status TEXT NOT NULL DEFAULT 'in_transit',
-      ref_type TEXT DEFAULT '',
-      ref_id INTEGER,
-      note TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now','localtime')),
-      settled_at TEXT,
-      FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE,
-      FOREIGN KEY (lot_id) REFERENCES inventory_lots(id)
-    )`);
-    db.exec("CREATE INDEX IF NOT EXISTS idx_inv_consumptions_item ON inventory_consumptions(order_item_id)");
-    db.exec("CREATE INDEX IF NOT EXISTS idx_inv_consumptions_status ON inventory_consumptions(status)");
-    console.log("🔄 inventory_consumptions перестворено з ON DELETE CASCADE");
+  // Слід списання має пережити видалення замовлення: рядок зі status='lost'
+  // описує ВТРАТУ товару, а не продаж. Каскад стирав його разом із позицією
+  // замовлення — товар зникав зі складу, гроші з капіталу, а у звіті втрат
+  // було порожньо. Тому order_item_id тут ON DELETE SET NULL.
+  if (row && !/ON DELETE SET NULL/.test(row.sql)) {
+    const cnt = db.prepare("SELECT COUNT(*) as c FROM inventory_consumptions").get().c;
+    if (cnt === 0) {
+      db.exec("DROP TABLE inventory_consumptions");
+      db.exec(`CREATE TABLE inventory_consumptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_item_id INTEGER,
+        base_product_id INTEGER NOT NULL,
+        size_id INTEGER NOT NULL,
+        lot_id INTEGER,
+        qty REAL NOT NULL,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        shelf TEXT NOT NULL DEFAULT 'base',
+        status TEXT NOT NULL DEFAULT 'in_transit',
+        ref_type TEXT DEFAULT '',
+        ref_id INTEGER,
+        note TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        settled_at TEXT,
+        FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE SET NULL,
+        FOREIGN KEY (lot_id) REFERENCES inventory_lots(id)
+      )`);
+      db.exec("CREATE INDEX IF NOT EXISTS idx_inv_consumptions_item ON inventory_consumptions(order_item_id)");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_inv_consumptions_status ON inventory_consumptions(status)");
+      console.log("🔄 inventory_consumptions перестворено: слід втрати переживає видалення замовлення");
+    } else {
+      console.log("⚠️  inventory_consumptions має стару форму FK (CASCADE), але вже містить " + cnt + " рядків — не чіпаю автоматично");
+    }
   }
 })();
 

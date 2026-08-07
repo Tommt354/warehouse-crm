@@ -110,6 +110,59 @@ function register(app, { authMiddleware, requireRole }) {
     res.json({ lots: db.prepare(sql).all(...params) });
   });
 
+  // ── Звіт «Товар зараз» ─────────────────────────────────────────
+  // Скільки грошей лежить у кожній шухляді просто зараз, і як вартість
+  // товару змінилась за період. Приріст рахуємо як «зайшло мінус вийшло»:
+  // переміщення між шухлядами (крій → склад → у дорозі) суму не змінюють,
+  // тож рахувати треба лише зовнішні події — куплено матеріал і товар,
+  // продано, втрачено. Знімків вартості на дату ми не тримаємо навмисно:
+  // вони розходяться з реальністю при першій же правці заднім числом.
+  app.get("/api/goods/report", ...adminOnly, (req, res) => {
+    const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+    const to = req.query.to || today();
+    const one = (sql, ...p) => db.prepare(sql).get(...p);
+
+    const materials = one(`SELECT COALESCE(SUM(qty_left),0) qty, COALESCE(SUM(qty_left*price_uah),0) cost FROM material_lots`);
+    const notions = one(`SELECT COALESCE(SUM(amount),0) cost FROM notions_pool`);
+    const cuts = one(`SELECT COALESCE(SUM(qty_left),0) qty, COALESCE(SUM(qty_left*unit_cost),0) cost FROM cut_incoming WHERE qty_left > 0`);
+    const stock = one(`SELECT COALESCE(SUM(qty_left),0) qty, COALESCE(SUM(qty_left*unit_cost),0) cost FROM inventory_lots WHERE shelf='base' AND qty_left > 0`);
+    const returns = one(`SELECT COALESCE(SUM(qty_left),0) qty, COALESCE(SUM(qty_left*unit_cost),0) cost FROM inventory_lots WHERE shelf='returns' AND qty_left > 0`);
+    const inTransit = one(`SELECT COALESCE(SUM(qty),0) qty, COALESCE(SUM(qty*unit_cost),0) cost FROM inventory_consumptions WHERE status='in_transit'`);
+
+    const total = round2(materials.cost + notions.cost + cuts.cost + stock.cost + returns.cost + inTransit.cost);
+
+    // Собівартість проданого — те, що зафіксовано в момент отримання посилки.
+    const cogs = one(`SELECT COALESCE(SUM(oi.cogs),0) c FROM order_items oi JOIN orders o ON oi.order_id=o.id
+      WHERE o.status='delivered' AND COALESCE(o.delivered_at,'')<>'' AND date(o.delivered_at) BETWEEN ? AND ?`, from, to).c;
+    const lost = one(`SELECT COALESCE(SUM(qty*unit_cost),0) c FROM inventory_consumptions
+      WHERE status='lost' AND date(COALESCE(settled_at,created_at)) BETWEEN ? AND ?`, from, to).c;
+    // Зайшло в товар за період: куплений матеріал і закуплений готовий товар.
+    const boughtMaterials = one(`SELECT COALESCE(SUM(qty_total*price_uah),0) c FROM material_lots WHERE date(created_at) BETWEEN ? AND ?`, from, to).c;
+    const boughtGoods = one(`SELECT COALESCE(SUM(qty_left*unit_cost),0) c FROM inventory_lots
+      WHERE source IN ('purchase','legacy') AND date(created_at) BETWEEN ? AND ?`, from, to).c;
+    const notionsBought = one(`SELECT COALESCE(SUM(amount),0) c FROM notions_pool WHERE amount > 0 AND date BETWEEN ? AND ?`, from, to).c;
+
+    const goodsIn = round2(boughtMaterials + boughtGoods + notionsBought);
+    const goodsDelta = round2(goodsIn - cogs - lost);
+
+    const unvaluedQty = one(`SELECT COALESCE(SUM(qty_left),0) q FROM inventory_lots WHERE valued=0 AND qty_left > 0`).q;
+    const unvaluedCuts = one(`SELECT COUNT(*) c FROM cut_incoming WHERE COALESCE(valued,0)=0 AND qty_left > 0`).c;
+
+    res.json({
+      from, to,
+      materials: { qty: round2(materials.qty), cost: round2(materials.cost) },
+      notions: { cost: round2(notions.cost) },
+      cuts: { qty: round2(cuts.qty), cost: round2(cuts.cost) },
+      stock: { qty: round2(stock.qty), cost: round2(stock.cost) },
+      returns: { qty: round2(returns.qty), cost: round2(returns.cost) },
+      in_transit: { qty: round2(inTransit.qty), cost: round2(inTransit.cost) },
+      total,
+      cogs_period: round2(cogs), lost_period: round2(lost),
+      goods_in: goodsIn, goods_delta: goodsDelta,
+      unvalued: { lots_qty: round2(unvaluedQty), cuts: unvaluedCuts }
+    });
+  });
+
   // Звірка лінії товару: де партії розійшлися з фактичним залишком і що
   // лишилось неоціненим. Без цього маршруту розходження ніяк не побачити —
   // а мовчазне розходження і є найгіршим сценарієм для цього модуля.
@@ -122,8 +175,11 @@ function register(app, { authMiddleware, requireRole }) {
       JOIN base_products bp ON sb.base_product_id=bp.id
       JOIN sizes s ON sb.size_id=s.id
       WHERE bp.active=1
-      HAVING ABS(fact - lots) > 0.0001
-      ORDER BY ABS(fact - lots) DESC LIMIT 200`).all();
+        AND ABS(sb.quantity_actual - COALESCE((SELECT SUM(l2.qty_left) FROM inventory_lots l2
+          WHERE l2.base_product_id=sb.base_product_id AND l2.size_id=sb.size_id AND l2.shelf='base'),0)) > 0.0001
+      ORDER BY ABS(sb.quantity_actual - COALESCE((SELECT SUM(l3.qty_left) FROM inventory_lots l3
+          WHERE l3.base_product_id=sb.base_product_id AND l3.size_id=sb.size_id AND l3.shelf='base'),0)) DESC
+      LIMIT 200`).all();
     const unvalued = db.prepare(`SELECT l.base_product_id, l.size_id, bp.name as product_name, s.name as size_name,
         l.shelf, SUM(l.qty_left) as qty
       FROM inventory_lots l
@@ -252,7 +308,10 @@ function register(app, { authMiddleware, requireRole }) {
     // ФАКТИЧНА кількість придатних виробів (працівник/власник вписує саме
     // її), тож той самий totalCost, поділений на менше число, автоматично
     // дає вищу собівартість одиниці — рахувати брак окремо не треба.
-    const unitCost = round2(totalCost / cut.quantity);
+    // Чотири знаки, а не два: при переносі партії на склад сума множиться
+    // назад на кількість, і округлення до копійок кожної одиниці мовчки
+    // з'їдало б частину вартості («переміщення суму не змінює» — правило).
+    const unitCost = round4(totalCost / cut.quantity);
 
     db.transaction(() => {
       lots.forEach(({ lot, qty }) => {
@@ -300,7 +359,7 @@ function addToShelf(baseProductId, sizeId, shelf, qty, unitCost, source, refId, 
   if (!qty || qty <= 0) return null;
   return db.prepare(`INSERT INTO inventory_lots(base_product_id,size_id,qty_left,unit_cost,source,ref_id,shelf,valued)
     VALUES(?,?,?,?,?,?,?,?)`)
-    .run(baseProductId, sizeId, qty, round2(unitCost) || 0, source, refId || null, shelf === "returns" ? "returns" : "base", valued ? 1 : 0)
+    .run(baseProductId, sizeId, qty, round4(unitCost) || 0, source, refId || null, shelf === "returns" ? "returns" : "base", valued ? 1 : 0)
     .lastInsertRowid;
 }
 
