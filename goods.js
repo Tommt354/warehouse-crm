@@ -50,7 +50,9 @@ async function getFxRate(date) {
     const rate = await fetchNbuRate(ymd);
     result = { rate, date, fallback: false };
   } catch (e) {
-    result = { rate: lastKnownFxRate(), date, fallback: true, error: e.message };
+    // Запасне значення НЕ кешуємо: мережа могла впасти на хвилину, і без
+    // цього до перезапуску сервера всі прихідні рулони отримали б старий курс.
+    return { rate: lastKnownFxRate(), date, fallback: true, error: e.message };
   }
   fxCache.set(date, result);
   return result;
@@ -108,6 +110,64 @@ function register(app, { authMiddleware, requireRole }) {
     if (req.query.only_left === "1") sql += " AND l.qty_left > 0";
     sql += " ORDER BY l.created_at DESC, l.id DESC";
     res.json({ lots: db.prepare(sql).all(...params) });
+  });
+
+  // Скасування оцінки партії крою: помилився зі ставкою — має бути шлях
+  // назад. Повертаємо тканину в рулони, знімаємо нарахування фурнітури й
+  // обнуляємо вартість партії. Дозволено лише поки партія не пішла на склад:
+  // після цього її вартість уже сидить у партіях складу й у собівартості.
+  app.post("/api/goods/cuts/:id/unvalue", ...adminOnly, (req, res) => {
+    const cut = db.prepare("SELECT * FROM cut_incoming WHERE id=?").get(req.params.id);
+    if (!cut) return res.status(404).json({ error: "Партію не знайдено" });
+    if (!cut.valued) return res.status(400).json({ error: "Партія ще не оцінена" });
+    if (round4(cut.qty_left) < round4(cut.quantity)) return res.status(400).json({ error: "Частина партії вже пішла на склад — переоцінити не можна" });
+    db.transaction(() => {
+      db.prepare("SELECT * FROM cut_material_usage WHERE cut_incoming_id=?").all(cut.id).forEach(u => {
+        db.prepare("UPDATE material_lots SET qty_left = qty_left + ? WHERE id=?").run(u.qty, u.lot_id);
+      });
+      db.prepare("DELETE FROM cut_material_usage WHERE cut_incoming_id=?").run(cut.id);
+      if (cut.notions_cost) {
+        db.prepare("INSERT INTO notions_pool(date,amount,ref_type,ref_id,note)VALUES(?,?,?,?,?)")
+          .run(today(), round2(cut.notions_cost), "cut_unvalue", cut.id, "Скасування оцінки партії крою");
+      }
+      db.prepare("UPDATE cut_incoming SET material_cost=0,notions_cost=0,sewing_price=0,sewing_cost=0,unit_cost=0,valued=0 WHERE id=?").run(cut.id);
+    })();
+    res.json({ ok: true });
+  });
+
+  // ── Котел фурнітури ────────────────────────────────────────────
+  // Фурнітуру не ведемо партіями — гудзики й бирки того не варті. Замість
+  // цього котел: закупівлі йдуть у плюс, нарахування за нормативом у мінус,
+  // а раз на місяць видно, чи норматив узагалі схожий на правду.
+  app.post("/api/goods/notions", ...adminOnly, (req, res) => {
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму закупівлі фурнітури" });
+    const date = req.body.date || today();
+    let expenseId = null;
+    db.transaction(() => {
+      if (req.body.create_expense) {
+        const catId = req.body.category_id || defaultMaterialCategoryId();
+        if (catId) expenseId = finance.createExpense({
+          date, amount: round2(amount), category_id: catId, supplier_id: req.body.supplier_id,
+          note: req.body.note || "Закупівля фурнітури", created_by: req.user.id, paid: !!req.body.paid
+        });
+      }
+      db.prepare("INSERT INTO notions_pool(date,amount,ref_type,ref_id,note)VALUES(?,?,?,?,?)")
+        .run(date, round2(amount), "purchase", expenseId, req.body.note || "Закупівля фурнітури");
+    })();
+    res.json({ ok: true, expense_id: expenseId });
+  });
+
+  // Звірка котла за період: скільки нарахували виробам за нормативом проти
+  // скільки реально купили. Різниця означає або занижений норматив, або
+  // просто зростання запасу — вирішує власник, система лише показує.
+  app.get("/api/goods/notions-check", ...adminOnly, (req, res) => {
+    const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+    const to = req.query.to || today();
+    const bought = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM notions_pool WHERE amount > 0 AND date BETWEEN ? AND ?").get(from, to).s;
+    const charged = db.prepare("SELECT COALESCE(-SUM(amount),0) s FROM notions_pool WHERE amount < 0 AND date BETWEEN ? AND ?").get(from, to).s;
+    const balance = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM notions_pool").get().s;
+    res.json({ from, to, bought: round2(bought), charged: round2(charged), diff: round2(bought - charged), balance: round2(balance) });
   });
 
   // ── Звіт «Товар зараз» ─────────────────────────────────────────
@@ -209,7 +269,25 @@ function register(app, { authMiddleware, requireRole }) {
           WHERE l2.base_product_id=t.base_product_id AND l2.size_id=t.size_id AND l2.shelf='returns'),0)) > 0.0001
       LIMIT 200`).all();
     const legacyQty = db.prepare("SELECT COALESCE(SUM(qty_left),0) q FROM inventory_lots WHERE source='legacy'").get().q;
-    res.json({ mismatches, mismatches_returns: mismatchesReturns, unvalued, legacy_qty: legacyQty });
+    // Перестача переобліку — це не помилка обліку, а свідоме рішення: знайдений
+    // товар без відомої собівартості партії не отримує, бо вигадувати ціну не
+    // можна. Відділяємо його від справжніх розходжень, інакше він щоразу
+    // виглядав би як баг і привчав ігнорувати звірку.
+    const surplus = db.prepare(`SELECT ri.base_product_id, ri.size_id, bp.name as product_name, s.name as size_name,
+        SUM(ri.diff) as qty, MAX(rs.finished_at) as last_at
+      FROM recount_items ri
+      JOIN recount_sessions rs ON ri.session_id=rs.id
+      JOIN base_products bp ON ri.base_product_id=bp.id
+      JOIN sizes s ON ri.size_id=s.id
+      WHERE ri.diff > 0
+      GROUP BY ri.base_product_id, ri.size_id
+      ORDER BY last_at DESC LIMIT 200`).all();
+    const surplusKeys = new Set(surplus.map(x => x.base_product_id + "_" + x.size_id));
+    res.json({
+      mismatches: mismatches.filter(m => !surplusKeys.has(m.base_product_id + "_" + m.size_id)),
+      mismatches_surplus: mismatches.filter(m => surplusKeys.has(m.base_product_id + "_" + m.size_id)),
+      mismatches_returns: mismatchesReturns, unvalued, legacy_qty: legacyQty, surplus
+    });
   });
 
   app.post("/api/goods/lots", ...adminOnly, async (req, res) => {
@@ -223,10 +301,13 @@ function register(app, { authMiddleware, requireRole }) {
     // Курс — якщо не передали, підтягуємо НБУ (або fallback) і фіксуємо в
     // рулоні НАЗАВЖДИ: forma may re-open the same day, but the number that
     // lands in the roll must never silently recompute later.
+    // Рулон можна завести заднім числом: накладна могла пролежати кілька днів,
+    // а курс і витрата мають лягти на дату реального приходу, не на сьогодні.
+    const lotDate = req.body.date || today();
     let fxRate = parseFloat(req.body.fx_rate);
     let fxFallback = false;
     if (!fxRate || fxRate <= 0) {
-      const fx = await getFxRate(today());
+      const fx = await getFxRate(lotDate);
       fxRate = fx.rate;
       fxFallback = fx.fallback;
     }
@@ -251,14 +332,14 @@ function register(app, { authMiddleware, requireRole }) {
       if (categoryId) {
         const amount = round2(qtyTotal * priceUah);
         expenseId = finance.createExpense({
-          date: today(), amount, category_id: categoryId, supplier_id: req.body.supplier_id,
+          date: lotDate, amount, category_id: categoryId, supplier_id: req.body.supplier_id,
           note: "Рулон " + material.name + (req.body.roll_no ? " №" + req.body.roll_no : "") + (req.body.color ? ", " + req.body.color : ""),
           created_by: req.user.id, paid: !!req.body.paid
         });
       }
-      id = db.prepare(`INSERT INTO material_lots(material_id,color,roll_no,qty_total,qty_left,price_usd,fx_rate,price_uah,supplier_id,expense_id,note)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(material.id, req.body.color || "", req.body.roll_no || "", qtyTotal, qtyTotal, round2(priceUsd), fxRate, priceUah, req.body.supplier_id || null, expenseId, req.body.note || "")
+      id = db.prepare(`INSERT INTO material_lots(material_id,color,roll_no,qty_total,qty_left,price_usd,fx_rate,price_uah,supplier_id,expense_id,note,created_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(material.id, req.body.color || "", req.body.roll_no || "", qtyTotal, qtyTotal, round2(priceUsd), fxRate, priceUah, req.body.supplier_id || null, expenseId, req.body.note || "", lotDate + " 00:00:00")
         .lastInsertRowid;
     })();
 

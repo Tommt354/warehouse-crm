@@ -1533,13 +1533,21 @@ app.post("/api/base-products/:id/duplicate", authMiddleware, requireRole("admin"
   const r = db.prepare("INSERT INTO base_products(model_id,color_id,name,photo,cost_price,drop_price,active)VALUES(?,?,?,?,?,?,?)").run(orig.model_id,orig.color_id,orig.name+" (копія)",orig.photo,orig.cost_price,orig.drop_price,orig.active);
   // Copy stock entries
   const stocks = db.prepare("SELECT * FROM stock_base WHERE base_product_id=?").all(orig.id);
-  stocks.forEach(s => db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity,quantity_actual)VALUES(?,?,?,?)").run(r.lastInsertRowid,s.size_id,s.quantity,s.quantity_actual));
+  stocks.forEach(s => {
+    db.prepare("INSERT INTO stock_base(base_product_id,size_id,quantity,quantity_actual)VALUES(?,?,?,?)").run(r.lastInsertRowid,s.size_id,s.quantity,s.quantity_actual);
+    // Копія товару отримує і копію вартості: інакше залишок є, а партій немає,
+    // і звірка одразу показує розходження на рівному місці.
+    if (s.quantity_actual > 0) goods.addLegacyShelfLot(r.lastInsertRowid, s.size_id, "base", s.quantity_actual, "Дублювання товару");
+  });
   // Copy variations
   const vars = db.prepare("SELECT * FROM variations WHERE base_product_id=?").all(orig.id);
   vars.forEach(v => {
     const nv = db.prepare("INSERT INTO variations(base_product_id,print_id,name,photo,drop_price_override,active)VALUES(?,?,?,?,?,?)").run(r.lastInsertRowid,v.print_id,v.name+" (копія)",v.photo,v.drop_price_override,v.active);
     const rets = db.prepare("SELECT * FROM stock_returns WHERE variation_id=?").all(v.id);
-    rets.forEach(sr => db.prepare("INSERT INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,?)").run(nv.lastInsertRowid,sr.size_id,sr.quantity));
+    rets.forEach(sr => {
+      db.prepare("INSERT INTO stock_returns(variation_id,size_id,quantity)VALUES(?,?,?)").run(nv.lastInsertRowid,sr.size_id,sr.quantity);
+      if (sr.quantity > 0) goods.addLegacyShelfLot(r.lastInsertRowid, sr.size_id, "returns", sr.quantity, "Дублювання товару");
+    });
   });
   res.json({ ok: true, new_id: r.lastInsertRowid });
 });
