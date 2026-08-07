@@ -2946,6 +2946,10 @@ app.post("/api/stock-returns/bulk", authMiddleware, (req, res) => {
       db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES(?,?,?,?,?,?,?)")
         .run(mode === "add" ? "return_in" : "writeoff", p.bpId, p.variationId, p.sizeId, p.qty,
           mode === "add" ? "Повернення додано вручну" : "Списання з повернень", req.user.id);
+      // Те саме, що й у поштучних маршрутах: кількість без вартості лишає
+      // полицю повернень поза лінією капіталу.
+      if (mode === "add") goods.addLegacyShelfLot(p.bpId, p.sizeId, "returns", p.qty, "Повернення додано вручну");
+      else goods.writeOffLots(p.bpId, p.sizeId, "returns", p.qty, "returns_writeoff", null, "Списання з повернень");
     });
   })();
   res.json({ ok: true, positions: prepared.length, total_qty: prepared.reduce((s, p) => s + p.qty, 0) });
