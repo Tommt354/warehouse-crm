@@ -1511,7 +1511,18 @@ app.put("/api/variations/:id", authMiddleware, requireRole("admin"), (req, res) 
 app.post("/api/stock-returns/set", authMiddleware, requireRole("admin"), (req, res) => {
   const { variation_id, size_id, quantity } = req.body;
   if(!variation_id || !size_id) return res.status(400).json({ error: "Missing fields" });
-  db.prepare("UPDATE stock_returns SET quantity=? WHERE variation_id=? AND size_id=?").run(parseInt(quantity)||0, variation_id, size_id);
+  const qtySet = parseInt(quantity)||0;
+  db.transaction(() => {
+    db.prepare("UPDATE stock_returns SET quantity=? WHERE variation_id=? AND size_id=?").run(qtySet, variation_id, size_id);
+    // Вартість іде за кількістю й на полиці повернень теж — інакше партії
+    // повернень розходяться з фактом, а звірка цього не показує.
+    const bp = db.prepare("SELECT base_product_id FROM variations WHERE id=?").get(variation_id);
+    if (bp) {
+      const total = db.prepare(`SELECT COALESCE(SUM(sr.quantity),0) q FROM stock_returns sr
+        JOIN variations v ON sr.variation_id=v.id WHERE v.base_product_id=? AND sr.size_id=?`).get(bp.base_product_id, size_id).q;
+      goods.syncShelfQuantity(bp.base_product_id, size_id, "returns", total, "returns_set", null, "Ручне виставлення полиці повернень");
+    }
+  })();
   res.json({ ok: true });
 });
 
@@ -2680,6 +2691,11 @@ function applyOrderStockRemoval(orderId, status, destination, userId) {
     // втрати. Для позицій, які ще не пульнули (немає in_transit рядків),
     // функція нічого не робить — кількість вище й так не займала цю гілку.
     goods.settleInTransitForItem(i.id, dest, "Видалення замовлення #" + orderId);
+    // Замовлення могло бути вже "Отримано" — тоді рядки не "у дорозі", а
+    // "продано", і функція вище нічого не робить, хоча кількість щойно
+    // повернулась на полицю. Розвертаємо продаж тим самим шляхом, що й у
+    // return-to-stock, інакше вартість зникла б, а товар лишився.
+    if (dest !== "writeoff") goods.returnItemCostToShelf(i.id, dest, i.quantity, "Видалення замовлення #" + orderId);
   });
 }
 
@@ -2850,7 +2866,7 @@ function canManageReturns(req, res) {
   return false;
 }
 function returnsVariation(variationId, res) {
-  const v = db.prepare("SELECT v.id,v.print_id,v.name FROM variations v WHERE v.id=?").get(variationId);
+  const v = db.prepare("SELECT v.id,v.print_id,v.name,v.base_product_id FROM variations v WHERE v.id=?").get(variationId);
   if (!v) { res.status(404).json({ error: "Товар не знайдено" }); return null; }
   if (!v.print_id) { res.status(400).json({ error: "Готовий товар не має повернень — оберіть товар із принтом" }); return null; }
   return v;
@@ -2869,6 +2885,10 @@ app.post("/api/stock-returns/add", authMiddleware, (req, res) => {
     db.prepare("UPDATE stock_returns SET quantity=quantity+? WHERE variation_id=? AND size_id=?").run(qty, variation_id, size_id);
     db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('return_in',(SELECT base_product_id FROM variations WHERE id=?),?,?,?,?,?)")
       .run(variation_id, variation_id, size_id, qty, "Повернення додано вручну" + (req.body.note ? ": " + req.body.note : ""), req.user.id);
+    // Річ прийшла ззовні — її собівартість система знати не може. Заводимо
+    // партію за ціною з картки товару, а якщо там нуль — неоціненою: краще
+    // видима прогалина у звірці, ніж вигадана цифра.
+    goods.addLegacyShelfLot(v.base_product_id, size_id, "returns", qty, "Повернення додано вручну");
   })();
   res.json({ ok: true });
 });
@@ -2885,6 +2905,8 @@ app.post("/api/stock-returns/write-off", authMiddleware, (req, res) => {
     db.prepare("UPDATE stock_returns SET quantity=quantity-? WHERE variation_id=? AND size_id=?").run(qty, variation_id, size_id);
     db.prepare("INSERT INTO stock_log(type,base_product_id,variation_id,size_id,quantity,note,user_id)VALUES('writeoff',(SELECT base_product_id FROM variations WHERE id=?),?,?,?,?,?)")
       .run(variation_id, variation_id, size_id, qty, "Списання з повернень" + (req.body.note ? ": " + req.body.note : ""), req.user.id);
+    const bpw = db.prepare("SELECT base_product_id FROM variations WHERE id=?").get(variation_id);
+    if (bpw) goods.writeOffLots(bpw.base_product_id, size_id, "returns", qty, "returns_writeoff", null, "Списання з повернень");
   })();
   res.json({ ok: true });
 });
@@ -2952,6 +2974,9 @@ app.post("/api/stock-returns/clear", authMiddleware, (req, res) => {
       zero.run(t.variation_id, t.size_id);
       logItem.run(sessionId, t.base_product_id, t.variation_id, t.size_id, t.quantity, -t.quantity);
       log.run(t.base_product_id, t.variation_id, t.size_id, t.quantity, "Переоблік повернень — списано", req.user.id);
+      // Полиця обнуляється — вартість має піти у втрати, інакше вона висіла б
+      // у «Товар зараз» назавжди, хоч товару вже немає.
+      goods.writeOffLots(t.base_product_id, t.size_id, "returns", t.quantity, "returns_clear", sessionId, "Переоблік повернень");
     });
   })();
   res.json({ ok: true, cleared: targets.length, total_qty: targets.reduce((s, t) => s + t.quantity, 0), session_id: sessionId });

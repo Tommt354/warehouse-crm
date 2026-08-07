@@ -138,8 +138,14 @@ function register(app, { authMiddleware, requireRole }) {
       WHERE status='lost' AND date(COALESCE(settled_at,created_at)) BETWEEN ? AND ?`, from, to).c;
     // Зайшло в товар за період: куплений матеріал і закуплений готовий товар.
     const boughtMaterials = one(`SELECT COALESCE(SUM(qty_total*price_uah),0) c FROM material_lots WHERE date(created_at) BETWEEN ? AND ?`, from, to).c;
-    const boughtGoods = one(`SELECT COALESCE(SUM(qty_left*unit_cost),0) c FROM inventory_lots
-      WHERE source IN ('purchase','legacy') AND date(created_at) BETWEEN ? AND ?`, from, to).c;
+    // Тільки реальні покупки готового товару: 'legacy' — це відкриваючий
+    // залишок, під ним немає жодного руху грошей, і зарахувати його в
+    // "куплено за період" означало б показати прибуток на всю вартість
+    // складу в день впровадження. Рахуємо від КУПЛЕНОЇ кількості (qty_total),
+    // а не від залишку: інакше закритий період тихо переписувався б щоразу,
+    // коли з тієї партії щось продають.
+    const boughtGoods = one(`SELECT COALESCE(SUM(COALESCE(qty_total,qty_left)*unit_cost),0) c FROM inventory_lots
+      WHERE source='purchase' AND date(created_at) BETWEEN ? AND ?`, from, to).c;
     const notionsBought = one(`SELECT COALESCE(SUM(amount),0) c FROM notions_pool WHERE amount > 0 AND date BETWEEN ? AND ?`, from, to).c;
 
     const goodsIn = round2(boughtMaterials + boughtGoods + notionsBought);
@@ -188,8 +194,22 @@ function register(app, { authMiddleware, requireRole }) {
       WHERE l.valued=0 AND l.qty_left > 0
       GROUP BY l.base_product_id, l.size_id, l.shelf
       ORDER BY qty DESC LIMIT 200`).all();
+    // Полиця повернень звіряється окремо: у неї свій фактичний залишок
+    // (stock_returns по варіаціях), і без цього блоку розходження на ній не
+    // видно ніде — а саме там вони найдовше лишались непоміченими.
+    const mismatchesReturns = db.prepare(`SELECT t.base_product_id, t.size_id, bp.name as product_name, s.name as size_name,
+        t.fact, COALESCE((SELECT SUM(l.qty_left) FROM inventory_lots l
+          WHERE l.base_product_id=t.base_product_id AND l.size_id=t.size_id AND l.shelf='returns'),0) as lots
+      FROM (SELECT v.base_product_id, sr.size_id, SUM(sr.quantity) fact
+            FROM stock_returns sr JOIN variations v ON sr.variation_id=v.id
+            GROUP BY v.base_product_id, sr.size_id) t
+      JOIN base_products bp ON t.base_product_id=bp.id
+      JOIN sizes s ON t.size_id=s.id
+      WHERE ABS(t.fact - COALESCE((SELECT SUM(l2.qty_left) FROM inventory_lots l2
+          WHERE l2.base_product_id=t.base_product_id AND l2.size_id=t.size_id AND l2.shelf='returns'),0)) > 0.0001
+      LIMIT 200`).all();
     const legacyQty = db.prepare("SELECT COALESCE(SUM(qty_left),0) q FROM inventory_lots WHERE source='legacy'").get().q;
-    res.json({ mismatches, unvalued, legacy_qty: legacyQty });
+    res.json({ mismatches, mismatches_returns: mismatchesReturns, unvalued, legacy_qty: legacyQty });
   });
 
   app.post("/api/goods/lots", ...adminOnly, async (req, res) => {
@@ -357,9 +377,9 @@ function register(app, { authMiddleware, requireRole }) {
 // повернення лишається окремим рядком, як material_lots, для простежуваності.
 function addToShelf(baseProductId, sizeId, shelf, qty, unitCost, source, refId, valued) {
   if (!qty || qty <= 0) return null;
-  return db.prepare(`INSERT INTO inventory_lots(base_product_id,size_id,qty_left,unit_cost,source,ref_id,shelf,valued)
-    VALUES(?,?,?,?,?,?,?,?)`)
-    .run(baseProductId, sizeId, qty, round4(unitCost) || 0, source, refId || null, shelf === "returns" ? "returns" : "base", valued ? 1 : 0)
+  return db.prepare(`INSERT INTO inventory_lots(base_product_id,size_id,qty_left,qty_total,unit_cost,source,ref_id,shelf,valued)
+    VALUES(?,?,?,?,?,?,?,?,?)`)
+    .run(baseProductId, sizeId, qty, qty, round4(unitCost) || 0, source, refId || null, shelf === "returns" ? "returns" : "base", valued ? 1 : 0)
     .lastInsertRowid;
 }
 
@@ -527,9 +547,13 @@ function onCutMovedToBase(baseProductId, sizeId, qty, workshopId) {
 function returnItemCostToShelf(orderItemId, shelf, qty, note) {
   shelf = shelf === "returns" ? "returns" : "base";
   let remaining = qty;
+  // Шукаємо рядки за полицею-ДЖЕРЕЛОМ (звідки товар пішов), а не за
+  // призначенням: річ із принтом беруть із бази, а повертають на полицю
+  // повернень, тож фільтр за призначенням не знаходив нічого й функція
+  // мовчки не робила нічого для всього друкованого асортименту.
   const rows = db.prepare(`SELECT * FROM inventory_consumptions
-    WHERE order_item_id=? AND shelf=? AND status IN ('in_transit','sold')
-    ORDER BY CASE status WHEN 'in_transit' THEN 0 ELSE 1 END, id`).all(orderItemId, shelf);
+    WHERE order_item_id=? AND status IN ('in_transit','sold')
+    ORDER BY CASE status WHEN 'in_transit' THEN 0 ELSE 1 END, id`).all(orderItemId);
   db.transaction(() => {
     for (const r of rows) {
       if (remaining <= 0.0000001) break;
@@ -553,8 +577,29 @@ function returnItemCostToShelf(orderItemId, shelf, qty, note) {
       }
       remaining -= take;
     }
+    // Замовлення могло виїхати ще до впровадження партій — рядків споживання
+    // під нього немає. Кількість повертається на полицю, тож і вартість має:
+    // оцінюємо карткою, як і решту "старого" товару.
+    if (remaining > 0.0000001) {
+      const it = db.prepare(`SELECT v.base_product_id bp, oi.size_id FROM order_items oi
+        JOIN variations v ON oi.variation_id=v.id WHERE oi.id=?`).get(orderItemId);
+      if (it) addLegacyShelfLot(it.bp, it.size_id, shelf, remaining, note || "Повернення без партії");
+      remaining = 0;
+    }
   })();
   return round2(qty - remaining);
+}
+
+// Річ, що прийшла ззовні (ручне додавання повернення) або лежала ще до
+// впровадження партій: собівартості система не знає. Беремо ціну з картки
+// товару — те саме число, яким власник сам оцінив товар, — а якщо там нуль,
+// партія лишається неоціненою й видимою у звірці. Вигадувати ціну не можна.
+function addLegacyShelfLot(baseProductId, sizeId, shelf, qty, note) {
+  if (!qty || qty <= 0) return null;
+  const bp = db.prepare(`SELECT COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0) c FROM base_products bp
+    JOIN models m ON bp.model_id=m.id WHERE bp.id=?`).get(baseProductId);
+  const cost = bp ? bp.c : 0;
+  return addToShelf(baseProductId, sizeId, shelf, qty, cost, "legacy", null, cost > 0 ? 1 : 0);
 }
 
 // Переміщення між клітинками складу: заміна розміру чи товару в замовленні,
@@ -609,6 +654,7 @@ module.exports = {
   onStockIncoming,
   moveLotsBetween,
   syncShelfQuantity,
+  addLegacyShelfLot,
   returnItemCostToShelf,
   addToShelf,
 };
