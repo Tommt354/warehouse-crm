@@ -42,7 +42,7 @@ function setFinPeriod(days){
 }
 
 function showFinTab(t){
-  ["list","delivered","debts","journal","cats","goods","mgr"].forEach(function(x){
+  ["list","delivered","debts","journal","cats","goods","wholesale","mgr"].forEach(function(x){
     document.getElementById("fin-v-"+x).style.display=x===t?"":"none";
     document.getElementById("fintab-"+x).classList.toggle("on",x===t);
   });
@@ -62,7 +62,7 @@ async function loadFinance(){
     finDelivered=await api("/api/finance/delivered?from="+f+"&to="+t);
     finJournal=await api("/api/finance/journal?from="+f+"&to="+t);
     if(errEl){errEl.style.display="none";errEl.textContent=""}
-    renderFinSummary(); renderFinList(finExpenses); renderFinDelivered(); renderFinDebts(); renderFinJournal(); renderFinCats(); renderFinMgr(); loadFinGoods();
+    renderFinSummary(); renderFinList(finExpenses); renderFinDelivered(); renderFinDebts(); renderFinJournal(); renderFinCats(); renderFinMgr(); loadFinGoods(); loadWholesale();
   }catch(e){
     // Порожній catch тут ковтав помилку мовчки — власник бачив старі цифри
     // й не здогадувався, що запит відпав (напр. сесія злетіла чи бекенд
@@ -320,6 +320,8 @@ function openFinExpense(id){
   document.getElementById("fe-paid").checked=true;
   document.getElementById("fe-err").style.display="none";
   document.getElementById("fe-cat").innerHTML=finCats.map(function(c){return '<option value="'+c.id+'" data-kind="'+c.kind+'">'+esc(c.name)+' — '+FIN_KIND_LABEL[c.kind]+'</option>'}).join("");
+  var wsSel=document.getElementById("fe-ws");
+  if(wsSel)wsSel.innerHTML='<option value="">—</option>'+(finWholesale||[]).map(function(w){return '<option value="'+w.id+'">'+esc(w.client_name)+'</option>'}).join("");
   document.getElementById("fe-sup").innerHTML='<option value="">—</option>'+finSups.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>'}).join("");
   document.getElementById("fe-workshop").innerHTML='<option value="">—</option>'+finWorkshops.map(function(w){return '<option value="'+w.id+'">'+esc(w.name)+'</option>'}).join("");
   if(e){document.getElementById("fe-cat").value=e.category_id;document.getElementById("fe-sup").value=e.supplier_id||"";document.getElementById("fe-workshop").value=e.workshop_id||"";}
@@ -532,4 +534,96 @@ async function loadFinGoods(){
 
   el.innerHTML=shelves+period+warn
     +'<div style="margin-top:10px;font-size:11px;color:var(--td)">Гроші й товар — дві окремі лінії: у місяць великої закупівлі каса показує мінус, а вартість товару росте на ту саму суму. Реальний результат — це їхня сума.</div>';
+}
+
+
+// ── Опт ───────────────────────────────────────────────────────────
+// Кожна угода — окремий кошик: гроші приходять частинами й можуть прийти вже
+// після відвантаження, шиється і їде теж частинами. Тому «отримано» і
+// «відвантажено» тут журнали, а не одна дата.
+var WS_STATUS = { in_work: "в роботі", shipped: "відвантажується", closed: "закрита", cancelled: "скасована" };
+var wsShowAll = false;
+
+async function loadWholesale(){
+  var el=document.getElementById("fin-v-wholesale");
+  var r;
+  try{ r=await api("/api/finance/wholesale"+(wsShowAll?"?all=1":"")) }
+  catch(e){ el.innerHTML='<div class="empty">Не вдалось завантажити: '+esc(e.message)+'</div>'; return }
+  var rows=r.orders.map(function(w){
+    var color=w.profit<0?"var(--red)":"var(--acc)";
+    return '<div style="border-top:1px solid var(--brd);padding:9px 0;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;cursor:pointer" onclick="openWholesale('+w.id+')">'
+      +'<div><b style="font-size:13px;color:var(--th)">'+esc(w.client_name)+'</b>'
+      +' <span style="font-size:10px;color:var(--td)">'+(WS_STATUS[w.status]||w.status)+'</span>'
+      +'<div style="font-size:10px;color:var(--td)">угода '+finMoney(w.deal_amount)+'₴'
+      +(w.left_to_pay>0?' · лишилось отримати '+finMoney(w.left_to_pay)+'₴':' · оплачено повністю')
+      +(w.shipments_count?' · відвантажень '+w.shipments_count+(w.shipped_qty?' ('+w.shipped_qty+' шт)':''):'')+'</div></div>'
+      +'<div style="text-align:right;white-space:nowrap;font-size:12px">'
+      +'<div>отримано '+finMoney(w.received)+'₴</div>'
+      +'<div style="color:var(--td)">витрачено '+finMoney(w.spent)+'₴</div>'
+      +'<div style="color:'+color+'">результат '+(w.profit>0?"+":"")+finMoney(w.profit)+'₴</div></div></div>';
+  }).join("");
+  finWholesale=r.orders.filter(function(w){return w.status==="in_work"||w.status==="shipped"});
+  el.innerHTML='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">'
+    +'<button class="btn btn-sm btn-p" onclick="openWholesaleNew()">'+Icon("plus",13)+' Нова угода</button>'
+    +'<button class="stab'+(wsShowAll?" on":"")+'" onclick="wsShowAll=!wsShowAll;loadWholesale()">показати закриті</button></div>'
+    +(rows||'<div class="empty">Оптових замовлень немає</div>')
+    +'<div style="margin-top:10px;font-size:11px;color:var(--td)">Опт не змішується з роздробом: у загальному звіті він іде окремим рядком, а тут — по кожній угоді окремо.</div>';
+}
+
+function openWholesaleNew(){
+  document.getElementById("ws-client").value="";
+  document.getElementById("ws-amount").value="";
+  document.getElementById("ws-note").value="";
+  document.getElementById("ws-err").style.display="none";
+  openM("ws-modal");
+}
+
+async function saveWholesale(){
+  var err=document.getElementById("ws-err");
+  try{
+    await api("/api/finance/wholesale",{method:"POST",body:JSON.stringify({
+      client_name:document.getElementById("ws-client").value,
+      deal_amount:parseFloat(document.getElementById("ws-amount").value)||0,
+      note:document.getElementById("ws-note").value})});
+    closeM("ws-modal");loadWholesale();
+  }catch(e){err.textContent=e.message;err.style.display="block"}
+}
+
+async function openWholesale(id){
+  var d;
+  try{ d=(await api("/api/finance/wholesale/"+id)).order }catch(e){ alert(e.message); return }
+  document.getElementById("ws-d-title").textContent=d.client_name+" — "+(WS_STATUS[d.status]||d.status);
+  function rows(list,fmt){return list.length?list.map(fmt).join(""):'<div style="font-size:11px;color:var(--td);padding:4px 0">порожньо</div>'}
+  document.getElementById("ws-d-body").innerHTML=
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">'
+      +'<span style="padding:5px 9px;border-radius:6px;background:var(--bg)">угода '+finMoney(d.deal_amount)+'₴</span>'
+      +'<span style="padding:5px 9px;border-radius:6px;background:var(--bg);color:var(--acc)">отримано '+finMoney(d.received)+'₴</span>'
+      +'<span style="padding:5px 9px;border-radius:6px;background:var(--bg);color:var(--red)">витрачено '+finMoney(d.spent)+'₴</span>'
+      +'<span style="padding:5px 9px;border-radius:6px;background:var(--bg);color:'+(d.profit<0?"var(--red)":"var(--acc)")+'">результат '+(d.profit>0?"+":"")+finMoney(d.profit)+'₴</span>'
+      +(d.left_to_pay>0?'<span style="padding:5px 9px;border-radius:6px;background:var(--bg);color:var(--warn)">чекаємо '+finMoney(d.left_to_pay)+'₴</span>':'')
+    +'</div>'
+    +'<div style="font-size:12px;font-weight:600;color:var(--th);margin-bottom:4px">Платежі</div>'
+    +rows(d.payments,function(p){return '<div style="font-size:11px;padding:3px 0;border-top:1px solid var(--brd);display:flex;justify-content:space-between"><span>'+esc(p.date)+' '+esc(p.note||"")+'</span><span style="color:var(--acc)">+'+finMoney(p.amount)+'₴</span></div>'})
+    +'<div style="display:flex;gap:6px;margin:6px 0 12px"><input id="ws-pay-amount" type="number" step="0.01" placeholder="сума" style="width:110px;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"><input id="ws-pay-note" placeholder="коментар" style="flex:1;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"><button class="btn btn-sm btn-p" onclick="addWholesalePayment('+d.id+')">Платіж</button></div>'
+    +'<div style="font-size:12px;font-weight:600;color:var(--th);margin-bottom:4px">Витрати по угоді</div>'
+    +rows(d.expenses,function(e){return '<div style="font-size:11px;padding:3px 0;border-top:1px solid var(--brd);display:flex;justify-content:space-between"><span>'+esc(e.date)+' '+esc(e.category_name||"")+' '+esc(e.note||"")+'</span><span style="color:var(--red)">−'+finMoney(e.amount)+'₴</span></div>'})
+    +'<div style="font-size:10px;color:var(--td);margin:4px 0 12px">Витрати додаються у вкладці «Витрати» — там оберіть цю угоду.</div>'
+    +'<div style="font-size:12px;font-weight:600;color:var(--th);margin-bottom:4px">Відвантаження</div>'
+    +rows(d.shipments,function(s){return '<div style="font-size:11px;padding:3px 0;border-top:1px solid var(--brd);display:flex;justify-content:space-between"><span>'+esc(s.date)+' '+esc(s.note||"")+'</span><span>'+(s.qty||0)+' шт</span></div>'})
+    +'<div style="display:flex;gap:6px;margin:6px 0 12px"><input id="ws-ship-qty" type="number" step="1" placeholder="шт" style="width:80px;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"><input id="ws-ship-note" placeholder="що поїхало" style="flex:1;padding:6px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff"><button class="btn btn-sm" onclick="addWholesaleShipment('+d.id+')">Відвантажив</button></div>'
+    +'<div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="setWholesaleStatus('+d.id+',\'closed\')">Закрити угоду</button><button class="btn btn-sm btn-d" onclick="setWholesaleStatus('+d.id+',\'cancelled\')">Скасувати</button></div>';
+  openM("ws-detail-modal");
+}
+
+async function addWholesalePayment(id){
+  var v=parseFloat(document.getElementById("ws-pay-amount").value);
+  if(!v||v<=0)return;
+  try{await api("/api/finance/wholesale/"+id+"/payment",{method:"POST",body:JSON.stringify({amount:v,note:document.getElementById("ws-pay-note").value})});openWholesale(id);loadWholesale();loadFinance()}catch(e){alert(e.message)}
+}
+async function addWholesaleShipment(id){
+  try{await api("/api/finance/wholesale/"+id+"/shipment",{method:"POST",body:JSON.stringify({qty:parseFloat(document.getElementById("ws-ship-qty").value)||0,note:document.getElementById("ws-ship-note").value})});openWholesale(id);loadWholesale()}catch(e){alert(e.message)}
+}
+async function setWholesaleStatus(id,st){
+  if(st==="cancelled"&&!confirm("Скасувати угоду? Платежі й витрати лишаться в обліку."))return;
+  try{await api("/api/finance/wholesale/"+id,{method:"PUT",body:JSON.stringify({status:st})});closeM("ws-detail-modal");loadWholesale()}catch(e){alert(e.message)}
 }

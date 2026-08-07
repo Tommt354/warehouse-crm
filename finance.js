@@ -35,11 +35,11 @@ function addCashMove({ date, amount, kind, ref_type, ref_id, note }) {
 // лягти в матеріали тим самим шляхом, що й будь-яка інша витрата, а не
 // власним дублем логіки боргу/оплати/руху каси. paid=1 — гроші пішли
 // одразу; paid=0 (чи не передано) — борг постачальнику, каса не рухається.
-function createExpense({ date, amount, category_id, supplier_id, workshop_id, note, created_by, paid }) {
+function createExpense({ date, amount, category_id, supplier_id, workshop_id, wholesale_id, note, created_by, paid }) {
   let id;
   db.transaction(() => {
-    id = db.prepare("INSERT INTO expenses(date,amount,category_id,supplier_id,workshop_id,note,created_by)VALUES(?,?,?,?,?,?,?)")
-      .run(date, round2(amount), category_id, supplier_id || null, workshop_id || null, note || "", created_by || null).lastInsertRowid;
+    id = db.prepare("INSERT INTO expenses(date,amount,category_id,supplier_id,workshop_id,wholesale_id,note,created_by)VALUES(?,?,?,?,?,?,?,?)")
+      .run(date, round2(amount), category_id, supplier_id || null, workshop_id || null, wholesale_id || null, note || "", created_by || null).lastInsertRowid;
     if (paid) {
       db.prepare("INSERT INTO expense_payments(expense_id,date,amount)VALUES(?,?,?)").run(id, date, round2(amount));
       addCashMove({ date, amount: -amount, kind: "expense", ref_type: "expense", ref_id: id, note: note || "" });
@@ -275,7 +275,8 @@ function register(app, { authMiddleware, requireRole }) {
     const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
     const id = createExpense({
       date, amount, category_id: req.body.category_id, supplier_id: req.body.supplier_id,
-      workshop_id: req.body.workshop_id, note: req.body.note, created_by: req.user.id, paid: req.body.paid
+      workshop_id: req.body.workshop_id, wholesale_id: req.body.wholesale_id,
+      note: req.body.note, created_by: req.user.id, paid: req.body.paid
     });
     res.json({ ok: true, id });
   });
@@ -450,6 +451,93 @@ function register(app, { authMiddleware, requireRole }) {
     res.json({ ok: true, payout_already_paid: alreadyPaid, payout_to_settle: alreadyPaid ? round2(paidPayout) : 0 });
   });
 
+  // ── ОПТ ────────────────────────────────────────────────────────
+  // Кожна оптова угода — окремий кошик. Гроші приходять частинами й можуть
+  // прийти навіть після відвантаження, шиється і їде теж частинами, тож
+  // «отримано» і «відвантажено» — це журнали, а не одна дата.
+  const WHOLESALE_AGG = `
+    COALESCE((SELECT SUM(cm.amount) FROM cash_moves cm WHERE cm.wholesale_id=w.id AND cm.amount>0),0) as received,
+    COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.wholesale_id=w.id),0) as spent,
+    COALESCE((SELECT SUM(s.qty) FROM wholesale_shipments s WHERE s.wholesale_id=w.id),0) as shipped_qty,
+    (SELECT COUNT(*) FROM wholesale_shipments s WHERE s.wholesale_id=w.id) as shipments_count`;
+
+  app.get("/api/finance/wholesale", ...adminOnly, (req, res) => {
+    const rows = db.prepare(`SELECT w.*, ${WHOLESALE_AGG} FROM wholesale_orders w
+      ${req.query.all === "1" ? "" : "WHERE w.status<>'closed'"}
+      ORDER BY CASE w.status WHEN 'in_work' THEN 0 WHEN 'shipped' THEN 1 ELSE 2 END, w.id DESC`).all();
+    rows.forEach(r => {
+      r.received = round2(r.received); r.spent = round2(r.spent);
+      r.profit = round2(r.received - r.spent);
+      r.left_to_pay = round2((r.deal_amount || 0) - r.received);
+    });
+    res.json({ orders: rows });
+  });
+
+  app.get("/api/finance/wholesale/:id", ...adminOnly, (req, res) => {
+    const w = db.prepare(`SELECT w.*, ${WHOLESALE_AGG} FROM wholesale_orders w WHERE w.id=?`).get(req.params.id);
+    if (!w) return res.status(404).json({ error: "Замовлення не знайдено" });
+    w.received = round2(w.received); w.spent = round2(w.spent);
+    w.profit = round2(w.received - w.spent);
+    w.left_to_pay = round2((w.deal_amount || 0) - w.received);
+    w.payments = db.prepare("SELECT id,date,amount,note FROM cash_moves WHERE wholesale_id=? AND amount>0 ORDER BY date DESC, id DESC").all(w.id);
+    w.expenses = db.prepare(`SELECT e.id,e.date,e.amount,e.note,c.name as category_name,c.kind as category_kind
+      FROM expenses e LEFT JOIN fin_categories c ON e.category_id=c.id
+      WHERE e.wholesale_id=? ORDER BY e.date DESC, e.id DESC`).all(w.id);
+    w.shipments = db.prepare("SELECT id,date,qty,note FROM wholesale_shipments WHERE wholesale_id=? ORDER BY date DESC, id DESC").all(w.id);
+    res.json({ order: w });
+  });
+
+  app.post("/api/finance/wholesale", ...adminOnly, (req, res) => {
+    const name = (req.body.client_name || "").trim();
+    if (!name) return res.status(400).json({ error: "Вкажіть клієнта" });
+    const r = db.prepare("INSERT INTO wholesale_orders(client_name,deal_amount,note)VALUES(?,?,?)")
+      .run(name, round2(parseFloat(req.body.deal_amount) || 0), req.body.note || "");
+    res.json({ ok: true, id: r.lastInsertRowid });
+  });
+
+  app.put("/api/finance/wholesale/:id", ...adminOnly, (req, res) => {
+    const w = db.prepare("SELECT * FROM wholesale_orders WHERE id=?").get(req.params.id);
+    if (!w) return res.status(404).json({ error: "Замовлення не знайдено" });
+    const status = req.body.status || w.status;
+    if (!["in_work", "shipped", "closed", "cancelled"].includes(status)) return res.status(400).json({ error: "Невідомий статус" });
+    db.prepare(`UPDATE wholesale_orders SET client_name=?,deal_amount=?,note=?,status=?,
+        shipped_at=CASE WHEN ?='shipped' AND COALESCE(shipped_at,'')='' THEN datetime('now','localtime') ELSE shipped_at END,
+        closed_at=CASE WHEN ?='closed' AND COALESCE(closed_at,'')='' THEN datetime('now','localtime') ELSE closed_at END
+      WHERE id=?`)
+      .run((req.body.client_name || w.client_name).trim(), round2(parseFloat(req.body.deal_amount) ?? w.deal_amount) || 0,
+        req.body.note !== undefined ? req.body.note : w.note, status, status, status, w.id);
+    res.json({ ok: true });
+  });
+
+  // Платіж клієнта: завдаток, доплата — будь-яка сума й будь-коли, зокрема
+  // вже після відвантаження. Це реальні гроші на рахунок, тож іде в касу.
+  app.post("/api/finance/wholesale/:id/payment", ...adminOnly, (req, res) => {
+    const w = db.prepare("SELECT id,client_name FROM wholesale_orders WHERE id=?").get(req.params.id);
+    if (!w) return res.status(404).json({ error: "Замовлення не знайдено" });
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму платежу" });
+    const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
+    // Без ref_id: платежів по одній угоді може бути скільки завгодно, а
+    // унікальний індекс cash_moves(kind,ref_type,ref_id) пропустив би лише
+    // перший. Зв'язок із угодою тримає wholesale_id.
+    db.prepare(`INSERT INTO cash_moves(date,amount,kind,ref_type,ref_id,wholesale_id,note)
+      VALUES(?,?,'wholesale','wholesale',NULL,?,?)`)
+      .run(date, round2(amount), w.id, (req.body.note || "Оплата опту") + " — " + w.client_name);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/finance/wholesale/:id/shipment", ...adminOnly, (req, res) => {
+    const w = db.prepare("SELECT id FROM wholesale_orders WHERE id=?").get(req.params.id);
+    if (!w) return res.status(404).json({ error: "Замовлення не знайдено" });
+    const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
+    db.prepare("INSERT INTO wholesale_shipments(wholesale_id,date,qty,note)VALUES(?,?,?,?)")
+      .run(w.id, date, parseFloat(req.body.qty) || 0, req.body.note || "");
+    // Перше відвантаження переводить угоду в «відвантажується», якщо вона ще
+    // в роботі — статус не має відставати від фактів.
+    db.prepare("UPDATE wholesale_orders SET status='shipped',shipped_at=CASE WHEN COALESCE(shipped_at,'')='' THEN datetime('now','localtime') ELSE shipped_at END WHERE id=? AND status='in_work'").run(w.id);
+    res.json({ ok: true });
+  });
+
   // Стартовий залишок: система не знає, скільки було на рахунку до її появи,
   // тож власник вводить це число один раз, і від нього рахується баланс.
   const getSetting = (k, d) => {
@@ -541,14 +629,20 @@ function register(app, { authMiddleware, requireRole }) {
     const refundsInPeriod = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE kind='refund' AND date BETWEEN ? AND ?", from, to);
     const income = round2(deliveredIncome + refundsInPeriod);
     const cashDelta = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE date BETWEEN ? AND ?", from, to);
-    const expensesPaid = sum("SELECT COALESCE(SUM(amount),0) s FROM expense_payments WHERE date BETWEEN ? AND ?", from, to);
+    const expensesPaid = sum(`SELECT COALESCE(SUM(p.amount),0) s FROM expense_payments p
+      JOIN expenses e ON p.expense_id=e.id WHERE p.date BETWEEN ? AND ? AND e.wholesale_id IS NULL`, from, to);
 
     // Розріз по категоріях беремо за нарахованими витратами, а не за оплатами:
     // «скільки я витратив на тканину цього місяця» — це про витрату, навіть
     // якщо частину взяв у борг.
+    // Опт свідомо виключений із загальних цифр: у нього інший цикл (гроші
+    // наперед, прибуток після відвантаження), і розмазаний по днях він
+    // спотворював би і витрати, і прибуток роздробу. У звіт він іде окремим
+    // рядком нижче.
     const byCategory = db.prepare(`SELECT c.name, c.is_goods, ROUND(SUM(e.amount),2) as amount
       FROM expenses e LEFT JOIN fin_categories c ON e.category_id=c.id
-      WHERE e.date BETWEEN ? AND ? GROUP BY e.category_id ORDER BY amount DESC`).all(from, to);
+      WHERE e.date BETWEEN ? AND ? AND e.wholesale_id IS NULL
+      GROUP BY e.category_id ORDER BY amount DESC`).all(from, to);
 
     const goodsSpent = round2(byCategory.filter(c => c.is_goods).reduce((s, c) => s + c.amount, 0));
     const opexSpent = round2(byCategory.filter(c => !c.is_goods).reduce((s, c) => s + c.amount, 0));
@@ -584,6 +678,11 @@ function register(app, { authMiddleware, requireRole }) {
       profit_cash: profitCash,
       manager: mgr ? { name: mgr.name, percent: mgr.percent, amount: managerAmount } : null,
       profit_after_manager: round2(profitCash - managerAmount),
+      wholesale: {
+        received: round2(db.prepare("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE wholesale_id IS NOT NULL AND amount>0 AND date BETWEEN ? AND ?").get(from, to).s),
+        spent: round2(db.prepare("SELECT COALESCE(SUM(amount),0) s FROM expenses WHERE wholesale_id IS NOT NULL AND date BETWEEN ? AND ?").get(from, to).s),
+        open_deals: db.prepare("SELECT COUNT(*) c FROM wholesale_orders WHERE status IN ('in_work','shipped')").get().c
+      },
       last_check: db.prepare("SELECT * FROM cash_checks ORDER BY id DESC LIMIT 1").get() || null
     });
   });

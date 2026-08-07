@@ -598,6 +598,35 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 
+  -- Оптове замовлення — окремий кошик. Опт живе за іншим циклом: гроші
+  -- приходять наперед частинами, тканина купується під конкретну угоду, а
+  -- прибуток видно лише після відвантаження. Змішувати його з роздробом не
+  -- можна — саме тому все, що з ним пов'язано, чіпляється сюди через
+  -- wholesale_id у expenses і cash_moves.
+  CREATE TABLE IF NOT EXISTS wholesale_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_name TEXT NOT NULL,
+    deal_amount REAL DEFAULT 0,
+    status TEXT DEFAULT 'in_work',
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    shipped_at TEXT DEFAULT '',
+    closed_at TEXT DEFAULT ''
+  );
+
+  -- Опт шиється й відвантажується частинами, тож «відвантажено» — не одна
+  -- подія, а журнал: коли, скільки й що саме поїхало. Без цього статус
+  -- замовлення брехав би half the time.
+  CREATE TABLE IF NOT EXISTS wholesale_shipments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wholesale_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    qty REAL DEFAULT 0,
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (wholesale_id) REFERENCES wholesale_orders(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS cash_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,
