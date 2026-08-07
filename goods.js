@@ -432,6 +432,46 @@ function onCutMovedToBase(baseProductId, sizeId, qty, workshopId) {
 // (base_products.cost_price), партія одразу на складі. cost_price=0 означає
 // "не вписана" — не вигадуємо ціну, партія лишається неоціненою (valued=0),
 // а не отримує тихий нуль, який виглядав би як "безкоштовний товар".
+// Повернути вартість конкретної кількості штук цієї позиції назад на полицю.
+// Потрібне там, де кількісна логіка компенсує залишок заднім числом: річ
+// узяли з полиці повернень замість бази вже після збірки, або отриману
+// посилку розібрали назад на склад. Беремо спершу рядки "у дорозі", а якщо
+// їх уже закрили як продані — розвертаємо продаж і зменшуємо зафіксовану
+// собівартість позиції рівно на повернуту частину, інакше збиток порахувався б
+// двічі: раз у собівартості проданого, раз у зниклому капіталі складу.
+function returnItemCostToShelf(orderItemId, shelf, qty, note) {
+  shelf = shelf === "returns" ? "returns" : "base";
+  let remaining = qty;
+  const rows = db.prepare(`SELECT * FROM inventory_consumptions
+    WHERE order_item_id=? AND shelf=? AND status IN ('in_transit','sold')
+    ORDER BY CASE status WHEN 'in_transit' THEN 0 ELSE 1 END, id`).all(orderItemId, shelf);
+  db.transaction(() => {
+    for (const r of rows) {
+      if (remaining <= 0.0000001) break;
+      const take = Math.min(remaining, r.qty);
+      let valued = 0;
+      if (r.lot_id) {
+        const src = db.prepare("SELECT valued FROM inventory_lots WHERE id=?").get(r.lot_id);
+        valued = src ? src.valued : 0;
+      }
+      addToShelf(r.base_product_id, r.size_id, shelf, take, r.unit_cost, "return", orderItemId, valued);
+      if (take >= r.qty - 0.0000001) {
+        db.prepare("UPDATE inventory_consumptions SET status='returned',settled_at=datetime('now','localtime') WHERE id=?").run(r.id);
+      } else {
+        db.prepare("UPDATE inventory_consumptions SET qty=qty-? WHERE id=?").run(take, r.id);
+        db.prepare(`INSERT INTO inventory_consumptions(order_item_id,base_product_id,size_id,lot_id,qty,unit_cost,shelf,status,ref_type,ref_id,note,settled_at)
+          VALUES(?,?,?,?,?,?,?,'returned',?,?,?,datetime('now','localtime'))`)
+          .run(orderItemId, r.base_product_id, r.size_id, r.lot_id, take, r.unit_cost, shelf, "return", orderItemId, note || "");
+      }
+      if (r.status === "sold") {
+        db.prepare("UPDATE order_items SET cogs=MAX(0, COALESCE(cogs,0)-?) WHERE id=?").run(round2(take * r.unit_cost), orderItemId);
+      }
+      remaining -= take;
+    }
+  })();
+  return round2(qty - remaining);
+}
+
 // Переміщення між клітинками складу: заміна розміру чи товару в замовленні,
 // ручна заміна розміру на складі. Кількість уже перенесла складська логіка —
 // тут за нею їде вартість. Партії переносимо поштучно за їхньою власною
@@ -484,5 +524,6 @@ module.exports = {
   onStockIncoming,
   moveLotsBetween,
   syncShelfQuantity,
+  returnItemCostToShelf,
   addToShelf,
 };

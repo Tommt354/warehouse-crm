@@ -2494,6 +2494,10 @@ app.post("/api/order-items/:id/use-return", authMiddleware, requireRole("admin",
     // Річ фізично пішла з полиці ПОВЕРНЕНЬ (не бази — базу вище лише
     // компенсували бухгалтерськи) — вартість іде слідом у "у дорозі" з тієї
     // самої полиці, окремо від consumeToTransit у pullOrderStockOnce.
+    // Базу вище компенсували кількісно — вартість має повернутись тим самим
+    // шляхом, інакше партії бази лишаться заниженими, а собівартість продажу
+    // порахується майже втричі більшою за реальну.
+    if (item.stock_pulled) goods.returnItemCostToShelf(item.id, "base", qty, "Позицію закрито з полиці повернень");
     goods.consumeToTransit(item.base_product_id, item.size_id, "returns", qty, item.id, "order_pull", item.order_id);
   })();
 
@@ -2992,7 +2996,13 @@ app.post("/api/order-items/:id/return-to-stock", authMiddleware, requireRole("ad
     // Товар "у дорозі" для цієї позиції повертається на ту саму полицю тією
     // ж ціною (good) або згорає у втрати (damaged) — див. коментар у
     // goods.settleInTransitForItem.
-    goods.settleInTransitForItem(item.id, condition === "good" ? (item.print_id ? "returns" : "base") : "writeoff", "Брак з повернення: " + item.var_name);
+    const dest = condition === "good" ? (item.print_id ? "returns" : "base") : "writeoff";
+    goods.settleInTransitForItem(item.id, dest, "Брак з повернення: " + item.var_name);
+    // Замовлення могло вже бути «Отримано» — тоді рядки не «у дорозі», а
+    // «продано», і функція вище нічого не зробить. Розвертаємо продаж:
+    // вартість повертається на полицю, а зафіксована собівартість позиції
+    // зменшується рівно на цю суму — інакше збиток порахувався б двічі.
+    if (dest !== "writeoff") goods.returnItemCostToShelf(item.id, dest, item.quantity, "Повернення на полицю після отримання");
   })();
   res.json({ ok: true, condition });
 });
