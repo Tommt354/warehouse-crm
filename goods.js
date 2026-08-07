@@ -432,6 +432,40 @@ function onCutMovedToBase(baseProductId, sizeId, qty, workshopId) {
 // (base_products.cost_price), партія одразу на складі. cost_price=0 означає
 // "не вписана" — не вигадуємо ціну, партія лишається неоціненою (valued=0),
 // а не отримує тихий нуль, який виглядав би як "безкоштовний товар".
+// Переміщення між клітинками складу: заміна розміру чи товару в замовленні,
+// ручна заміна розміру на складі. Кількість уже перенесла складська логіка —
+// тут за нею їде вартість. Партії переносимо поштучно за їхньою власною
+// ціною, а не однією середньою: інакше заміна розміру мовчки усереднювала б
+// собівартість і ламала правило "кожна штука несе ціну своєї партії".
+function moveLotsBetween(fromBp, fromSize, toBp, toSize, qty, shelf, refType, refId, note) {
+  if (!qty || qty <= 0) return 0;
+  const { cost, consumed } = consumeLotsFifo(fromBp, fromSize, qty, shelf);
+  persistConsumption(fromBp, fromSize, shelf, consumed, { refType, refId, status: "moved", note });
+  consumed.forEach(c => {
+    // Неоцінена частина (lot_id=NULL) переїжджає теж, але лишається
+    // неоціненою — вигадувати їй ціну на переміщенні не можна.
+    addToShelf(toBp, toSize, shelf, c.qty, c.unit_cost, "move", refId || null, c.lot_id ? 1 : 0);
+  });
+  return cost;
+}
+
+// Ручне виставлення залишку (`/api/stock/set`) — це не рух товару, а заява
+// "насправді лежить стільки". Приводимо партії до цієї кількості: надлишок
+// списуємо, нестачу добираємо партією за собівартістю з картки товару.
+// Якщо в картці нуль — партія лишається неоціненою, а не отримує вигадану ціну.
+function syncShelfQuantity(baseProductId, sizeId, shelf, newQty, refType, refId, note) {
+  shelf = shelf === "returns" ? "returns" : "base";
+  const have = db.prepare(`SELECT COALESCE(SUM(qty_left),0) q FROM inventory_lots
+    WHERE base_product_id=? AND size_id=? AND shelf=?`).get(baseProductId, sizeId, shelf).q;
+  const diff = round4(newQty - have);
+  if (Math.abs(diff) < 0.0000001) return;
+  if (diff < 0) { writeOffLots(baseProductId, sizeId, shelf, -diff, refType, refId, note); return; }
+  const bp = db.prepare(`SELECT COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0) c FROM base_products bp
+    JOIN models m ON bp.model_id=m.id WHERE bp.id=?`).get(baseProductId);
+  const cost = bp ? bp.c : 0;
+  addToShelf(baseProductId, sizeId, shelf, diff, cost, "manual", refId || null, cost > 0 ? 1 : 0);
+}
+
 function onStockIncoming(baseProductId, sizeId, qty) {
   const bp = db.prepare("SELECT cost_price FROM base_products WHERE id=?").get(baseProductId);
   const cost = bp ? bp.cost_price : 0;
@@ -448,4 +482,7 @@ module.exports = {
   settleInTransitForItem,
   onCutMovedToBase,
   onStockIncoming,
+  moveLotsBetween,
+  syncShelfQuantity,
+  addToShelf,
 };

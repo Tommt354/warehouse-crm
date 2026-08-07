@@ -913,7 +913,12 @@ app.post("/api/stock/set", authMiddleware, requireRole("admin"), (req, res) => {
   const { base_product_id, size_id, quantity } = req.body;
   if(!base_product_id || !size_id) return res.status(400).json({ error: "Missing fields" });
   const qty = parseInt(quantity) || 0;
-  db.prepare("UPDATE stock_base SET quantity=?,quantity_actual=? WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, size_id);
+  db.transaction(() => {
+    db.prepare("UPDATE stock_base SET quantity=?,quantity_actual=? WHERE base_product_id=? AND size_id=?").run(qty, qty, base_product_id, size_id);
+    // Вартість їде за кількістю: без цього партії розійшлися б із залишком
+    // назавжди, і сума складу перестала б відповідати тому, що на полиці.
+    goods.syncShelfQuantity(base_product_id, size_id, "base", qty, "stock_set", null, "Ручне виставлення залишку");
+  })();
   res.json({ ok: true });
 });
 
@@ -1791,6 +1796,9 @@ app.post("/api/stock/swap-size", authMiddleware, requireRole("admin","warehouse"
     const fromName = db.prepare("SELECT name FROM sizes WHERE id=?").get(from_size_id)?.name||"";
     const toName = db.prepare("SELECT name FROM sizes WHERE id=?").get(to_size_id)?.name||"";
     db.prepare("INSERT INTO stock_log(type,base_product_id,size_id,quantity,note,user_id)VALUES('swap',?,?,?,?,?)").run(base_product_id,from_size_id,qty,fromName+" → "+toName,req.user.id);
+    // Річ фізично та сама, лише перевішана на інший розмір — вартість має
+    // переїхати разом із нею, зберігши ціну своєї партії.
+    goods.moveLotsBetween(base_product_id, from_size_id, base_product_id, to_size_id, qty, "base", "stock_swap_size", null, fromName + " → " + toName);
   })();
   res.json({ ok: true });
 });
@@ -2278,6 +2286,13 @@ app.post("/api/order-items/:id/swap-size", authMiddleware, requireRole("admin","
     if (touchActual) {
       db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=MAX(0,quantity_actual+?) WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, item.size_id);
       db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(item.quantity, item.quantity, item.base_product_id, new_size_id);
+      // Вартість іде тим самим шляхом, що й кількість: те, що вже "у дорозі"
+      // під старим розміром, повертається на полицю, а під новим розміром
+      // знімається наново. Інакше партії старого розміру лишились би
+      // заниженими, а нового — завищеними, і сума складу перестала б
+      // відповідати полиці.
+      goods.settleInTransitForItem(item.id, "base", "Заміна розміру: повернення на полицю");
+      goods.consumeToTransit(item.base_product_id, new_size_id, "base", item.quantity, item.id, "swap_size", item.id);
     } else {
       db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, item.size_id);
       db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(item.quantity, item.base_product_id, new_size_id);
@@ -2331,6 +2346,12 @@ app.post("/api/order-items/:id/swap-product", authMiddleware, requireRole("admin
     if (touchActual) {
       db.prepare("UPDATE stock_base SET quantity=quantity+?,quantity_actual=MAX(0,quantity_actual+?) WHERE base_product_id=? AND size_id=?").run(qty, qty, item.old_bp, item.size_id);
       db.prepare("UPDATE stock_base SET quantity=quantity-?,quantity_actual=MAX(0,quantity_actual-?) WHERE base_product_id=? AND size_id=?").run(qty, qty, nv.new_bp, new_size_id);
+      // Те саме, що при заміні розміру: вартість повертається на полицю
+      // старого товару й наново знімається з нового. Без цього рядки "у
+      // дорозі" лишились би прив'язані до старого товару, і при поверненні
+      // посилки вартість лягла б не на ту полицю.
+      goods.settleInTransitForItem(item.id, "base", "Заміна товару: повернення на полицю");
+      goods.consumeToTransit(nv.new_bp, new_size_id, "base", qty, item.id, "swap_product", item.id);
     } else {
       db.prepare("UPDATE stock_base SET quantity=quantity+? WHERE base_product_id=? AND size_id=?").run(qty, item.old_bp, item.size_id);
       db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=?").run(qty, nv.new_bp, new_size_id);
@@ -2400,8 +2421,12 @@ app.post("/api/orders/:id/items", authMiddleware, requireRole("admin","warehouse
     } else {
       db.prepare("UPDATE stock_base SET quantity=quantity-? WHERE base_product_id=? AND size_id=? AND recount_session_id IS NULL").run(qty, nv.bp_id, size_id);
     }
-    db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns)VALUES(?,?,?,?,?,0)")
-      .run(o.id, variation_id, size_id, qty, dropPrice);
+    const newItemId = db.prepare("INSERT INTO order_items(order_id,variation_id,size_id,quantity,drop_price,from_returns)VALUES(?,?,?,?,?,0)")
+      .run(o.id, variation_id, size_id, qty, dropPrice).lastInsertRowid;
+    // Позицію дозбирали з полиці вже зараз — отже, і вартість має піти з
+    // полиці зараз, інакше собівартість цієї позиції лишиться нулем, а
+    // партії розійдуться із залишком.
+    if (o.stock_pulled) goods.consumeToTransit(nv.bp_id, size_id, "base", qty, newItemId, "order_item_added", o.id);
 
     const newTotal = Math.round((db.prepare("SELECT COALESCE(SUM(drop_price*quantity),0) as t FROM order_items WHERE order_id=?").get(o.id).t) * 100) / 100;
     const payout = o.is_prepaid ? 0 : Math.round(((o.cod_amount || 0) - newTotal) * 100) / 100;
