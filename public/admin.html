@@ -734,6 +734,17 @@
   <div class="fld"><label>Дроп-ціна ₴</label><input id="ebp-drop" type="number"></div>
 </div>
 <div class="fld"><label>Колір</label><select id="ebp-color"></select></div>
+<div style="margin:4px 0 14px;padding-top:10px;border-top:1px solid var(--brd)">
+  <div style="font-size:10px;color:var(--td);margin-bottom:8px">Нормативи крою: значення за замовчуванням для форми крою й оцінки партії — на конкретній партії їх можна змінити.</div>
+  <div class="fld-row">
+    <div class="fld"><label>Тканина</label><select id="ebp-material"><option value="">— не вказано —</option></select></div>
+    <div class="fld"><label>Норма витрати на од.</label><input id="ebp-material-norm" type="number" step="0.001" min="0"></div>
+  </div>
+  <div class="fld-row">
+    <div class="fld"><label>Фурнітура ₴/шт</label><input id="ebp-notions" type="number" step="0.01" min="0"></div>
+    <div class="fld"><label>Ставка пошиву ₴/шт</label><input id="ebp-sewing" type="number" step="0.01" min="0"></div>
+  </div>
+</div>
 <div class="fld"><label>Залишки (можна змінювати)</label><div id="ebp-stock"></div></div>
 <div style="margin-top:4px"><select id="ebp-wadd" style="padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff"><option value="">+ додати працівника</option></select></div>
 <div class="fld"><label>Варіації</label><div id="ebp-vars" style="font-size:11px;color:var(--td);max-height:100px;overflow-y:auto"></div></div>
@@ -1531,6 +1542,14 @@ async function openEditBp(id){
   document.getElementById("ebp-active").value=p.active?"1":"0";
   document.getElementById("ebp-allow-neg").classList.toggle("on",(p.variations||[]).every(v=>v.allow_negative_order!==0));
   document.getElementById("ebp-model").textContent=`${p.model_name||"—"} (ID: ${p.model_id})`;
+  // Нормативи крою (goods.js): довідник тканин ліниво кешується, тож форма
+  // товару не б'є мережу заново, якщо вкладка «Матеріали» вже відкривалась.
+  await loadGoodsMaterials();
+  const ms=document.getElementById("ebp-material");
+  ms.innerHTML=`<option value="">— не вказано —</option>`+GOODS_MATERIALS.map(m=>`<option value="${m.id}"${m.id==p.material_id?" selected":""}>${esc(m.name)} (${materialUnitLabel(m.unit)})</option>`).join("");
+  document.getElementById("ebp-material-norm").value=p.material_norm||0;
+  document.getElementById("ebp-notions").value=p.notions_cost||0;
+  document.getElementById("ebp-sewing").value=p.sewing_cost||0;
   // Color select
   const cs=document.getElementById("ebp-color");
   cs.innerHTML=`<option value="">— без кольору —</option>`;
@@ -1555,7 +1574,11 @@ async function saveEditBp(){
       drop_price:parseFloat(document.getElementById("ebp-drop").value)||0,
       color_id:document.getElementById("ebp-color").value||null,
       active:document.getElementById("ebp-active").value==="1",
-      allow_negative_order:document.getElementById("ebp-allow-neg").classList.contains("on")
+      allow_negative_order:document.getElementById("ebp-allow-neg").classList.contains("on"),
+      material_id:document.getElementById("ebp-material").value||null,
+      material_norm:parseFloat(document.getElementById("ebp-material-norm").value)||0,
+      notions_cost:parseFloat(document.getElementById("ebp-notions").value)||0,
+      sewing_cost:parseFloat(document.getElementById("ebp-sewing").value)||0
     })});
     // Save stock quantities
     const stocks=[...document.querySelectorAll("#ebp-stock input[data-sid]")];
@@ -1661,9 +1684,9 @@ function bppDone(){
 }
 
 // ── Bulk stock entry: incoming / write-off / cut for MANY products at once ──
-var bsOp='inc',bsSelected=[],bsQty={},bsSizes=[];
+var bsOp='inc',bsSelected=[],bsQty={},bsSizes=[],bsSewingPrice={};
 async function openBulkStock(op){
-  bsOp=op;bsSelected=[];bsQty={};
+  bsOp=op;bsSelected=[];bsQty={};bsSewingPrice={};
   var titles={inc:'Прихід — кілька товарів',wo:'Списання — кілька товарів',cut:'Крій — кілька товарів'};
   document.getElementById("bs-title").innerHTML=Icon(op==='inc'?'download':op==='wo'?'upload':'plus',16)+' '+titles[op];
   document.getElementById("bs-note").value="";
@@ -1689,15 +1712,20 @@ function renderBsRows(){
   if(!bsSelected.length){el.innerHTML='<div style="font-size:11px;color:var(--td);padding:8px">Натисніть «+ Додати товари» і оберіть кілька — тут з’являться поля кількостей для кожного.</div>';return}
   el.innerHTML=bsSelected.map(function(p){
     if(!bsQty[p.id])bsQty[p.id]={};
+    // Ставка пошиву — на партію крою (goods.js: cut_incoming.sewing_price),
+    // тут лише підказка з картки товару, яку можна виправити перед збереженням.
+    if(bsOp==='cut'&&bsSewingPrice[p.id]===undefined)bsSewingPrice[p.id]=p.sewing_cost||0;
     var szs=(bsSizes||[]).filter(function(s){return p.stock&&p.stock[s.id]!==undefined});
     var inputs=szs.map(function(s){
       var cur=p.stock[s.id]||0,val=bsQty[p.id][s.id]||0;
       return '<div style="text-align:center;width:52px"><div style="font-size:10px;color:var(--td)">'+esc(s.name)+'</div><input type="number" min="0" value="'+val+'" oninput="bsSetQty('+p.id+','+s.id+',this.value)" style="width:48px;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;text-align:center"><div style="font-size:8px;color:var(--td)">є '+cur+'</div></div>';
     }).join("");
-    return '<div style="padding:8px 0;border-bottom:1px solid var(--brd)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:12px;font-weight:600;color:var(--th);flex:1">'+esc(p.name)+'</span>'+(bsOp==='wo'?'<button type="button" class="btn btn-sm" style="font-size:10px" onclick="bsFillAll('+p.id+')">Все</button>':'')+'<button type="button" class="btn btn-sm btn-d" onclick="bsRemove('+p.id+')">'+Icon('x',11)+'</button></div><div style="display:flex;flex-wrap:wrap;gap:6px">'+inputs+'</div></div>';
+    var sewingInput=bsOp==='cut'?'<div style="text-align:center;width:80px"><div style="font-size:10px;color:var(--td)">пошив ₴/шт</div><input type="number" min="0" step="0.01" value="'+bsSewingPrice[p.id]+'" oninput="bsSetSewingPrice('+p.id+',this.value)" style="width:76px;padding:5px;font-size:11px;background:var(--input);border:1px solid var(--brd);border-radius:5px;color:#fff;text-align:center"></div>':'';
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--brd)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:12px;font-weight:600;color:var(--th);flex:1">'+esc(p.name)+'</span>'+(bsOp==='wo'?'<button type="button" class="btn btn-sm" style="font-size:10px" onclick="bsFillAll('+p.id+')">Все</button>':'')+'<button type="button" class="btn btn-sm btn-d" onclick="bsRemove('+p.id+')">'+Icon('x',11)+'</button></div><div style="display:flex;flex-wrap:wrap;gap:6px">'+inputs+sewingInput+'</div></div>';
   }).join("");
 }
 function bsSetQty(bpId,sid,val){if(!bsQty[bpId])bsQty[bpId]={};bsQty[bpId][sid]=parseInt(val)||0}
+function bsSetSewingPrice(bpId,val){bsSewingPrice[bpId]=parseFloat(val)||0}
 function bsRemove(bpId){bsSelected=bsSelected.filter(function(p){return p.id!==bpId});delete bsQty[bpId];renderBsRows()}
 function bsFillAll(bpId){var p=bsSelected.find(function(x){return x.id===bpId});if(!p)return;(bsSizes||[]).forEach(function(s){if(p.stock&&p.stock[s.id]!==undefined){if(!bsQty[bpId])bsQty[bpId]={};bsQty[bpId][s.id]=p.stock[s.id]||0}});renderBsRows()}
 async function saveBulkStock(){
@@ -1713,7 +1741,7 @@ async function saveBulkStock(){
     if(!items.length)return;
     if(bsOp==='inc')jobs.push(api("/api/stock/incoming-bulk",{method:"POST",body:JSON.stringify({base_product_id:p.id,items:items,note:note,no_workshop:noWs})}));
     else if(bsOp==='wo')jobs.push(api("/api/stock/write-off-bulk",{method:"POST",body:JSON.stringify({base_product_id:p.id,items:items,note:note})}));
-    else jobs.push(api("/api/stock-cuts/incoming",{method:"POST",body:JSON.stringify({base_product_id:p.id,workshop_id:wsId,items:items,note:note})}));
+    else jobs.push(api("/api/stock-cuts/incoming",{method:"POST",body:JSON.stringify({base_product_id:p.id,workshop_id:wsId,items:items,note:note,sewing_price:bsSewingPrice[p.id]!==undefined?bsSewingPrice[p.id]:(p.sewing_cost||0)})}));
   });
   if(!jobs.length){err.textContent="Введіть кількості";err.style.display="block";return}
   try{await Promise.all(jobs);closeM("bulk-stock-modal");if(bsOp==='cut')loadCuts();else loadSBase()}
