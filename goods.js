@@ -196,19 +196,15 @@ function register(app, { authMiddleware, requireRole }) {
       WHERE o.status='delivered' AND COALESCE(o.delivered_at,'')<>'' AND date(o.delivered_at) BETWEEN ? AND ?`, from, to).c;
     const lost = one(`SELECT COALESCE(SUM(qty*unit_cost),0) c FROM inventory_consumptions
       WHERE status='lost' AND date(COALESCE(settled_at,created_at)) BETWEEN ? AND ?`, from, to).c;
-    // Зайшло в товар за період: куплений матеріал і закуплений готовий товар.
-    const boughtMaterials = one(`SELECT COALESCE(SUM(qty_total*price_uah),0) c FROM material_lots WHERE date(created_at) BETWEEN ? AND ?`, from, to).c;
-    // Тільки реальні покупки готового товару: 'legacy' — це відкриваючий
-    // залишок, під ним немає жодного руху грошей, і зарахувати його в
-    // "куплено за період" означало б показати прибуток на всю вартість
-    // складу в день впровадження. Рахуємо від КУПЛЕНОЇ кількості (qty_total),
-    // а не від залишку: інакше закритий період тихо переписувався б щоразу,
-    // коли з тієї партії щось продають.
-    const boughtGoods = one(`SELECT COALESCE(SUM(COALESCE(qty_total,qty_left)*unit_cost),0) c FROM inventory_lots
-      WHERE source='purchase' AND date(created_at) BETWEEN ? AND ?`, from, to).c;
-    const notionsBought = one(`SELECT COALESCE(SUM(amount),0) c FROM notions_pool WHERE amount > 0 AND date BETWEEN ? AND ?`, from, to).c;
-
-    const goodsIn = round2(boughtMaterials + boughtGoods + notionsBought);
+    // Зайшло в товар за період — це всі витрати, які власник позначив як
+    // вкладення в товар (категорії kind material/sewing/purchase). Рахувати
+    // лише куплену тканину було помилкою: оплата цеху за пошив теж збільшує
+    // вартість виробу (вона сидить у собівартості партії крою), і без неї
+    // приріст товару виходив заниженим рівно на вартість роботи.
+    // Опт виключений: у нього свій цикл і свій рядок у звіті.
+    const goodsIn = round2(one(`SELECT COALESCE(SUM(e.amount),0) c FROM expenses e
+      JOIN fin_categories fc ON e.category_id=fc.id
+      WHERE fc.is_goods=1 AND e.wholesale_id IS NULL AND e.date BETWEEN ? AND ?`, from, to).c);
     const goodsDelta = round2(goodsIn - cogs - lost);
 
     const unvaluedQty = one(`SELECT COALESCE(SUM(qty_left),0) q FROM inventory_lots WHERE valued=0 AND qty_left > 0`).q;
