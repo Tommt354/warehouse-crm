@@ -662,7 +662,17 @@ function register(app, { authMiddleware, requireRole }) {
     // Прибуток за формулою власника: дохід мінус усі витрати періоду, включно
     // із закупівлями. Саме від нього рахується відсоток менеджера — це
     // домовленість із людиною, і міняти базу під нову модель обліку не можна.
-    const profitCash = round2(income - opexSpent - goodsSpent);
+    // Утримання з дроперів за зворотну доставку. НП бере ці гроші з нас
+    // (власник записує їх витратою «Повернення НП»), а ми утримуємо ту саму
+    // суму з виплати дроперу. Без цього рядка витрата була б, а компенсації
+    // не було б — і прибуток виходив би заниженим рівно на всі утримання,
+    // хоча по факту склад нічого не втратив. Беремо лише проведені виплати:
+    // поки виплату не провели, нічого ще не утримано.
+    const returnsCompensation = round2(db.prepare(`SELECT COALESCE(-SUM(pi.amount),0) s
+      FROM payout_items pi JOIN payout_requests pr ON pi.payout_request_id=pr.id
+      WHERE pi.is_return=1 AND pr.status='paid' AND date(pr.paid_at) BETWEEN ? AND ?`).get(from, to).s);
+
+    const profitCash = round2(income - opexSpent - goodsSpent + returnsCompensation);
     const mgr = db.prepare("SELECT * FROM manager_rates WHERE from_date<=? ORDER BY from_date DESC, id DESC LIMIT 1").get(to) || null;
     // Рішення власника: у збитковий період нарахування лишається від'ємним —
     // це той самий відсоток від прибутку, без обмеження знизу, бо саме так
@@ -674,6 +684,7 @@ function register(app, { authMiddleware, requireRole }) {
       opening_balance: parseFloat(getSetting("cash_opening_balance", 0)) || 0,
       balance: calcBalance(),
       by_category: byCategory, goods_spent: goodsSpent, opex_spent: opexSpent,
+      returns_compensation: returnsCompensation,
       debts_total: debtsTotal,
       profit_cash: profitCash,
       manager: mgr ? { name: mgr.name, percent: mgr.percent, amount: managerAmount } : null,
