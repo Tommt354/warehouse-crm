@@ -549,6 +549,7 @@ function register(app, { authMiddleware, requireRole }) {
     res.json({
       cash_opening_balance: parseFloat(getSetting("cash_opening_balance", 0)) || 0,
       cash_opening_date: getSetting("cash_opening_date", "") || "",
+      novapay_percent: parseFloat(getSetting("novapay_percent", 0)) || 0,
       manager_rates: db.prepare("SELECT * FROM manager_rates ORDER BY from_date DESC, id DESC").all()
     });
   });
@@ -582,6 +583,9 @@ function register(app, { authMiddleware, requireRole }) {
       ? String(req.body.cash_opening_date)
       : (req.body.cash_opening_balance !== undefined ? db.prepare("SELECT date('now','localtime') d").get().d : undefined);
     if (date !== undefined) st.run("cash_opening_date", date);
+    // Відсоток Нова Пей: утримується з повної суми наложки, тож без нього
+    // залишок на рахунку щодня розходився б із банком на частку обороту.
+    if (req.body.novapay_percent !== undefined) st.run("novapay_percent", String(parseFloat(req.body.novapay_percent) || 0));
     res.json({ ok: true });
   });
 
@@ -672,7 +676,14 @@ function register(app, { authMiddleware, requireRole }) {
       FROM payout_items pi JOIN payout_requests pr ON pi.payout_request_id=pr.id
       WHERE pi.is_return=1 AND pr.status='paid' AND date(pr.paid_at) BETWEEN ? AND ?`).get(from, to).s);
 
-    const profitCash = round2(income - opexSpent - goodsSpent + returnsCompensation);
+    // Комісія Нова Пей — реальні гроші, які банк ніколи до нас не доносить.
+    // Вона рахується від повної наложки, а не від нашої дроп-ціни, тож у
+    // прибутку має стояти окремо: у витратах за категоріями її немає, бо це
+    // не витрата, яку власник заводить руками, а утримання платіжної системи.
+    const novapayFee = round2(-db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM cash_moves
+      WHERE kind='fee' AND ref_type='novapay' AND date BETWEEN ? AND ?`).get(from, to).s);
+
+    const profitCash = round2(income - opexSpent - goodsSpent + returnsCompensation - novapayFee);
     const mgr = db.prepare("SELECT * FROM manager_rates WHERE from_date<=? ORDER BY from_date DESC, id DESC LIMIT 1").get(to) || null;
     // Рішення власника: у збитковий період нарахування лишається від'ємним —
     // це той самий відсоток від прибутку, без обмеження знизу, бо саме так
@@ -685,6 +696,7 @@ function register(app, { authMiddleware, requireRole }) {
       balance: calcBalance(),
       by_category: byCategory, goods_spent: goodsSpent, opex_spent: opexSpent,
       returns_compensation: returnsCompensation,
+      novapay_fee: novapayFee,
       debts_total: debtsTotal,
       profit_cash: profitCash,
       manager: mgr ? { name: mgr.name, percent: mgr.percent, amount: managerAmount } : null,
@@ -847,6 +859,26 @@ function register(app, { authMiddleware, requireRole }) {
 // тим, що в касу й так потрапляє менше за наложку, і ще раз — виплатою.
 // Дохід для звіту (яким звик оперувати власник — дроп-ціна забраних посилок)
 // рахується окремо, із самих замовлень: GET /api/finance/report.
+// Нова Пей утримує відсоток з КОЖНОЇ прийнятої наложки — не з нашого
+// заробітку, а з повної суми, яку заплатив клієнт. Тобто на рахунок падає
+// менше, ніж каже cod_amount, і без цього рядка звірка з банком розходилась
+// би щодня на пів відсотка обороту. Передоплачені замовлення не зачіпає:
+// там наложки немає взагалі.
+function novapayPercent() {
+  const r = db.prepare("SELECT value FROM settings WHERE key='novapay_percent'").get();
+  const v = r ? parseFloat(r.value) : 0;
+  return isNaN(v) || v < 0 ? 0 : v;
+}
+
+function recordNovapayFee(orderId, codAmount, day) {
+  const pct = novapayPercent();
+  if (!pct || !codAmount) return;
+  const fee = round2(codAmount * pct / 100);
+  if (!fee) return;
+  addCashMove({ date: day, amount: -fee, kind: "fee", ref_type: "novapay", ref_id: orderId,
+    note: "Комісія Нова Пей " + pct + "% із наложки, замовлення #" + orderId });
+}
+
 function onOrderDelivered(orderId) {
   const o = db.prepare("SELECT id,cod_amount,is_prepaid,delivered_at FROM orders WHERE id=?").get(orderId);
   if (!o) return;
@@ -858,6 +890,7 @@ function onOrderDelivered(orderId) {
   // потрапили в касу при створенні (onOrderCreated), тут рухати нічого.
   if (o.is_prepaid || !o.cod_amount) return;
   addCashMove({ date: day, amount: o.cod_amount, kind: "cod", ref_type: "order", ref_id: orderId, note: "Наложка, замовлення #" + orderId });
+  recordNovapayFee(orderId, o.cod_amount, day);
 }
 
 // Суми замовлення (наложка, дроп-ціна передоплати) інколи міняються вже
@@ -883,6 +916,12 @@ function syncOrderCashMove(orderId) {
     const amt = round2(o.cod_amount || 0);
     if (amt) db.prepare("UPDATE cash_moves SET amount=? WHERE kind='cod' AND ref_type='order' AND ref_id=?").run(amt, orderId);
     else db.prepare("DELETE FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").run(orderId);
+    // Комісія Нова Пей рахується від наложки, тож змінилась наложка —
+    // має змінитись і вона, інакше залишок розійдеться на різницю.
+    const pct = novapayPercent();
+    const fee = round2(amt * pct / 100);
+    if (fee) db.prepare("UPDATE cash_moves SET amount=? WHERE kind='fee' AND ref_type='novapay' AND ref_id=?").run(-fee, orderId);
+    else db.prepare("DELETE FROM cash_moves WHERE kind='fee' AND ref_type='novapay' AND ref_id=?").run(orderId);
   } else if (!o.paid_from_balance) {
     const amt = round2(o.total_drop_price || 0);
     if (amt) db.prepare("UPDATE cash_moves SET amount=? WHERE kind='prepaid' AND ref_type='order' AND ref_id=?").run(amt, orderId);
@@ -907,6 +946,8 @@ function syncOrderCashMove(orderId) {
 // дата руху візьметься зі збереженого delivered_at — того самого, вихідного.
 function onOrderUndelivered(orderId) {
   db.prepare("DELETE FROM cash_moves WHERE kind='cod' AND ref_type='order' AND ref_id=?").run(orderId);
+  // Наложки не було — не було й комісії за неї.
+  db.prepare("DELETE FROM cash_moves WHERE kind='fee' AND ref_type='novapay' AND ref_id=?").run(orderId);
 }
 
 // Повна передоплата: дропер платить наперед, до відправки, і гроші приходять

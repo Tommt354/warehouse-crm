@@ -95,6 +95,7 @@ function renderFinSummary(){
     +tile("Має бути на рахунку",finMoney(r.balance)+"₴")
     +tile("Борги постачальникам",finMoney(r.debts_total)+"₴",r.debts_total?"var(--warn)":"var(--th)")
     +(r.returns_compensation?tile("Утримано з дроперів за повернення",finMoney(r.returns_compensation)+"₴","var(--acc)"):"")
+    +(r.novapay_fee?tile("Комісія Нова Пей",finMoney(r.novapay_fee)+"₴","var(--red)"):"")
     +tile("Прибуток за період",finMoney(r.profit_cash)+"₴",r.profit_cash<0?"var(--red)":"var(--acc)")
     +(r.manager?tile(esc(r.manager.name)+" "+r.manager.percent+"%",finMoney(r.manager.amount)+"₴"):"")
     +(r.manager?tile("Прибуток після виплати",finMoney(r.profit_after_manager)+"₴",r.profit_after_manager<0?"var(--red)":"var(--acc)"):"")
@@ -422,6 +423,7 @@ async function saveFinCheck(btn){
 // і звірка з банком нічого не показує (calcBalance у finance.js на бекенді).
 function openFinSettings(){
   document.getElementById("fs-balance").value=finSettings?finSettings.cash_opening_balance:0;
+  document.getElementById("fs-novapay").value=finSettings?(finSettings.novapay_percent||0):0;
   // Порожню дату старту не показуємо — бекенд однаково підставить сьогодні,
   // якщо зберегти без дати, тож префілюємо тут сьогоднішнім днем, щоб
   // власник одразу бачив, від якого дня рахується залишок, а не гадав.
@@ -432,7 +434,8 @@ function openFinSettings(){
 
 async function saveFinSettings(){
   var err=document.getElementById("fs-err");
-  var body={cash_opening_balance:parseFloat(document.getElementById("fs-balance").value)||0,
+  var body={novapay_percent:parseFloat(document.getElementById("fs-novapay").value)||0,
+    cash_opening_balance:parseFloat(document.getElementById("fs-balance").value)||0,
     cash_opening_date:document.getElementById("fs-date").value||""};
   try{await api("/api/finance/settings",{method:"PUT",body:JSON.stringify(body)});closeM("fin-settings-modal");loadFinance()}
   catch(e){err.textContent=e.message;err.style.display="block"}

@@ -571,6 +571,7 @@
 <div style="font-size:11px;color:var(--td);margin-bottom:10px">Скільки грошей було на рахунку на момент, з якого система почала рахунок. Розрахунковий залишок = це число плюс усі рухи каси з дати нижче. Без нього звірка з банком не має сенсу — система рахуватиме баланс з нуля.</div>
 <div class="fld"><label>Скільки було на рахунку на старті ₴</label><input type="number" id="fs-balance" step="0.01"></div>
 <div class="fld"><label>Дата, з якої рахувати рухи</label><input type="date" id="fs-date"></div>
+<div class="fld"><label>Комісія Нова Пей, %</label><input type="number" id="fs-novapay" step="0.01" placeholder="0.5"><div style="font-size:10px;color:var(--td);margin-top:3px">Утримується з повної суми наложки, а не з твого заробітку. Передоплачених замовлень не стосується.</div></div>
 <div style="font-size:10px;color:var(--td);margin-bottom:6px">Рухи каси до цієї дати в розрахунковий залишок не входять.</div>
 <div id="fs-err" style="display:none;color:var(--red);font-size:11px;margin-bottom:6px"></div>
 <div style="display:flex;gap:6px"><button class="btn btn-p" onclick="saveFinSettings()">Зберегти</button><button class="btn" onclick="closeM('fin-settings-modal')">Скасувати</button></div>
