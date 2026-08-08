@@ -196,6 +196,15 @@
 </div></div>
 
 <!-- Workshop manager modal -->
+<div class="modal-bg" id="fin-inc-modal"><div class="modal" style="max-width:400px"><h3><i data-icon="plus" data-size="16"></i> Надходження</h3>
+<div style="font-size:11px;color:var(--td);margin-bottom:8px">Гроші, що прийшли не через посилку: продав за готівку, знайомий забрав з рук, повернули борг.</div>
+<div class="fld"><label>Дата</label><input type="date" id="fi-date"></div>
+<div class="fld"><label>Сума ₴</label><input type="number" id="fi-amount" step="0.01"></div>
+<div class="fld"><label>За що</label><input id="fi-note" placeholder="напр. продав худі Сергію за готівку"></div>
+<div id="fi-err" style="display:none;color:var(--red);font-size:11px;margin-bottom:6px"></div>
+<div style="display:flex;gap:6px"><button class="btn btn-p" onclick="saveFinIncome()">Зберегти</button><button class="btn" onclick="closeM('fin-inc-modal')">Скасувати</button></div>
+</div></div>
+
 <div class="modal-bg" id="ws-modal"><div class="modal" style="max-width:400px"><h3><i data-icon="factory" data-size="16"></i> Цехи</h3>
 <div id="ws-list"></div>
 <div style="display:flex;gap:4px;margin-top:8px"><input id="ws-name" placeholder="Назва цеху" style="flex:1;padding:8px;font-size:12px;background:var(--input);border:1px solid var(--brd2);border-radius:7px;color:#fff"><button class="btn btn-p" onclick="addWorkshop()">+</button></div>
@@ -399,6 +408,7 @@
 </div></div>
 
 <div class="page" id="pg-payouts"><div class="pt"><i data-icon="wallet" data-size="17"></i> Виплати</div>
+<div id="adm-payables"></div>
 <div style="margin-bottom:10px"><input id="pay-search" placeholder="Пошук по дропшиперу..." style="width:100%;padding:8px 12px;font-size:12px;background:var(--input);border:1px solid var(--brd);border-radius:8px;color:#fff;outline:0" oninput="filterPayouts()"></div>
 <div id="adm-payouts"></div>
 </div>
@@ -519,6 +529,7 @@
   <input type="date" id="fin-df"><input type="date" id="fin-dt">
   <button class="btn btn-sm btn-p" onclick="loadFinance()">OK</button>
   <button class="btn btn-sm" onclick="openFinExpense()"><i data-icon="plus" data-size="13"></i> Додати витрату</button>
+  <button class="btn btn-sm" onclick="openFinIncome()"><i data-icon="plus" data-size="13"></i> Додати надходження</button>
 </div>
 <div id="fin-err" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;background:rgba(239,83,80,.08);border:1px solid rgba(239,83,80,.25);border-radius:8px;padding:8px 10px"></div>
 <div id="fin-summary" style="margin-bottom:12px"></div>
@@ -1052,7 +1063,8 @@ async function loadDash(){
   document.getElementById("dash-s").innerHTML=`<div class="sc"><div class="sv" style="color:var(--acc)">${d.models||0}</div><div class="sl">моделей</div></div><div class="sc"><div class="sv" style="color:var(--blue)">${d.base_products||0}</div><div class="sl">товарів</div></div><div class="sc"><div class="sv" style="color:var(--warn)">${d.variations||0}</div><div class="sl">варіацій</div></div><div class="sc"><div class="sv" style="color:var(--th)">${d.dropshippers||0}</div><div class="sl">дропів</div></div><div class="sc"><div class="sv" style="color:var(--acc)">${d.orders_today||0}</div><div class="sl">замовлень сьогодні</div></div><div class="sc"><div class="sv" style="color:var(--td)">${d.orders_yesterday||0}</div><div class="sl">замовлень вчора</div></div>`+
     `<div class="sc" style="cursor:pointer" onclick="document.querySelector('a[data-p=\\'adm-returns\\']').click()"><div class="sv" style="color:var(--red)">${d.unreceived_orders||0}</div><div class="sl">не отримано</div></div>`+
     `<div class="sc" style="cursor:pointer" onclick="document.querySelector('a[data-p=\\'adm-returns\\']').click()"><div class="sv" style="color:var(--red);font-size:18px">${fmtMoney(d.unreceived_cost||0)}₴</div><div class="sl">собівартість не отриманих</div></div>`+
-    `<div class="sc"><div class="sv" style="color:var(--acc)">${d.returns_received_today||0}</div><div class="sl">повернень прийнято сьогодні</div></div>`;
+    `<div class="sc"><div class="sv" style="color:var(--acc)">${d.returns_received_today||0}</div><div class="sl">повернень прийнято сьогодні</div></div>`+
+    `<div class="sc" style="cursor:pointer" onclick="document.querySelector('a[data-p=\\'payouts\\']').click()"><div class="sv" style="color:var(--warn);font-size:18px">${fmtMoney(d.payables_total||0)}₴</div><div class="sl">не виплачено дроперам</div></div>`;
   renderDashStock(d);
   loadDashCharts();
   loadDashPopularity();
@@ -2930,6 +2942,23 @@ async function deleteTask(){if(!editTaskId||!confirm("Видалити зада�
 let allPayouts=[];
 async function loadAdmPayouts(){
   try{const r=await api("/api/payouts/all");allPayouts=r.requests;renderPayouts(allPayouts)}catch(e){}
+  // Скільки ми винні дроперам загалом: подані запити окремо від забраних
+  // замовлень, за якими запиту ще немає. Друге власник не бачив ніде, хоча
+  // платити доведеться однаково.
+  try{
+    const p=await api("/api/finance/payables");
+    const el=document.getElementById("adm-payables");
+    if(!el)return;
+    el.innerHTML=p.total?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+      +'<div class="sc" style="flex:1;min-width:150px"><div class="sv" style="color:var(--warn);font-size:18px">'+fmtMoney(p.total)+'₴</div><div class="sl">не виплачено дроперам</div></div>'
+      +'<div class="sc" style="flex:1;min-width:150px"><div class="sv" style="font-size:18px">'+fmtMoney(p.requested)+'₴</div><div class="sl">у поданих запитах</div></div>'
+      +'<div class="sc" style="flex:1;min-width:150px"><div class="sv" style="font-size:18px">'+fmtMoney(p.not_requested)+'₴</div><div class="sl">забрані, але запиту ще немає</div></div>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--td);margin-bottom:10px">'+p.by_dropper.map(function(d){
+        return esc(d.name)+' — '+fmtMoney(d.total)+'₴'+(d.not_requested?' (без запиту '+fmtMoney(d.not_requested)+'₴)':'');
+      }).join(' · ')+'</div>'
+      :'';
+  }catch(e){}
 }
 function filterPayouts(){var q=(document.getElementById("pay-search").value||"").toLowerCase();renderPayouts(q?allPayouts.filter(function(p){return p.drop_name.toLowerCase().includes(q)||String(p.id).includes(q)}):allPayouts)}
 function renderPayouts(list){

@@ -4198,6 +4198,9 @@ app.get("/api/dashboard", authMiddleware, (req, res) => {
         WHERE COALESCE(return_received,0)=1 AND date(return_received_at)=date('now','localtime')`).get().c,
       returns_received_today_sum: db.prepare(`SELECT COALESCE(SUM(total_drop_price),0) as s FROM orders
         WHERE COALESCE(return_received,0)=1 AND date(return_received_at)=date('now','localtime')`).get().s,
+      // Скільки з грошей на рахунку насправді належить дроперам: подані
+      // запити плюс забрані замовлення, за якими запиту ще немає.
+      payables_total: finance.payablesTotal(),
       unreceived_cost: db.prepare(`SELECT COALESCE(SUM(oi.quantity * COALESCE(NULLIF(bp.cost_price,0), m.cost_price, 0)),0) as s
         FROM order_items oi JOIN orders o ON oi.order_id=o.id
         JOIN variations v ON oi.variation_id=v.id JOIN base_products bp ON v.base_product_id=bp.id JOIN models m ON bp.model_id=m.id

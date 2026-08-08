@@ -58,6 +58,7 @@ async function loadFinance(){
     finWorkshops=(await api("/api/workshops")).workshops;
     finSettings=await api("/api/finance/settings");
     finReport=await api("/api/finance/report?from="+f+"&to="+t);
+    finManualIncome=(await api("/api/finance/income?from="+f+"&to="+t)).items;
     finExpenses=(await api("/api/finance/expenses?from="+f+"&to="+t)).expenses;
     finDelivered=await api("/api/finance/delivered?from="+f+"&to="+t);
     finJournal=await api("/api/finance/journal?from="+f+"&to="+t);
@@ -96,6 +97,7 @@ function renderFinSummary(){
     +tile("Борги постачальникам",finMoney(r.debts_total)+"₴",r.debts_total?"var(--warn)":"var(--th)")
     +(r.returns_compensation?tile("Утримано з дроперів за повернення",finMoney(r.returns_compensation)+"₴","var(--acc)"):"")
     +(r.novapay_fee?tile("Комісія Нова Пей",finMoney(r.novapay_fee)+"₴","var(--red)"):"")
+    +(r.payables&&r.payables.total?tile("Не виплачено дроперам",finMoney(r.payables.total)+"₴ <span style=\'font-size:11px;color:var(--td)\'>запити "+finMoney(r.payables.requested)+"₴ · без запиту "+finMoney(r.payables.not_requested)+"₴</span>","var(--warn)"):"")
     +tile("Прибуток за період",finMoney(r.profit_cash)+"₴",r.profit_cash<0?"var(--red)":"var(--acc)")
     +(r.manager?tile(esc(r.manager.name)+" "+r.manager.percent+"%",finMoney(r.manager.amount)+"₴"):"")
     +(r.manager?tile("Прибуток після виплати",finMoney(r.profit_after_manager)+"₴",r.profit_after_manager<0?"var(--red)":"var(--acc)"):"")
@@ -121,7 +123,12 @@ function renderFinList(exp){
       +(e.debt>0?'<div style="font-size:10px;color:var(--red)">борг '+finMoney(e.debt)+'₴ <button class="btn btn-sm" onclick="payFinExpense('+e.id+','+e.debt+')">Оплатити</button></div>':'')
       +'</div></div>';
   }).join("");
-  document.getElementById("fin-v-list").innerHTML='<div style="margin-bottom:8px">'+byCat+'</div>'+(rows||'<div class="empty">Витрат за період немає</div>');
+  var manual=(finManualIncome||[]).map(function(i){
+    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--brd);font-size:12px">'
+      +'<div><b style="color:var(--acc)">надходження</b> <span style="font-size:10px;color:var(--td)">'+esc(i.date)+' · '+esc(i.note||"")+'</span></div>'
+      +'<div style="white-space:nowrap;color:var(--acc)">+'+finMoney(i.amount)+'₴ <button class="btn btn-sm btn-d" onclick="delFinIncome('+i.id+')">×</button></div></div>';
+  }).join("");
+  document.getElementById("fin-v-list").innerHTML='<div style="margin-bottom:8px">'+byCat+'</div>'+manual+(rows||'<div class="empty">Витрат за період немає</div>');
 }
 
 // Розшифровка плитки «Надходження»: кожне забране за період замовлення
@@ -630,4 +637,34 @@ async function addWholesaleShipment(id){
 async function setWholesaleStatus(id,st){
   if(st==="cancelled"&&!confirm("Скасувати угоду? Платежі й витрати лишаться в обліку."))return;
   try{await api("/api/finance/wholesale/"+id,{method:"PUT",body:JSON.stringify({status:st})});closeM("ws-detail-modal");loadWholesale()}catch(e){alert(e.message)}
+}
+
+
+// ── Ручне надходження ─────────────────────────────────────────────
+// Не все продається через посилки: продав за готівку, знайомий забрав з рук.
+// Такі гроші мають потрапити і в касу, і в дохід — інакше залишок розійдеться
+// з банком, а прибуток буде занижений.
+function openFinIncome(){
+  document.getElementById("fi-date").value=new Date().toISOString().slice(0,10);
+  document.getElementById("fi-amount").value="";
+  document.getElementById("fi-note").value="";
+  document.getElementById("fi-err").style.display="none";
+  openM("fin-inc-modal");
+}
+
+async function saveFinIncome(){
+  var err=document.getElementById("fi-err");
+  var amount=parseFloat(document.getElementById("fi-amount").value);
+  if(!amount||amount<=0){err.textContent="Вкажіть суму";err.style.display="block";return}
+  try{
+    await api("/api/finance/income",{method:"POST",body:JSON.stringify({
+      date:document.getElementById("fi-date").value,
+      amount:amount, note:document.getElementById("fi-note").value})});
+    closeM("fin-inc-modal");loadFinance();
+  }catch(e){err.textContent=e.message;err.style.display="block"}
+}
+
+async function delFinIncome(id){
+  if(!confirm("Видалити це надходження? Гроші повернуться з каси й доходу."))return;
+  try{await api("/api/finance/income/"+id,{method:"DELETE"});loadFinance()}catch(e){alert(e.message)}
 }

@@ -75,6 +75,7 @@ function orderReceivedAmount(orderId) {
 // віддають сирий kind як є (щоб прогалину було видно, а не заховано за
 // придуманою назвою).
 const JOURNAL_KIND_LABELS = {
+  manual_income: "Ручне надходження",
   cod: "Наложка від Нової Пошти",
   prepaid: "Передоплата від дропера",
   payout: "Виплата дроперу",
@@ -83,6 +84,8 @@ const JOURNAL_KIND_LABELS = {
   refund: "Повернення коштів клієнту",
   cancel_refund: "Повернення при скасуванні замовлення",
   salary: "Зарплата",
+  fee: "Комісія Нова Пей",
+  wholesale: "Оплата оптового замовлення",
   // Віртуальний тип: рядок не з cash_moves, а з expenses (paid=0) — грошей
   // ще не було, тож рухом каси він ніколи не стане, поки його не оплатять
   // (тоді з'явиться СВІЙ рух з journal_kind='expense_payment').
@@ -451,6 +454,56 @@ function register(app, { authMiddleware, requireRole }) {
     res.json({ ok: true, payout_already_paid: alreadyPaid, payout_to_settle: alreadyPaid ? round2(paidPayout) : 0 });
   });
 
+  // ── Скільки ми винні дроперам ──────────────────────────────────
+  // Це не витрата й не борг постачальнику — це зобов'язання за вже забрані
+  // клієнтами посилки. Гроші за них у нас на рахунку лежать, але частина з
+  // них чужа. Дві різні речі, і власник має бачити обидві окремо:
+  //   • подані запити — дропер уже попросив, лишилось провести;
+  //   • ще не подані — забрані замовлення, за які запиту ще немає, але
+  //     заплатити доведеться однаково.
+  // Правило добору дзеркалить payoutCandidates у server.js: у виплату йде
+  // payout_amount за delivered без повної передоплати, мінус return_cost за
+  // поверненнями, і лише те, що ще не потрапило в жоден запит.
+  app.get("/api/finance/payables", ...adminOnly, (req, res) => {
+    const rows = payablesByDropper().map(r => ({ ...r, total: round2(r.requested + r.not_requested) }))
+      .filter(r => Math.abs(r.total) > 0.001);
+    res.json({
+      by_dropper: rows,
+      requested: round2(rows.reduce((s, r) => s + r.requested, 0)),
+      not_requested: round2(rows.reduce((s, r) => s + r.not_requested, 0)),
+      total: round2(rows.reduce((s, r) => s + r.total, 0))
+    });
+  });
+
+  // ── Ручні надходження ──────────────────────────────────────────
+  // Не все продається через посилки: продав щось працівнику за готівку,
+  // знайомий забрав з рук, повернули борг. Такі гроші теж мають потрапити і
+  // в касу, і в дохід — інакше залишок розійдеться з банком, а прибуток
+  // буде занижений. Видалення передбачене одразу: помилку в сумі має бути
+  // як виправити, не лізучи в базу.
+  app.post("/api/finance/income", ...adminOnly, (req, res) => {
+    const amount = parseFloat(req.body.amount);
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Вкажіть суму" });
+    const date = req.body.date || db.prepare("SELECT date('now','localtime') d").get().d;
+    const note = (req.body.note || "").trim() || "Ручне надходження";
+    const id = db.prepare(`INSERT INTO cash_moves(date,amount,kind,ref_type,ref_id,note)
+      VALUES(?,?,'manual_income','manual',NULL,?)`).run(date, round2(amount), note).lastInsertRowid;
+    res.json({ ok: true, id });
+  });
+
+  app.get("/api/finance/income", ...adminOnly, (req, res) => {
+    const from = req.query.from || db.prepare("SELECT date('now','localtime','-30 days') d").get().d;
+    const to = req.query.to || db.prepare("SELECT date('now','localtime') d").get().d;
+    res.json({ items: db.prepare(`SELECT id,date,amount,note FROM cash_moves
+      WHERE kind='manual_income' AND date BETWEEN ? AND ? ORDER BY date DESC, id DESC`).all(from, to) });
+  });
+
+  app.delete("/api/finance/income/:id", ...adminOnly, (req, res) => {
+    const r = db.prepare("DELETE FROM cash_moves WHERE id=? AND kind='manual_income'").run(req.params.id);
+    if (!r.changes) return res.status(404).json({ error: "Запис не знайдено" });
+    res.json({ ok: true });
+  });
+
   // ── ОПТ ────────────────────────────────────────────────────────
   // Кожна оптова угода — окремий кошик. Гроші приходять частинами й можуть
   // прийти навіть після відвантаження, шиється і їде теж частинами, тож
@@ -631,7 +684,11 @@ function register(app, { authMiddleware, requireRole }) {
     // ніколи не збігалось із kind, тож умова була дублем kind='refund' і
     // працювала правильно лише випадково.
     const refundsInPeriod = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE kind='refund' AND date BETWEEN ? AND ?", from, to);
-    const income = round2(deliveredIncome + refundsInPeriod);
+    // Ручні надходження — така сама виручка, як і забрані посилки: гроші
+    // прийшли за товар чи послугу, просто не через Нову Пошту.
+    const manualIncome = round2(db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM cash_moves
+      WHERE kind='manual_income' AND date BETWEEN ? AND ?`).get(from, to).s);
+    const income = round2(deliveredIncome + refundsInPeriod + manualIncome);
     const cashDelta = sum("SELECT COALESCE(SUM(amount),0) s FROM cash_moves WHERE date BETWEEN ? AND ?", from, to);
     const expensesPaid = sum(`SELECT COALESCE(SUM(p.amount),0) s FROM expense_payments p
       JOIN expenses e ON p.expense_id=e.id WHERE p.date BETWEEN ? AND ? AND e.wholesale_id IS NULL`, from, to);
@@ -696,6 +753,19 @@ function register(app, { authMiddleware, requireRole }) {
       balance: calcBalance(),
       by_category: byCategory, goods_spent: goodsSpent, opex_spent: opexSpent,
       returns_compensation: returnsCompensation,
+      manual_income: manualIncome,
+      // Скільки з грошей на рахунку насправді чужі — зобов'язання перед
+      // дроперами за вже забрані посилки. Не витрата й не борг постачальнику,
+      // тому в прибутку не бере участі, але власник має це бачити поруч із
+      // залишком: інакше «є 100 000» виглядає як «мої 100 000».
+      payables: (() => {
+        const rows = payablesByDropper();
+        return {
+          requested: round2(rows.reduce((s, r) => s + r.requested, 0)),
+          not_requested: round2(rows.reduce((s, r) => s + r.not_requested, 0)),
+          total: round2(rows.reduce((s, r) => s + r.requested + r.not_requested, 0))
+        };
+      })(),
       novapay_fee: novapayFee,
       debts_total: debtsTotal,
       profit_cash: profitCash,
@@ -877,6 +947,33 @@ function recordNovapayFee(orderId, codAmount, day) {
   if (!fee) return;
   addCashMove({ date: day, amount: -fee, kind: "fee", ref_type: "novapay", ref_id: orderId,
     note: "Комісія Нова Пей " + pct + "% із наложки, замовлення #" + orderId });
+}
+
+const PAID_ORDERS_SQL = `SELECT pi.order_id FROM payout_items pi
+  JOIN payout_requests pr ON pi.payout_request_id=pr.id WHERE pr.status='paid'`;
+
+function payablesByDropper() {
+  return db.prepare(`SELECT u.id, u.name,
+    ROUND(COALESCE((SELECT SUM(pr.total_amount) FROM payout_requests pr
+      WHERE pr.dropshipper_id=u.id AND pr.status='pending'),0),2) as requested,
+    ROUND(
+      COALESCE((SELECT SUM(o.payout_amount) FROM orders o
+        WHERE o.dropshipper_id=u.id AND o.status='delivered' AND o.is_prepaid=0
+          AND o.id NOT IN (${PAID_ORDERS_SQL})
+          AND o.id NOT IN (SELECT order_id FROM payout_items WHERE is_return=0)),0)
+      - COALESCE((SELECT SUM(o.return_cost) FROM orders o
+        WHERE o.dropshipper_id=u.id AND o.status IN ('refused','return_transit')
+          AND COALESCE(o.return_cost,0)>0
+          AND o.id NOT IN (${PAID_ORDERS_SQL})
+          AND o.id NOT IN (SELECT order_id FROM payout_items WHERE is_return=1)),0)
+    ,2) as not_requested
+    FROM users u WHERE u.role='dropshipper' AND u.active=1
+    ORDER BY u.name`).all();
+}
+
+function payablesTotal() {
+  const rows = payablesByDropper();
+  return round2(rows.reduce((s, r) => s + r.requested + r.not_requested, 0));
 }
 
 function onOrderDelivered(orderId) {
@@ -1077,4 +1174,4 @@ function onWorkerPayout(workerPayoutId) {
     ref_type: "worker_payout", ref_id: p.id, note: "Зарплата: " + p.name });
 }
 
-module.exports = { register, addCashMove, createExpense, onOrderCreated, onOrderDelivered, onOrderUndelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder, compensateCancelledOrder, syncOrderCashMove };
+module.exports = { register, payablesTotal, addCashMove, createExpense, onOrderCreated, onOrderDelivered, onOrderUndelivered, onDropPayoutPaid, onWorkerPayout, removeCashMovesForOrder, compensateCancelledOrder, syncOrderCashMove };
